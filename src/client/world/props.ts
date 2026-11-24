@@ -147,7 +147,6 @@ export function chest(mats: Mats): THREE.Group {
   // Curved lid.
   const lidGeo = new THREE.CylinderGeometry(d / 2, d / 2, w, 20, 1, false, 0, Math.PI);
   lidGeo.rotateZ(Math.PI / 2);
-  lidGeo.rotateX(-Math.PI / 2);
   const lid = new THREE.Mesh(lidGeo, mats.woodDark);
   lid.castShadow = true;
   lid.position.y = h;

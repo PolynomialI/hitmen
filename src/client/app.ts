@@ -23,6 +23,8 @@ export class App {
   time = 0;
   private last = 0;
   private extraUpdates = new Set<(t: number, dt: number) => void>();
+  /** Max frame step. Raised only by the ?dtcap= test parameter (slow headless renderers). */
+  private dtCap = Number(new URLSearchParams(location.search).get('dtcap')) || 0.05;
 
   constructor(root: HTMLElement, ui: HTMLElement) {
     this.root = root;
@@ -58,20 +60,32 @@ export class App {
   }
 
   private frame(now: number): void {
-    const dt = Math.min(0.05, (now - this.last) / 1000);
+    const dt = Math.min(this.dtCap, (now - this.last) / 1000);
     this.last = now;
     this.time += dt;
-    tweens.update(dt);
-    this.tavern.update(this.time, dt);
-    this.screen?.update?.(this.time, dt);
-    for (const f of this.extraUpdates) f(this.time, dt);
-    this.rig.update(dt);
+    // Each stage is guarded so one bug cannot freeze the whole tavern.
+    guard(() => tweens.update(dt));
+    guard(() => this.tavern.update(this.time, dt));
+    guard(() => this.screen?.update?.(this.time, dt));
+    for (const f of this.extraUpdates) guard(() => f(this.time, dt));
+    guard(() => this.rig.update(dt));
     this.gfx.render(dt, this.time);
   }
 
   setScreen(s: Screen | null): void {
     this.screen?.dispose?.();
     this.screen = s;
+  }
+}
+
+let lastErr = 0;
+function guard(fn: () => void): void {
+  try {
+    fn();
+  } catch (e) {
+    const now = performance.now();
+    if (now - lastErr > 2000) console.error(e);
+    lastErr = now;
   }
 }
 

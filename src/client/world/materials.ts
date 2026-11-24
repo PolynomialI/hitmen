@@ -79,7 +79,7 @@ export function buildMaterials(): Mats {
     gold: std({ color: '#e0b04a', metalness: 1, roughness: 0.25, emissive: '#3a2200', emissiveIntensity: 0.4 }),
     wax: std({ color: '#efe3c4', roughness: 0.5, emissive: '#ffb060', emissiveIntensity: 0.08 }),
     parchment: std({ color: '#e8d8b4', roughness: 0.9 }),
-    velvet: std({ color: '#5a0f14', roughness: 0.82, sheen: 1 } as THREE.MeshStandardMaterialParameters),
+    velvet: std({ color: '#5a0f14', roughness: 0.82 }),
     leather: std({ color: '#4a2a18', roughness: 0.7 }),
     glass: ['#2f5a2a', '#5a2a1a', '#2a3a5a', '#6a5420', '#3a1a3a'].map((c) =>
       std({ color: c, roughness: 0.12, metalness: 0.1, transparent: true, opacity: 0.82, emissive: c, emissiveIntensity: 0.15 })
