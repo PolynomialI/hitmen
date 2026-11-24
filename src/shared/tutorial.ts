@@ -16,7 +16,6 @@ export function tutorialSetup(human: PlayerId, bot: PlayerId): Setup {
     },
     deck: ['scry', 'hand', 'slip', 'brawl', 'pickpocket', 'backdoor', 'bounty', 'slip', 'scry'],
     reactionFor: (p) => {
-      // Give the student all the time they need to answer the rival's Pickpocket with a Parry.
       if (p.player === bot && p.card.type === 'pickpocket' && !p.cancelled) return 60_000;
       return null;
     },
@@ -47,10 +46,9 @@ export class TutorialBot extends Bot {
   protected decide(v: PlayerView): Action | null {
     if (v.phase === 'reaction') {
       const p = v.pending!;
-      // Parry the student's Bounty so they learn parries can come out of turn.
       if (p.player === this.human && p.card.type === 'bounty' && !p.cancelled) {
         const parry = this.has(v, 'parry');
-        if (parry) return { t: 'parry', cardId: parry.id };
+        if (parry) return { t: 'react', cardId: parry.id };
       }
       return null;
     }
@@ -63,6 +61,7 @@ export class TutorialBot extends Bot {
       }
       if (this.botTurns === 2) return { t: 'draw' };
     }
+    if (v.phase === 'turn') return v.sync.current === this.id ? super.decide(v) : null;
     return super.decide(v);
   }
 }

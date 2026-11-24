@@ -137,7 +137,7 @@ export class MatchScreen implements Screen {
     app.gfx.renderer.domElement.addEventListener('contextmenu', this.onContext);
 
     // ---- transport
-    this.t = new LocalTransport(mode, profile.name);
+    this.t = new LocalTransport({ mode, playerName: profile.name });
     this.me = this.t.me;
     this.t.onEvent((ev) => {
       this.queue.push(ev);
@@ -389,7 +389,7 @@ export class MatchScreen implements Screen {
     }
     // Parry (any time a card is in the air).
     if (card.type === 'parry') {
-      if (this.canParry()) await this.t.send({ t: 'parry', cardId: card.id });
+      if (this.canParry()) await this.t.send({ t: 'react', cardId: card.id });
       else this.nudge(card, 'Parry a card the moment it is played.');
       return;
     }

@@ -112,7 +112,7 @@ class Room {
       seats.push({ id: 'bot1', name: r.name, isBot: true, seat: seats.length, epithet: r.epithet, cloak: r.cloak });
       bots.push(new Bot('bot1', Date.now() & 0xffff, 0.8));
     }
-    const host = new Host({ mode: 'original', seed: (Math.random() * 2 ** 31) | 0, ...DEFAULT_TIMERS, handSize: 4 }, seats, {}, bots);
+    const host = new Host({ mode: 'original', deck: 'original', seed: (Math.random() * 2 ** 31) | 0, ...DEFAULT_TIMERS, handSize: seats.length >= 5 ? 4 : 5 }, seats, {}, bots);
     for (const c of this.clients) host.listen(c.pid, (ev: GameEvent) => send(c.ws, { t: 'event', ev }));
     this.host = host;
     host.start(this.now());

@@ -1,4 +1,4 @@
-import { BOT_ID, createBotMatch, HUMAN_ID } from '../../shared/match';
+import { createLocalMatch, HUMAN_ID, type LocalMatchOptions } from '../../shared/match';
 import type { Host } from '../../shared/host';
 import type { Action, GameEvent, GameMode, PlayerId, PlayResult } from '../../shared/types';
 
@@ -16,14 +16,13 @@ export interface Transport {
 
 export class LocalTransport implements Transport {
   readonly me = HUMAN_ID;
-  readonly rival = BOT_ID;
   readonly host: Host;
   private timer: number | null = null;
   private fn: ((ev: GameEvent) => void) | null = null;
   private t0 = performance.now();
 
-  constructor(mode: GameMode, playerName: string) {
-    this.host = createBotMatch({ mode, playerName }).host;
+  constructor(opts: LocalMatchOptions) {
+    this.host = createLocalMatch(opts).host;
     this.host.listen(this.me, (ev) => this.fn?.(ev));
   }
 

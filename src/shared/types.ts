@@ -1,7 +1,7 @@
-import type { Card, CardType } from './cards';
+import type { Card, CardType, DeckKind } from './cards';
 
 export type PlayerId = string;
-export type GameMode = 'original' | 'tutorial';
+export type GameMode = 'original' | 'tutorial' | 'teams' | 'scrimmage' | 'winter' | 'ranked';
 
 export interface SeatInfo {
   id: PlayerId;
@@ -12,36 +12,36 @@ export interface SeatInfo {
   epithet: string;
   /** Cosmetic: cloak colour of the seated figure. */
   cloak: string;
+  /** Team number in Teams mode. */
+  team?: number;
+  /** Cosmetics others can see (sleeve id etc.). */
+  look?: { sleeve?: string; impact?: string; seat?: string; banner?: string; charm?: string };
 }
 
 export interface GameConfig {
   mode: GameMode;
+  deck: DeckKind;
   seed: number;
-  /** Turn time limit in ms; null = no limit (tutorial). */
   turnMs: number | null;
-  /** Reaction window after a card is played, in which anyone may Parry. */
   reactionMs: number;
-  /** Time to play a Guardian Angel after drawing the Hooded Hand. */
   rescueMs: number;
-  /** Time to choose where to hide the Hooded Hand. */
   hideMs: number;
-  /** Time allowed to study the Scrying Orb's vision. */
   scryMs: number;
-  /** Number of action cards dealt to each player (plus one Guardian Angel). */
+  giveMs: number;
   handSize: number;
 }
 
-export type Phase = 'lobby' | 'intro' | 'turn' | 'reaction' | 'scry' | 'rescue' | 'hide' | 'over';
+export type Phase = 'lobby' | 'intro' | 'turn' | 'reaction' | 'scry' | 'rescue' | 'hide' | 'give' | 'over';
 
 export type Action =
   | { t: 'play'; cardId: number; targetId?: PlayerId }
-  | { t: 'parry'; cardId: number }
+  | { t: 'react'; cardId: number; targetId?: PlayerId }
   | { t: 'draw' }
   | { t: 'rescue'; cardId: number }
   | { t: 'hide'; position: number }
+  | { t: 'give'; cardId: number }
   | { t: 'scryDone' };
 
-/** Public table counters, attached to every event so clients never drift. */
 export interface SyncInfo {
   deck: number;
   handsInDeck: number;
@@ -49,6 +49,11 @@ export interface SyncInfo {
   alive: PlayerId[];
   current: PlayerId | null;
   turnsLeft: number;
+  dir: 1 | -1;
+  lock: { type: CardType; turns: number } | null;
+  wards: PlayerId[];
+  /** Type of the last card played (what a Looking Glass would copy). */
+  last: CardType | null;
 }
 
 export interface PlayerStats {
@@ -58,6 +63,17 @@ export interface PlayerStats {
   steals: number;
   turns: number;
   drawn: number;
+  slain: number;
+}
+
+export interface PendingInfo {
+  player: PlayerId;
+  card: Card;
+  /** Effect actually applied (differs from card.type for a Looking Glass). */
+  effect: CardType;
+  target?: PlayerId;
+  cancelled: boolean;
+  burned: boolean;
 }
 
 export type EventBody =
@@ -65,45 +81,58 @@ export type EventBody =
   | { e: 'deal'; to: PlayerId; card?: Card }
   | { e: 'intro' }
   | { e: 'turn'; player: PlayerId; turnsLeft: number; ms: number | null }
-  | { e: 'play'; player: PlayerId; card: Card; target?: PlayerId }
+  | { e: 'play'; player: PlayerId; card: Card; effect: CardType; target?: PlayerId }
   | { e: 'window'; ms: number }
-  | { e: 'parry'; player: PlayerId; card: Card; cancelled: boolean }
-  | { e: 'resolve'; player: PlayerId; card: Card; target?: PlayerId; cancelled: boolean }
+  | { e: 'parry'; player: PlayerId; card: Card; cancelled: boolean; burned: boolean }
+  | { e: 'redirect'; player: PlayerId; card: Card; target: PlayerId }
+  | { e: 'privateer'; player: PlayerId; card: Card }
+  | { e: 'resolve'; player: PlayerId; card: Card; effect: CardType; target?: PlayerId; cancelled: boolean }
+  | { e: 'burn'; card: Card }
+  | { e: 'copy'; player: PlayerId; card: Card; from: PlayerId }
+  | { e: 'pass'; from: PlayerId; to: PlayerId; card: Card }
   | { e: 'scry'; player: PlayerId; cards?: Card[]; ms: number }
   | { e: 'scryEnd'; player: PlayerId }
-  | { e: 'shuffle' }
+  | { e: 'shuffle'; by: PlayerId }
+  | { e: 'reveal'; card: Card }
+  | { e: 'givePrompt'; from: PlayerId; to: PlayerId; ms: number }
   | { e: 'steal'; from: PlayerId; to: PlayerId; card?: Card }
   | { e: 'owed'; player: PlayerId; by: PlayerId; turnsLeft: number }
+  | { e: 'reverse'; dir: 1 | -1 }
+  | { e: 'lock'; player: PlayerId; type: CardType; turns: number }
+  | { e: 'unlock'; type: CardType }
+  | { e: 'ward'; player: PlayerId; target: PlayerId }
+  | { e: 'warded'; target: PlayerId; card: Card }
+  | { e: 'retake'; player: PlayerId; card: Card }
+  | { e: 'swap'; a: PlayerId; b: PlayerId; handA?: Card[]; handB?: Card[] }
   | { e: 'draw'; player: PlayerId; card?: Card; bottom: boolean }
   | { e: 'doom'; player: PlayerId; card: Card; ms: number; hasAngel?: boolean }
   | { e: 'rescue'; player: PlayerId; card: Card }
   | { e: 'hidePrompt'; player: PlayerId; ms: number }
   | { e: 'hidden'; player: PlayerId; position?: number }
   | { e: 'slain'; player: PlayerId; doom: Card; discarded: Card[] }
-  | { e: 'over'; winner: PlayerId | null; stats: Record<PlayerId, PlayerStats> };
+  | { e: 'over'; winner: PlayerId | null; winners: PlayerId[]; stats: Record<PlayerId, PlayerStats> };
 
 export type GameEvent = EventBody & {
-  /** Sequence number. */
   n: number;
-  /** Presentation time the host reserves for this event, in ms. */
   dur: number;
   sync: SyncInfo;
-  /** Per-recipient extra fields (stripped before sending). */
   secret?: Record<PlayerId, Partial<EventBody>>;
 };
 
 export type EventType = GameEvent['e'];
 
-/** What a single player is allowed to know right now (used by bots and for reconnects). */
 export interface PlayerView {
   you: PlayerId;
   phase: Phase;
   seats: SeatInfo[];
   hand: Card[];
   sync: SyncInfo;
-  pending: { player: PlayerId; card: Card; target?: PlayerId; cancelled: boolean } | null;
+  pending: PendingInfo | null;
   doomed: PlayerId | null;
+  give: { from: PlayerId; to: PlayerId } | null;
   busy: boolean;
+  /** Hands of teammates (Teams mode). */
+  mates: Record<PlayerId, Card[]>;
 }
 
 export interface PlayResult {

@@ -1,4 +1,4 @@
-import { ACTION_POOL_1V1, type Card, type CardType, def } from './cards';
+import { type Card, type CardType, def, poolFor } from './cards';
 import { Rng } from './rng';
 import { DUR } from './timing';
 import type {
@@ -6,6 +6,7 @@ import type {
   EventBody,
   GameConfig,
   GameEvent,
+  PendingInfo,
   Phase,
   PlayerId,
   PlayerStats,
@@ -21,29 +22,30 @@ interface PlayerState extends SeatInfo {
   stats: PlayerStats;
 }
 
-interface Pending {
-  player: PlayerId;
-  card: Card;
-  target?: PlayerId;
-  cancelled: boolean;
+interface Pending extends PendingInfo {
+  privateers: Array<{ player: PlayerId; card: Card }>;
 }
 
 /** Optional stacked setup (used by the tutorial). */
 export interface Setup {
-  /** Cards each player starts with, by player id (types). Overrides normal dealing. */
   hands?: Record<PlayerId, CardType[]>;
-  /** Deck order, top first. Overrides normal deck building. */
   deck?: CardType[];
   first?: PlayerId;
-  /** Return a custom reaction window length for a given play, or null for the default. */
-  reactionFor?: (p: { player: PlayerId; card: Card; target?: PlayerId; cancelled: boolean }) => number | null;
+  reactionFor?: (p: PendingInfo) => number | null;
 }
 
 type Body = EventBody & { secret?: Record<PlayerId, Partial<EventBody>> };
 
+/** Effects a Looking Glass may copy. */
+const COPYABLE = new Set<CardType>(['scry', 'bounty', 'slip', 'brawl', 'pickpocket', 'backdoor', 'turnabout', 'shackles', 'aegis', 'warband', 'sands', 'mistletoe', 'yule']);
+/** Effects that mark a player. */
+const MARKS = new Set<CardType>(['bounty', 'pickpocket', 'aegis', 'warband', 'mistletoe']);
+/** Hostile marks an Aegis blocks. */
+const HOSTILE = new Set<CardType>(['bounty', 'pickpocket', 'warband', 'mistletoe']);
+
 /**
- * Authoritative rules engine. Pure TypeScript, no DOM/Node APIs, so it runs in the browser (bot games)
- * and on the server (online rooms). Time is passed in explicitly (ms) to keep it deterministic.
+ * Authoritative rules engine. Pure TypeScript (no DOM/Node APIs): runs in the browser for bot games
+ * and on the server for online rooms. Time is passed in explicitly (ms) to keep it deterministic.
  */
 export class Engine {
   readonly cfg: GameConfig;
@@ -54,15 +56,17 @@ export class Engine {
   deck: Card[] = [];
   discard: Card[] = [];
   cur = 0;
+  dir: 1 | -1 = 1;
   turnsLeft = 1;
   pending: Pending | null = null;
   doom: { player: PlayerId; card: Card } | null = null;
+  give: { from: PlayerId; to: PlayerId } | null = null;
+  lock: { type: CardType; turns: number } | null = null;
+  wards = new Set<PlayerId>();
+  lastPlayed: CardType | null = null;
   winner: PlayerId | null = null;
-  /** Host time until which presentation is running. Decisions are not accepted before this. */
   busyUntil = 0;
-  /** Deadline of the current phase (absolute ms) or null for none. */
   deadline: number | null = null;
-  /** Turn time that was left when we left the 'turn' phase to resolve something. */
   private turnBank: number | null = null;
   private nextId = 1;
   private seq = 0;
@@ -77,7 +81,7 @@ export class Engine {
       ...s,
       alive: true,
       hand: [],
-      stats: { played: 0, parries: 0, rescues: 0, steals: 0, turns: 0, drawn: 0 },
+      stats: { played: 0, parries: 0, rescues: 0, steals: 0, turns: 0, drawn: 0, slain: 0 },
     }));
   }
 
@@ -103,6 +107,32 @@ export class Engine {
     return this.deck.filter((c) => c.type === 'hand').length;
   }
 
+  teamOf(id: PlayerId): number | undefined {
+    return this.player(id)?.team;
+  }
+
+  /** Teammates of a player (excluding themselves). */
+  mates(id: PlayerId): PlayerState[] {
+    const t = this.teamOf(id);
+    if (t == null) return [];
+    return this.players.filter((p) => p.team === t && p.id !== id);
+  }
+
+  sameTeam(a: PlayerId, b: PlayerId): boolean {
+    const ta = this.teamOf(a);
+    return ta != null && ta === this.teamOf(b);
+  }
+
+  /** Secret payload for a player and their teammates (Teams share hands and visions). */
+  private sec(payloads: Array<[PlayerId, Partial<EventBody>]>): Record<PlayerId, Partial<EventBody>> {
+    const out: Record<PlayerId, Partial<EventBody>> = {};
+    for (const [pid, body] of payloads) {
+      for (const m of this.mates(pid)) out[m.id] = { ...(out[m.id] ?? {}), ...body } as Partial<EventBody>;
+    }
+    for (const [pid, body] of payloads) out[pid] = { ...(out[pid] ?? {}), ...body } as Partial<EventBody>;
+    return out;
+  }
+
   sync(): SyncInfo {
     const hands: Record<PlayerId, number> = {};
     for (const p of this.players) hands[p.id] = p.hand.length;
@@ -113,6 +143,10 @@ export class Engine {
       alive: this.alive().map((p) => p.id),
       current: this.phase === 'over' || this.phase === 'lobby' ? null : this.current.id,
       turnsLeft: this.turnsLeft,
+      dir: this.dir,
+      lock: this.lock ? { ...this.lock } : null,
+      wards: [...this.wards],
+      last: this.lastPlayed,
     };
   }
 
@@ -123,7 +157,6 @@ export class Engine {
     this.busyUntil = Math.max(this.busyUntil, this.now) + dur;
   }
 
-  /** Take all events produced since the last call. */
   drain(): GameEvent[] {
     const o = this.out;
     this.out = [];
@@ -132,6 +165,17 @@ export class Engine {
 
   isBusy(now: number): boolean {
     return now < this.busyUntil;
+  }
+
+  isLocked(t: CardType): boolean {
+    return !!this.lock && this.lock.type === t;
+  }
+
+  /** Can this player save themselves from the Hooded Hand right now? */
+  rescueCards(p: PlayerState): Card[] {
+    return p.hand.filter(
+      (c) => (c.type === 'angel' && !this.isLocked('angel')) || (c.type === 'glass' && this.lastPlayed === 'angel' && !this.isLocked('glass'))
+    );
   }
 
   // ------------------------------------------------------------------ setup
@@ -143,44 +187,29 @@ export class Engine {
     const firstId = st.first ?? this.rng.pick(this.players).id;
     this.cur = this.players.findIndex((p) => p.id === firstId);
     this.phase = 'intro';
+    const n = this.players.length;
 
-    let deals: Array<{ p: PlayerState; c: Card }> = [];
+    const deals: Array<{ p: PlayerState; c: Card }> = [];
     if (st.hands && st.deck) {
-      for (const p of this.players) {
-        for (const t of st.hands[p.id] ?? []) deals.push({ p, c: this.card(t) });
-      }
+      for (const p of this.players) for (const t of st.hands[p.id] ?? []) deals.push({ p, c: this.card(t) });
       this.deck = st.deck.map((t) => this.card(t));
     } else {
-      const pool: Card[] = [];
-      for (const [t, n] of Object.entries(ACTION_POOL_1V1)) {
-        for (let i = 0; i < (n ?? 0); i++) pool.push(this.card(t as CardType));
-      }
-      this.rng.shuffle(pool);
-      // Every player starts with one Guardian Angel plus handSize action cards, dealt round-robin.
+      const pool = this.rng.shuffle(poolFor(this.cfg.deck, n).map((t) => this.card(t)));
       for (const p of this.players) deals.push({ p, c: this.card('angel') });
-      for (let i = 0; i < this.cfg.handSize; i++) {
-        for (const p of this.players) deals.push({ p, c: pool.pop()! });
-      }
-      // Interleave: angel first per player, then round-robin actions (already in that order).
-      const n = this.players.length;
+      for (let i = 0; i < this.cfg.handSize; i++) for (const p of this.players) deals.push({ p, c: pool.pop()! });
       for (let i = 0; i < n - 1; i++) pool.push(this.card('hand'));
-      // One spare angel per table of up to 3, two above.
-      const spare = n <= 3 ? 1 : 2;
+      const spare = n <= 3 ? 1 : n <= 5 ? 2 : 3;
       for (let i = 0; i < spare; i++) pool.push(this.card('angel'));
       this.rng.shuffle(pool);
       this.deck = pool;
     }
-
-    // During the deal, the deck visually contains the dealt cards too; we count them down as they go out.
     const stash = this.deck;
     this.deck = [...deals.map((d) => d.c), ...stash];
     this.emit({ e: 'start', seats: this.players.map(seatOf), mode: this.cfg.mode, first: this.current.id });
-    // Deal alternating so it looks like a real deal.
-    const order = interleave(this.players, deals);
-    for (const d of order) {
+    for (const d of interleave(this.players, deals)) {
       this.deck.shift();
       d.p.hand.push(d.c);
-      this.emit({ e: 'deal', to: d.p.id, secret: { [d.p.id]: { card: d.c } } });
+      this.emit({ e: 'deal', to: d.p.id, secret: this.sec([[d.p.id, { card: d.c }]]) });
     }
     this.deck = stash;
     this.emit({ e: 'intro' });
@@ -195,6 +224,14 @@ export class Engine {
     this.phase = 'turn';
     this.pending = null;
     this.turnBank = null;
+    if (this.lock) {
+      this.lock.turns--;
+      if (this.lock.turns <= 0) {
+        const t = this.lock.type;
+        this.lock = null;
+        this.emit({ e: 'unlock', type: t });
+      }
+    }
     this.current.stats.turns++;
     this.emit({ e: 'turn', player: this.current.id, turnsLeft: turns, ms: this.cfg.turnMs });
     this.deadline = this.cfg.turnMs == null ? null : this.busyUntil + this.cfg.turnMs;
@@ -203,6 +240,7 @@ export class Engine {
   private resumeTurn(): void {
     this.phase = 'turn';
     this.pending = null;
+    this.give = null;
     const bank = this.turnBank;
     this.turnBank = null;
     if (this.cfg.turnMs == null) this.deadline = null;
@@ -210,21 +248,18 @@ export class Engine {
   }
 
   private bankTurn(): void {
-    if (this.phase === 'turn' && this.deadline != null) {
-      this.turnBank = Math.max(0, this.deadline - this.now);
-    }
+    if (this.phase === 'turn' && this.deadline != null) this.turnBank = Math.max(0, this.deadline - this.now);
   }
 
   private nextAliveAfter(idx: number): number {
     const n = this.players.length;
     for (let k = 1; k <= n; k++) {
-      const j = (idx + k) % n;
+      const j = (((idx + k * this.dir) % n) + n) % n;
       if (this.players[j].alive) return j;
     }
     return idx;
   }
 
-  /** One owed turn is complete. */
   private endTurnUnit(): void {
     if (this.phase === 'over') return;
     this.turnsLeft--;
@@ -243,37 +278,81 @@ export class Engine {
 
     switch (a.t) {
       case 'play': {
-        if (this.phase !== 'turn' || this.current.id !== pid) return fail('not your turn');
+        if (this.phase !== 'turn') return fail('not now');
         if (busy) return fail('busy');
         const card = p.hand.find((c) => c.id === a.cardId);
         if (!card) return fail('no such card');
         const d = def(card.type);
         if (!d.playable) return fail('cannot play that now');
+        if (this.isLocked(card.type)) return fail('that card is shackled');
+        const mine = this.current.id === pid;
+        if (d.timing === 'turn' && !mine) return fail('not your turn');
+        if (d.timing !== 'turn' && d.timing !== 'quick') return fail('cannot play that now');
+        // Looking Glass resolves as whatever was played last.
+        let effect: CardType = card.type;
+        if (card.type === 'glass') {
+          if (!this.lastPlayed || !COPYABLE.has(this.lastPlayed)) return fail('nothing to copy');
+          effect = this.lastPlayed;
+          if (def(effect).timing === 'quick' && !mine) return fail('not your turn');
+        }
         let target: PlayerId | undefined;
-        if (d.targeted) {
+        if (MARKS.has(effect)) {
           const t = a.targetId ? this.player(a.targetId) : undefined;
-          if (!t || !t.alive || t.id === pid) return fail('bad target');
+          if (!t || !t.alive) return fail('bad target');
+          if (effect === 'aegis') {
+            if (this.teamOf(pid) != null && !this.sameTeam(pid, t.id) && t.id !== pid) return fail('ward a friend');
+          } else {
+            if (t.id === pid) return fail('bad target');
+            if (effect === 'warband' && this.sameTeam(pid, t.id)) return fail('mark a rival');
+          }
           target = t.id;
         }
         this.bankTurn();
         removeCard(p.hand, card.id);
         this.discard.push(card);
         p.stats.played++;
-        this.emit({ e: 'play', player: pid, card, target });
-        this.pending = { player: pid, card, target, cancelled: false };
+        if (card.type !== 'glass') this.lastPlayed = card.type;
+        this.emit({ e: 'play', player: pid, card, effect, target });
+        this.pending = { player: pid, card, effect, target, cancelled: false, burned: false, privateers: [] };
         this.openWindow();
         return ok();
       }
-      case 'parry': {
-        if (this.phase !== 'reaction' || !this.pending) return fail('nothing to parry');
-        const card = p.hand.find((c) => c.id === a.cardId && c.type === 'parry');
-        if (!card) return fail('no parry');
+      case 'react': {
+        if (this.phase !== 'reaction' || !this.pending) return fail('nothing to answer');
+        const card = p.hand.find((c) => c.id === a.cardId);
+        if (!card) return fail('no such card');
+        if (def(card.type).timing !== 'reaction') return fail('not a reaction');
+        if (this.isLocked(card.type)) return fail('that card is shackled');
+        const pend = this.pending;
+        if (card.type === 'misdirect') {
+          if (!MARKS.has(pend.effect) || pend.effect === 'aegis' || pend.cancelled) return fail('nothing to misdirect');
+          const t = a.targetId ? this.player(a.targetId) : undefined;
+          if (!t || !t.alive || t.id === pend.target || t.id === pend.player) return fail('bad target');
+          removeCard(p.hand, card.id);
+          this.discard.push(card);
+          p.stats.played++;
+          pend.target = t.id;
+          this.emit({ e: 'redirect', player: pid, card, target: t.id });
+          this.openWindow();
+          return ok();
+        }
+        if (card.type === 'privateer') {
+          if (pend.player === pid || pend.privateers.some((x) => x.player === pid)) return fail('not now');
+          removeCard(p.hand, card.id);
+          p.stats.played++;
+          pend.privateers.push({ player: pid, card });
+          this.emit({ e: 'privateer', player: pid, card });
+          this.openWindow();
+          return ok();
+        }
+        // Parry or Dragon's Breath.
         removeCard(p.hand, card.id);
         this.discard.push(card);
         p.stats.played++;
         p.stats.parries++;
-        this.pending.cancelled = !this.pending.cancelled;
-        this.emit({ e: 'parry', player: pid, card, cancelled: this.pending.cancelled });
+        pend.cancelled = !pend.cancelled;
+        if (card.type === 'breath') pend.burned = true;
+        this.emit({ e: 'parry', player: pid, card, cancelled: pend.cancelled, burned: card.type === 'breath' });
         this.openWindow();
         return ok();
       }
@@ -286,10 +365,11 @@ export class Engine {
       }
       case 'rescue': {
         if (this.phase !== 'rescue' || !this.doom || this.doom.player !== pid) return fail('not now');
-        const card = p.hand.find((c) => c.id === a.cardId && c.type === 'angel');
-        if (!card) return fail('no angel');
+        const card = this.rescueCards(p).find((c) => c.id === a.cardId);
+        if (!card) return fail('that cannot save you');
         removeCard(p.hand, card.id);
         this.discard.push(card);
+        this.lastPlayed = 'angel';
         p.stats.rescues++;
         this.emit({ e: 'rescue', player: pid, card });
         this.phase = 'hide';
@@ -302,8 +382,15 @@ export class Engine {
         this.doHide(a.position);
         return ok();
       }
+      case 'give': {
+        if (this.phase !== 'give' || !this.give || this.give.from !== pid) return fail('not now');
+        const card = p.hand.find((c) => c.id === a.cardId);
+        if (!card) return fail('no such card');
+        this.doGive(card);
+        return ok();
+      }
       case 'scryDone': {
-        if (this.phase !== 'scry' || this.current.id !== pid) return fail('not now');
+        if (this.phase !== 'scry' || this.pending?.player !== pid) return fail('not now');
         this.endScry();
         return ok();
       }
@@ -320,66 +407,167 @@ export class Engine {
 
   private resolvePending(): void {
     const pend = this.pending!;
-    this.pending = null;
     const p = this.player(pend.player)!;
-    this.emit({ e: 'resolve', player: pend.player, card: pend.card, target: pend.target, cancelled: pend.cancelled });
+    this.emit({ e: 'resolve', player: pend.player, card: pend.card, effect: pend.effect, target: pend.target, cancelled: pend.cancelled });
+    // Privateers: copy the card, or lose the Privateer to its owner if the card was cancelled.
+    for (const claim of pend.privateers) {
+      const cp = this.player(claim.player);
+      if (!cp || !cp.alive) continue;
+      if (pend.cancelled) {
+        if (p.alive) {
+          p.hand.push(claim.card);
+          this.emit({ e: 'pass', from: claim.player, to: p.id, card: claim.card });
+        } else this.discard.push(claim.card);
+      } else {
+        this.discard.push(claim.card);
+        const copy = this.card(pend.card.type);
+        cp.hand.push(copy);
+        this.emit({ e: 'copy', player: cp.id, card: copy, from: p.id });
+      }
+    }
+    pend.privateers = [];
     if (pend.cancelled) {
+      if (pend.burned) {
+        removeCard(this.discard, pend.card.id);
+        const pos = this.rng.int(this.deck.length + 1);
+        this.deck.splice(pos, 0, pend.card);
+        this.emit({ e: 'burn', card: pend.card });
+      }
       this.resumeTurn();
       return;
     }
-    switch (pend.card.type) {
+    const target = pend.target ? this.player(pend.target) : undefined;
+    if (target && HOSTILE.has(pend.effect) && this.wards.has(target.id)) {
+      this.wards.delete(target.id);
+      this.emit({ e: 'warded', target: target.id, card: pend.card });
+      this.resumeTurn();
+      return;
+    }
+    switch (pend.effect) {
       case 'scry': {
         const cards = this.deck.slice(0, 3);
         this.phase = 'scry';
-        this.emit({ e: 'scry', player: p.id, ms: this.cfg.scryMs, secret: { [p.id]: { cards } } });
+        this.emit({ e: 'scry', player: p.id, ms: this.cfg.scryMs, secret: this.sec([[p.id, { cards }]]) });
         this.deadline = this.busyUntil + this.cfg.scryMs;
         return;
       }
       case 'slip':
+        this.pending = null;
         this.endTurnUnit();
         return;
-      case 'bounty': {
-        const t = this.player(pend.target!)!;
-        if (!t.alive) {
-          this.endTurnUnit();
+      case 'turnabout':
+        this.pending = null;
+        this.dir = this.dir === 1 ? -1 : 1;
+        this.emit({ e: 'reverse', dir: this.dir });
+        this.endTurnUnit();
+        return;
+      case 'bounty':
+      case 'warband': {
+        this.pending = null;
+        if (!target || !target.alive) {
+          if (p.id === this.current.id) this.endTurnUnit();
+          else this.resumeTurn();
           return;
         }
-        const owed = (this.turnsLeft > 1 ? this.turnsLeft : 0) + 2;
-        this.emit({ e: 'owed', player: t.id, by: p.id, turnsLeft: owed });
-        this.beginTurn(this.players.indexOf(t), owed);
+        const add = pend.effect === 'warband' ? 3 : 2;
+        const owed = (this.turnsLeft > 1 && p.id === this.current.id ? this.turnsLeft : 0) + add;
+        this.emit({ e: 'owed', player: target.id, by: p.id, turnsLeft: owed });
+        this.beginTurn(this.players.indexOf(target), owed);
         return;
       }
       case 'brawl':
         this.rng.shuffle(this.deck);
-        this.emit({ e: 'shuffle' });
+        this.emit({ e: 'shuffle', by: p.id });
+        this.resumeTurn();
+        return;
+      case 'yule':
+        this.rng.shuffle(this.deck);
+        this.emit({ e: 'shuffle', by: p.id });
+        if (this.deck.length) this.emit({ e: 'reveal', card: this.deck[0] });
         this.resumeTurn();
         return;
       case 'pickpocket': {
-        const t = this.player(pend.target!)!;
-        if (t.alive && t.hand.length > 0) {
-          const c = t.hand[this.rng.int(t.hand.length)];
-          removeCard(t.hand, c.id);
-          p.hand.push(c);
-          p.stats.steals++;
-          this.emit({ e: 'steal', from: t.id, to: p.id, secret: { [t.id]: { card: c }, [p.id]: { card: c } } });
-        } else {
-          this.emit({ e: 'steal', from: t.id, to: p.id }, 600);
+        if (target && target.alive && target.hand.length > 0) {
+          this.give = { from: target.id, to: p.id };
+          this.phase = 'give';
+          this.emit({ e: 'givePrompt', from: target.id, to: p.id, ms: this.cfg.giveMs });
+          this.deadline = this.busyUntil + this.cfg.giveMs;
+          return;
         }
+        this.emit({ e: 'steal', from: target?.id ?? p.id, to: p.id }, 600);
         this.resumeTurn();
         return;
       }
       case 'backdoor':
+        this.pending = null;
         this.doDraw(true);
         return;
+      case 'shackles': {
+        // The card beneath this one on the pile gets chained.
+        const under = this.discard[this.discard.length - 2];
+        if (under && under.type !== 'hand' && under.type !== 'shackles') {
+          this.lock = { type: under.type, turns: 3 };
+          this.emit({ e: 'lock', player: p.id, type: under.type, turns: 3 });
+        }
+        this.resumeTurn();
+        return;
+      }
+      case 'aegis':
+        if (target) {
+          this.wards.add(target.id);
+          this.emit({ e: 'ward', player: p.id, target: target.id });
+        }
+        this.resumeTurn();
+        return;
+      case 'sands': {
+        const idx = this.discard.length - 2;
+        const under = this.discard[idx];
+        if (under && under.type !== 'hand') {
+          this.discard.splice(idx, 1);
+          p.hand.push(under);
+          this.emit({ e: 'retake', player: p.id, card: under });
+        }
+        this.resumeTurn();
+        return;
+      }
+      case 'mistletoe': {
+        if (target && target.alive) {
+          const a = p.hand;
+          p.hand = target.hand;
+          target.hand = a;
+          this.emit({
+            e: 'swap',
+            a: p.id,
+            b: target.id,
+            secret: this.sec([
+              [p.id, { handA: p.hand.map((c) => ({ ...c })) }],
+              [target.id, { handB: target.hand.map((c) => ({ ...c })) }],
+            ]),
+          });
+        }
+        this.resumeTurn();
+        return;
+      }
       default:
         this.resumeTurn();
     }
   }
 
+  private doGive(card: Card): void {
+    const g = this.give!;
+    const from = this.player(g.from)!;
+    const to = this.player(g.to)!;
+    removeCard(from.hand, card.id);
+    to.hand.push(card);
+    to.stats.steals++;
+    this.emit({ e: 'steal', from: from.id, to: to.id, secret: this.sec([[from.id, { card }], [to.id, { card }]]) });
+    this.give = null;
+    this.resumeTurn();
+  }
+
   private doDraw(bottom: boolean): void {
     const p = this.current;
     if (this.deck.length === 0) {
-      // Should not happen (the deck always holds at least one Hooded Hand while 2+ players live).
       this.endTurnUnit();
       return;
     }
@@ -387,7 +575,7 @@ export class Engine {
     p.stats.drawn++;
     if (card.type === 'hand') {
       this.emit({ e: 'draw', player: p.id, card, bottom });
-      const hasAngel = p.hand.some((c) => c.type === 'angel');
+      const hasAngel = this.rescueCards(p).length > 0;
       this.doom = { player: p.id, card };
       this.phase = 'rescue';
       const ms = hasAngel ? this.cfg.rescueMs : 2600;
@@ -396,7 +584,7 @@ export class Engine {
       return;
     }
     p.hand.push(card);
-    this.emit({ e: 'draw', player: p.id, bottom, secret: { [p.id]: { card } } });
+    this.emit({ e: 'draw', player: p.id, bottom, secret: this.sec([[p.id, { card }]]) });
     this.endTurnUnit();
   }
 
@@ -405,12 +593,12 @@ export class Engine {
     const pos = Math.max(0, Math.min(this.deck.length, Math.floor(position)));
     this.deck.splice(pos, 0, d.card);
     this.doom = null;
-    this.emit({ e: 'hidden', player: d.player, secret: { [d.player]: { position: pos } } });
+    this.emit({ e: 'hidden', player: d.player, secret: this.sec([[d.player, { position: pos }]]) });
     this.endTurnUnit();
   }
 
   private endScry(): void {
-    this.emit({ e: 'scryEnd', player: this.current.id });
+    this.emit({ e: 'scryEnd', player: this.pending?.player ?? this.current.id });
     this.resumeTurn();
   }
 
@@ -419,46 +607,52 @@ export class Engine {
     const doomCard = this.doom!.card;
     this.doom = null;
     p.alive = false;
+    p.stats.slain++;
+    this.wards.delete(pid);
     const discarded = p.hand.splice(0);
     this.discard.push(doomCard, ...discarded);
     this.emit({ e: 'slain', player: pid, doom: doomCard, discarded });
-    const left = this.alive();
-    if (left.length <= 1) {
-      this.finish(left[0]?.id ?? null);
-      return;
-    }
+    if (this.checkOver()) return;
     this.beginTurn(this.nextAliveAfter(this.players.indexOf(p)), 1);
   }
 
-  private finish(winner: PlayerId | null): void {
+  /** Finish if one player (or one team) remains. */
+  private checkOver(): boolean {
+    const left = this.alive();
+    const teams = new Set(left.map((p) => (p.team != null ? 't' + p.team : 'p' + p.id)));
+    if (teams.size > 1) return false;
+    const w = left[0];
+    const winners = w ? (w.team != null ? this.players.filter((p) => p.team === w.team).map((p) => p.id) : [w.id]) : [];
+    this.finish(w?.id ?? null, winners);
+    return true;
+  }
+
+  private finish(winner: PlayerId | null, winners: PlayerId[]): void {
     this.phase = 'over';
     this.winner = winner;
     this.deadline = null;
     const stats: Record<PlayerId, PlayerStats> = {};
     for (const p of this.players) stats[p.id] = { ...p.stats };
-    this.emit({ e: 'over', winner, stats });
+    this.emit({ e: 'over', winner, winners, stats });
   }
 
-  /** A player left the table: treat as slain by the hand of fate. */
   forfeit(pid: PlayerId, now: number): void {
     this.now = now;
     const p = this.player(pid);
     if (!p || !p.alive || this.phase === 'over') return;
     const fake = this.card('hand');
-    this.doom = { player: pid, card: fake };
     const wasCurrent = this.current.id === pid;
     p.alive = false;
     const discarded = p.hand.splice(0);
     this.emit({ e: 'slain', player: pid, doom: fake, discarded });
-    this.doom = null;
-    const left = this.alive();
-    if (left.length <= 1) return this.finish(left[0]?.id ?? null);
+    if (this.doom?.player === pid) this.doom = null;
+    if (this.give && (this.give.from === pid || this.give.to === pid)) this.give = null;
+    if (this.checkOver()) return;
     if (wasCurrent) this.beginTurn(this.nextAliveAfter(this.cur), 1);
   }
 
   // ------------------------------------------------------------------ clock
 
-  /** Advance timers. Call frequently (e.g. every 50-100 ms). */
   update(now: number): void {
     this.now = now;
     if (this.deadline == null || now < this.deadline || now < this.busyUntil) return;
@@ -479,6 +673,11 @@ export class Engine {
       case 'hide':
         this.doHide(this.rng.int(this.deck.length + 1));
         break;
+      case 'give': {
+        const from = this.player(this.give!.from)!;
+        this.doGive(from.hand[this.rng.int(from.hand.length)]);
+        break;
+      }
     }
   }
 
@@ -486,23 +685,26 @@ export class Engine {
 
   view(pid: PlayerId, now: number): PlayerView {
     const p = this.player(pid);
+    const mates: Record<PlayerId, Card[]> = {};
+    for (const m of this.mates(pid)) mates[m.id] = m.hand.map((c) => ({ ...c }));
+    const pend = this.pending;
     return {
       you: pid,
       phase: this.phase,
       seats: this.players.map(seatOf),
       hand: p ? p.hand.map((c) => ({ ...c })) : [],
       sync: this.sync(),
-      pending: this.pending ? { ...this.pending } : null,
+      pending: pend ? { player: pend.player, card: pend.card, effect: pend.effect, target: pend.target, cancelled: pend.cancelled, burned: pend.burned } : null,
       doomed: this.doom?.player ?? null,
+      give: this.give ? { ...this.give } : null,
       busy: this.isBusy(now),
+      mates,
     };
   }
 }
 
-// -------------------------------------------------------------------- utils
-
 function seatOf(p: PlayerState): SeatInfo {
-  return { id: p.id, name: p.name, isBot: p.isBot, seat: p.seat, epithet: p.epithet, cloak: p.cloak };
+  return { id: p.id, name: p.name, isBot: p.isBot, seat: p.seat, epithet: p.epithet, cloak: p.cloak, team: p.team, look: p.look };
 }
 
 function removeCard(hand: Card[], id: number): void {
