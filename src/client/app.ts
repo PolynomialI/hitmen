@@ -46,7 +46,7 @@ export class App {
     this.cards = await buildCardTextures(this.gfx.renderer, (k) => progress(0.08 + k * 0.3, 'Painting the cards'));
     progress(0.4, 'Building the tavern');
     await nextFrame();
-    this.tavern = new Tavern(this.cards.back);
+    this.tavern = new Tavern(this.cards.back, this.gfx.quality);
     this.gfx.scene.add(this.tavern.group);
     progress(0.8, 'Warming the hearth');
     await nextFrame();

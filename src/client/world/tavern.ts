@@ -4,6 +4,8 @@ import { safeGlyphs } from '../../shared/text';
 import { FlameField, HearthFire } from '../gfx/flames';
 import { glowSprite, paint } from '../gfx/textures';
 import { batchStatic } from './batch';
+import { buildStage, STAGE, type StageRefs } from './stage';
+import type { Quality } from '../core/gfx';
 import { Figure } from './figure';
 import { FONT3D } from './fonts3d';
 import { buildMaterials, type Mats } from './materials';
@@ -79,7 +81,9 @@ export class Tavern {
   readonly tableCandleFlames: number[] = [];
   private flickers: Array<{ light: THREE.Light; base: number; amp: number; speed: number; seed: number }> = [];
 
-  constructor(cardBack: THREE.Texture) {
+  readonly stage: StageRefs;
+
+  constructor(cardBack: THREE.Texture, quality: Quality = 'medium') {
     this.mats = buildMaterials();
     const g = this.group;
     g.add(this.flames.mesh);
@@ -96,6 +100,8 @@ export class Tavern {
     const den = this.buildDen(cardBack);
     this.plaques = den.plaques;
     this.sign = den.sign;
+    this.stage = buildStage(this.mats, this.flames, this.glowTex, quality);
+    g.add(this.stage.group);
 
     // ---------------------------------------------------------------- lights
     const hemi = new THREE.HemisphereLight('#4a4060', '#1a0e08', 0.9);
@@ -110,7 +116,7 @@ export class Tavern {
     const bar = new THREE.PointLight('#ffad5c', 9, 8, 1.7);
     bar.position.set(-2.6, 2.25, -3.3);
     g.add(bar);
-    const tableSpot = new THREE.SpotLight('#ffc27a', 34, 6, 0.78, 0.65, 1.4);
+    const tableSpot = new THREE.SpotLight('#ffc27a', 27, 6, 0.78, 0.65, 1.4);
     tableSpot.position.set(4.3, 2.75, 0.6);
     tableSpot.target.position.copy(this.tableCenter);
     tableSpot.castShadow = true;
@@ -123,16 +129,13 @@ export class Tavern {
     const tableFill = new THREE.PointLight('#ff9a4a', 2.2, 4, 1.8);
     tableFill.position.set(4.25, 1.05, 0.6);
     g.add(tableFill);
-    const stage = new THREE.PointLight('#ffae5a', 5, 6, 1.7);
-    stage.position.set(7.2, 1.15, 0.6);
-    g.add(stage);
+    const stage = this.stage.footLight;
     this.lights = { hearth, bar, tableSpot, tableFill, stage, moon, hemi };
     for (const l of Object.values(this.lights)) this.baseIntensity.set(l, l.intensity);
     this.flickers.push(
       { light: hearth, base: 20, amp: 0.22, speed: 6, seed: 1 },
       { light: bar, base: 9, amp: 0.08, speed: 9, seed: 2 },
-      { light: tableFill, base: 2.2, amp: 0.15, speed: 11, seed: 3 },
-      { light: stage, base: 5, amp: 0.1, speed: 8, seed: 4 }
+      { light: tableFill, base: 2.2, amp: 0.15, speed: 11, seed: 3 }
     );
 
     // ---------------------------------------------------------------- batching
@@ -221,8 +224,7 @@ export class Tavern {
     wall(W, new THREE.Vector3(0, 0, -D / 2), 0);
     wall(W, new THREE.Vector3(0, 0, D / 2), Math.PI);
     wall(D, new THREE.Vector3(-W / 2, 0, 0), Math.PI / 2);
-    const east = wall(D, new THREE.Vector3(W / 2, 0, 0), -Math.PI / 2);
-    void east;
+    // The east end is the stage's proscenium wall (see stage.ts).
 
     // Ceiling beams.
     for (let i = 0; i < 6; i++) {
@@ -319,8 +321,6 @@ export class Tavern {
     };
     win(new THREE.Vector3(-6.0, 1.7, -D / 2 + 0.02), 0);
     win(new THREE.Vector3(2.0, 1.7, -D / 2 + 0.02), 0);
-    win(new THREE.Vector3(W / 2 - 0.02, 1.6, -3.3), -Math.PI / 2, 1.0, 1.8);
-    win(new THREE.Vector3(W / 2 - 0.02, 1.6, 4.5), -Math.PI / 2, 1.0, 1.8);
     win(new THREE.Vector3(-W / 2 + 0.02, 1.7, 4.4), Math.PI / 2);
 
     // Scattered tables & stools in the shadows for depth.
@@ -752,89 +752,7 @@ export class Tavern {
       this.chandelierFlames.push(c.flame);
     }
 
-    // ---- Minstrels' stage behind the opponent.
-    const stage = new THREE.Group();
     const stageX = 6.55;
-    const platform = plank(1.6, 0.42, 6.4, m.woodDark, 1);
-    platform.position.set(stageX + 0.8, 0.21, 0.6);
-    stage.add(platform);
-    const edge = plank(0.08, 0.1, 6.4, m.timber, 1);
-    edge.position.set(stageX + 0.02, 0.44, 0.6);
-    stage.add(edge);
-    // Velvet curtains framing the stage.
-    for (const z of [-2.55, 3.75]) {
-      const c = drape(1.3, 3.9, m.velvet, 5, 0.07);
-      c.position.set(stageX + 0.25, 2.2, z);
-      c.rotation.y = -Math.PI / 2;
-      stage.add(c);
-    }
-    const valance = drape(6.6, 0.55, m.velvet, 22, 0.05);
-    valance.position.set(stageX + 0.2, 3.9, 0.6);
-    valance.rotation.y = -Math.PI / 2;
-    stage.add(valance);
-    // Tapestry behind (dark, with a hooded crest).
-    const tapTex = paint(512, 768, (ctx, w, h) => {
-      ctx.fillStyle = '#2a0c0e';
-      ctx.fillRect(0, 0, w, h);
-      for (let i = 0; i < 2200; i++) {
-        ctx.fillStyle = `rgba(${60 + Math.random() * 40},${10 + Math.random() * 10},${12},${Math.random() * 0.25})`;
-        ctx.fillRect(Math.random() * w, Math.random() * h, 2, 6);
-      }
-      ctx.strokeStyle = '#b8903e';
-      ctx.lineWidth = 10;
-      ctx.strokeRect(24, 24, w - 48, h - 48);
-      ctx.lineWidth = 3;
-      ctx.strokeRect(44, 44, w - 88, h - 88);
-      ctx.fillStyle = '#b8903e';
-      ctx.beginPath();
-      ctx.moveTo(w / 2 + 20, h * 0.28);
-      ctx.bezierCurveTo(w * 0.3, h * 0.33, w * 0.28, h * 0.55, w * 0.33, h * 0.62);
-      ctx.lineTo(w * 0.67, h * 0.62);
-      ctx.bezierCurveTo(w * 0.72, h * 0.55, w * 0.66, h * 0.36, w / 2 + 20, h * 0.28);
-      ctx.fill();
-      ctx.fillRect(w * 0.2, h * 0.62, w * 0.6, h * 0.12);
-      ctx.fillStyle = '#12040a';
-      ctx.beginPath();
-      ctx.ellipse(w / 2, h * 0.49, w * 0.09, h * 0.08, 0, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.fillStyle = '#ff9a3a';
-      ctx.fillRect(w / 2 - 26, h * 0.48, 16, 6);
-      ctx.fillRect(w / 2 + 10, h * 0.48, 16, 6);
-    });
-    const tap = new THREE.Mesh(new THREE.PlaneGeometry(2.6, 3.6), new THREE.MeshStandardMaterial({ map: tapTex, roughness: 1 }));
-    tap.position.set(7.95, 2.3, 0.6);
-    tap.rotation.y = -Math.PI / 2;
-    stage.add(tap);
-    // Instruments: lute on a stand, a drum, a harp silhouette.
-    const lute = new THREE.Group();
-    const bowl = new THREE.Mesh(new THREE.SphereGeometry(0.2, 18, 12, 0, Math.PI * 2, 0, Math.PI / 2), m.woodLight);
-    bowl.scale.set(1, 0.9, 1.35);
-    bowl.rotation.x = Math.PI / 2;
-    lute.add(bowl);
-    const neck = box(0.06, 0.02, 0.5, m.woodDark);
-    neck.position.set(0, 0, -0.45);
-    lute.add(neck);
-    lute.position.set(7.1, 0.95, -1.2);
-    lute.rotation.set(-1.2, 0.4, 0);
-    stage.add(lute);
-    const drum = cyl(0.28, 0.28, 0.35, m.woodLight, 20);
-    drum.position.set(7.2, 0.62, 2.6);
-    stage.add(drum);
-    const skin = new THREE.Mesh(new THREE.CircleGeometry(0.28, 20), m.parchment);
-    skin.rotation.x = -Math.PI / 2;
-    skin.position.set(7.2, 0.8, 2.6);
-    stage.add(skin);
-    // Candelabras on stage edge.
-    for (const z of [-1.7, 2.9]) {
-      const stand = cyl(0.02, 0.06, 1.2, m.iron, 8);
-      stand.position.set(stageX + 0.35, 1.02, z);
-      stage.add(stand);
-      for (let k = -1; k <= 1; k++) {
-        const c = candle(m, this.flames, new THREE.Vector3(stageX + 0.35, 1.62, z + k * 0.12), 0.12, 0.02);
-        stage.add(c.group);
-      }
-    }
-    g.add(stage);
 
     // ---- Three hanging plaques: odds, hands left, souls left.
     const plaqueGroup = new THREE.Group();
@@ -1084,9 +1002,9 @@ export class Tavern {
     g.add(D.group);
 
     // ---- stage banners in the den (show your colours).
-    for (const z of [-0.95, 2.15]) {
+    for (const spot of this.stage.stageBannerSpots) {
       const b = new THREE.Mesh(new THREE.PlaneGeometry(0.5, 1.0, 6, 10), new THREE.MeshStandardMaterial({ roughness: 0.9, transparent: true, alphaTest: 0.4, side: THREE.DoubleSide }));
-      b.position.set(6.48, 2.25, z);
+      b.position.copy(spot);
       b.rotation.y = -Math.PI / 2;
       g.add(b);
       this.stageBanners.push(b);
@@ -1139,17 +1057,17 @@ export class Tavern {
       }
     };
     // Along the stage valance and the bar.
-    garland([new THREE.Vector3(6.45, 3.55, -2.5), new THREE.Vector3(6.45, 3.1, -0.9), new THREE.Vector3(6.45, 3.55, 0.6), new THREE.Vector3(6.45, 3.1, 2.1), new THREE.Vector3(6.45, 3.55, 3.7)]);
+    garland([0, 0.2, 0.4, 0.6, 0.8, 1].map((k, i) => new THREE.Vector3(STAGE.PX - 0.12, STAGE.ARCH_SIDE + 0.32 + Math.sin(Math.PI * k) * (STAGE.ARCH_TOP - STAGE.ARCH_SIDE) - (i % 2 ? 0.22 : 0), STAGE.Z0 + (STAGE.Z1 - STAGE.Z0) * k)));
     garland([new THREE.Vector3(-6.0, 2.75, -5.6), new THREE.Vector3(-4.3, 2.45, -5.6), new THREE.Vector3(-2.6, 2.75, -5.6), new THREE.Vector3(-0.9, 2.45, -5.6), new THREE.Vector3(0.7, 2.75, -5.6)], 0.05);
     // Wreath on the tapestry.
     const wreath = new THREE.Mesh(new THREE.TorusGeometry(0.42, 0.11, 10, 32), pine);
-    wreath.position.set(7.9, 2.35, 0.6);
+    wreath.position.set(STAGE.PX - 0.12, STAGE.ARCH_TOP + 0.38, STAGE.ZC);
     wreath.rotation.y = -Math.PI / 2;
     g.add(wreath);
     for (let i = 0; i < 10; i++) {
       const a = (i / 10) * Math.PI * 2;
       const b = new THREE.Mesh(new THREE.SphereGeometry(0.04, 10, 8), bauble[i % 2]);
-      b.position.set(7.84, 2.35 + Math.sin(a) * 0.42, 0.6 + Math.cos(a) * 0.42);
+      b.position.set(STAGE.PX - 0.2, STAGE.ARCH_TOP + 0.38 + Math.sin(a) * 0.42, STAGE.ZC + Math.cos(a) * 0.42);
       g.add(b);
     }
     // Holly sprigs by the table candles.
@@ -1175,8 +1093,9 @@ export class Tavern {
     const N = 220;
     const pos = new Float32Array(N * 3);
     for (let i = 0; i < N; i++) {
-      const side = i % 2 ? -3.3 : 4.5;
-      pos[i * 3] = 7.9;
+      const wc = this.stage.windows[i % 2];
+      const side = wc.z;
+      pos[i * 3] = wc.x + 0.25;
       pos[i * 3 + 1] = 1.6 + Math.random() * 1.8;
       pos[i * 3 + 2] = side + (Math.random() - 0.5) * 0.9;
     }
@@ -1191,6 +1110,7 @@ export class Tavern {
 
   /** Scale all practical lights (e.g. dim for drama). */
   setLightLevel(k: number): void {
+    this.stage.setLevel(k);
     for (const f of this.flickers) f.base = (this.baseIntensity.get(f.light) ?? f.base) * k;
     this.lights.tableSpot.intensity = (this.baseIntensity.get(this.lights.tableSpot) ?? 30) * k;
     this.lights.hemi.intensity = (this.baseIntensity.get(this.lights.hemi) ?? 0.5) * Math.max(0.3, k);
@@ -1198,6 +1118,7 @@ export class Tavern {
 
   update(t: number, dt: number): void {
     this.flames.update(t);
+    this.stage.update(t, dt);
     this.fire.update(t, dt);
     for (const f of this.flickers) {
       const n = Math.sin(t * f.speed + f.seed) * 0.5 + Math.sin(t * f.speed * 2.3 + f.seed * 3) * 0.3 + Math.sin(t * f.speed * 5.1) * 0.2;
