@@ -60,7 +60,7 @@ export interface PlayerStats {
   drawn: number;
 }
 
-type EventBody =
+export type EventBody =
   | { e: 'start'; seats: SeatInfo[]; mode: GameMode; first: PlayerId }
   | { e: 'deal'; to: PlayerId; card?: Card }
   | { e: 'intro' }

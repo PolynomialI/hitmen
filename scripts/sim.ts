@@ -31,12 +31,12 @@ function runBotVsBot(seed: number) {
     now += 50;
     host.tick(now);
     if (host.engine.phase === 'turn' && cards < 0) cards = total();
-    if (cards > 0 && host.engine.phase !== 'over') {
+    if (cards > 0 && (host.engine.phase as string) !== 'over') {
       const t = total() + (host.engine.doom ? 1 : 0);
       assert(t === cards, `card count drift ${t} vs ${cards} (seed ${seed})`);
     }
   }
-  assert(host.engine.phase === 'over', `game did not finish (seed ${seed})`);
+  assert((host.engine.phase as string) === 'over', `game did not finish (seed ${seed})`);
   return { winner: host.engine.winner, minutes: now / 60000, events: evs.length };
 }
 

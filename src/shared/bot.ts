@@ -189,7 +189,7 @@ export class Bot {
         if (esc) return esc;
         return { t: 'draw' };
       }
-      if (top && top !== 'hand') {
+      if (top) {
         // Safe draw ahead. Maybe steal something first.
         if (this.rng.next() < 0.45) {
           const pp = play('pickpocket', true);

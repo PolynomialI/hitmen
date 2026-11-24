@@ -3,6 +3,7 @@ import { Rng } from './rng';
 import { DUR } from './timing';
 import type {
   Action,
+  EventBody,
   GameConfig,
   GameEvent,
   Phase,
@@ -38,7 +39,7 @@ export interface Setup {
   reactionFor?: (p: { player: PlayerId; card: Card; target?: PlayerId; cancelled: boolean }) => number | null;
 }
 
-type Body = Omit<GameEvent, 'n' | 'dur' | 'sync'>;
+type Body = EventBody & { secret?: Record<PlayerId, Partial<EventBody>> };
 
 /**
  * Authoritative rules engine. Pure TypeScript, no DOM/Node APIs, so it runs in the browser (bot games)
