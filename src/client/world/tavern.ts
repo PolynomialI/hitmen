@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { Text } from 'troika-three-text';
+import { safeGlyphs } from '../../shared/text';
 import { FlameField, HearthFire } from '../gfx/flames';
 import { glowSprite, paint } from '../gfx/textures';
 import { batchStatic } from './batch';
@@ -21,7 +22,7 @@ export function makeText(
   o: { font?: string; size?: number; color?: THREE.ColorRepresentation; glow?: number; anchorX?: string; anchorY?: string; maxWidth?: number; align?: 'left' | 'center' | 'right'; letterSpacing?: number; outline?: number; outlineColor?: string }
 ): Text {
   const t = new Text();
-  t.text = str;
+  t.text = safeGlyphs(str);
   t.font = o.font ?? FONT3D.gothic;
   t.fontSize = o.size ?? 0.1;
   t.anchorX = o.anchorX ?? 'center';

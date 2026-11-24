@@ -11,6 +11,7 @@ const { chromium } = require('playwright');
   const browser = await chromium.launch({ args: ['--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader'] });
   const page = await browser.newPage({ viewport: { width: 1100, height: 620 } });
   const errors = [];
+  require('./offOrigin.cjs')(page, BASE, errors);
   page.on('console', (m) => { const t = m.text(); if (m.type() === 'error' && !t.includes('GPU stall')) { errors.push(t); console.log('[console]', t.slice(0, 400)); } });
   page.on('pageerror', (e) => { errors.push(e.message); console.log('[pageerror]', e.message); });
   await page.goto(`${BASE}/?start=${mode}&rivals=${rivals}&q=low&dtcap=0.4`);

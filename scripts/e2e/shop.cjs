@@ -10,6 +10,7 @@ const { chromium } = require('playwright');
   const ctx = await browser.newContext({ viewport: { width: 1280, height: 720 } });
   const page = await ctx.newPage();
   const errors = [];
+  require('./offOrigin.cjs')(page, BASE, errors);
   page.on('pageerror', (e) => { errors.push(e.message); console.log('[pageerror]', e.message); });
   page.on('console', (m) => { if (m.type() === 'error' && !m.text().includes('GPU stall')) { errors.push(m.text()); console.log('[console]', m.text().slice(0, 300)); } });
   await page.goto(BASE + '/?station=shop&q=low&dtcap=0.5');

@@ -12,6 +12,7 @@ import { toast, type Hud } from '../ui/hud';
 import { profile, saveProfile } from '../ui/profile';
 import { rankOf } from '../ui/progression';
 import { RIVALS } from '../../shared/match';
+import { cleanName } from '../../shared/text';
 import { FONT3D } from '../world/fonts3d';
 import { makeText } from '../world/tavern';
 
@@ -326,7 +327,11 @@ export class PlayMenu implements Screen {
       return b;
     };
     const nameInput = h('input', { value: profile.name, maxlength: '16', 'aria-label': 'Your name' }) as HTMLInputElement;
-    nameInput.addEventListener('change', () => saveProfile({ name: nameInput.value.trim().slice(0, 16) || 'Stranger' }));
+    nameInput.addEventListener('change', () => {
+      const name = cleanName(nameInput.value);
+      nameInput.value = name;
+      saveProfile({ name });
+    });
     nameInput.addEventListener('keydown', (e) => e.stopPropagation());
     const back = h('button', { class: 'back-btn' }, 'Back');
     back.addEventListener('click', () => {
