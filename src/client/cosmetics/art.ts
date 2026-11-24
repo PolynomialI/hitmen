@@ -96,16 +96,16 @@ export function sleeveSVG(style: Record<string, string>, mut: Mutation = 'basic'
     color: field,
     shade,
     patternId: 'pat',
-    rim: mut === 'gilded' ? (['#fff3c0', '#e9c25e', '#a8782a'] as [string, string, string]) : undefined,
+    rim: mut === 'gilded' ? '#f6d26e' : undefined,
   };
   const ring = mix(shade, '#000000', 0.3);
   return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 500 700" width="500" height="700">
     <defs>${pattern(pat, gold)}${frameDefs(frame)}</defs>
     ${frameBody(frame)}
     ${emblemHalo(accent, 250, 350, 200)}
-    <g filter="url(#kdrop)">
-      <circle cx="250" cy="350" r="156" fill="url(#krim)" stroke="${ring}" stroke-width="4"/>
-      <circle cx="250" cy="350" r="134" fill="${shade}" stroke="${gold}" stroke-width="7"/>
+    <g filter="url(#kicon)">
+      <circle cx="250" cy="350" r="156" fill="#fbf9f4"/>
+      <circle cx="250" cy="350" r="134" fill="${shade}"/>
       ${Array.from({ length: 20 }, (_, i) => {
         const a = (i / 20) * Math.PI * 2;
         return `<circle cx="${(250 + Math.cos(a) * 145).toFixed(1)}" cy="${(350 + Math.sin(a) * 145).toFixed(1)}" r="3.6" fill="${ring}"/>`;

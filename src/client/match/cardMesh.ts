@@ -106,7 +106,7 @@ function faceMat(tex: CardTexSet, type: CardType, v: CardVariant): THREE.MeshSta
   const key = type + v;
   let m = faceMats.get(key);
   if (!m) {
-    m = new THREE.MeshStandardMaterial({ map: tex.faces[type], roughness: 0.42, metalness: 0, side: THREE.FrontSide });
+    m = new THREE.MeshStandardMaterial({ map: tex.faces[type], roughness: 0.62, metalness: 0, side: THREE.FrontSide });
     if (v === 'hand') {
       m.emissiveMap = tex.faces[type];
       m.emissive.setRGB(0.42, 0.38, 0.34);
@@ -147,7 +147,7 @@ export function addGlint(m: THREE.MeshStandardMaterial): void {
 function backMaterial(tex: CardTexSet, v: CardVariant): THREE.MeshStandardMaterial {
   let m = backMats.get(v);
   if (!m) {
-    m = new THREE.MeshStandardMaterial({ map: tex.back, roughness: 0.42 });
+    m = new THREE.MeshStandardMaterial({ map: tex.back, roughness: 0.66 });
     addGlint(m);
     if (v === 'hand') {
       m.emissiveMap = tex.back;
