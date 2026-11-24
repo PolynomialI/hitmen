@@ -3,7 +3,7 @@ import { App } from './app';
 import { audio } from './audio/audio';
 import { Picker } from './core/picker';
 import { ease, tweens } from './core/tween';
-import { MatchScreen } from './match/matchScreen';
+import { MatchScreen, type MatchOptions } from './match/matchScreen';
 import { MainMenu, PlayMenu, TitleScreen, type Nav } from './screens/menus';
 import { h } from './ui/dom';
 import { Hud } from './ui/hud';
@@ -53,7 +53,7 @@ document.body.append(loading);
     toPlay() {
       app.setScreen(new PlayMenu(nav));
     },
-    startMatch(mode: GameMode) {
+    startMatch(mode: GameMode | MatchOptions) {
       void (async () => {
         picker.enabled = false;
         audio.play('whoosh');
@@ -67,11 +67,12 @@ document.body.append(loading);
 
   const params = new URLSearchParams(location.search);
   const quick = params.get('start') as GameMode | null;
+  const rivals = Number(params.get('rivals')) || 1;
   loading.classList.add('gone');
   setTimeout(() => loading.remove(), 1400);
-  if (quick === 'original' || quick === 'tutorial') {
+  if (quick) {
     app.gfx.grade.u('uFade').value = 1;
-    app.setScreen(new MatchScreen(nav, quick));
+    app.setScreen(new MatchScreen(nav, { mode: quick, rivals }));
   } else {
     app.setScreen(new TitleScreen(nav));
     await tweens.to(1.6, (k) => (app.gfx.grade.u('uFade').value = 1 - k), { ease: ease.outCubic });

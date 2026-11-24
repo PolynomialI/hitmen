@@ -36,6 +36,7 @@ export type Phase = 'lobby' | 'intro' | 'turn' | 'reaction' | 'scry' | 'rescue' 
 export type Action =
   | { t: 'play'; cardId: number; targetId?: PlayerId }
   | { t: 'react'; cardId: number; targetId?: PlayerId }
+  | { t: 'hold' }
   | { t: 'draw' }
   | { t: 'rescue'; cardId: number }
   | { t: 'hide'; position: number }

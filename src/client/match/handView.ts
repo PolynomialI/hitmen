@@ -14,8 +14,13 @@ export class HandView {
   hovered: CardMesh | null = null;
   /** Cards that should pulse (e.g. the Guardian Angel during a rescue). */
   readonly highlight = new Set<number>();
+  /** When true, highlighted cards pulse gently (just "playable"), not urgently. */
+  softHighlight = false;
   private dist = 0.56;
   private t = 0;
+  /** Card type currently shackled (drawn dark with a padlock). */
+  private lockedType: string | null = null;
+  private lockTex: THREE.Texture | null = null;
   /** Lowered while the player aims or watches a cinematic. */
   lowered = 0;
   private loweredK = 0;
@@ -79,6 +84,7 @@ export class HandView {
     this.group.attach(cm.root);
     this.cards.push(cm);
     cm.animating = false;
+    this.applyLock(cm);
   }
 
   /** Take a card out of the hand into world space (for flights). */
@@ -89,6 +95,11 @@ export class HandView {
     this.cards.splice(i, 1);
     if (this.hovered === cm) this.hovered = null;
     scene.attach(cm.root);
+    const lk = cm.root.getObjectByName('lock');
+    if (lk) {
+      cm.root.remove(lk);
+      cm.tint(1, 1, 1);
+    }
     cm.setVariant('table');
     return cm;
   }
@@ -99,6 +110,48 @@ export class HandView {
 
   ofType(type: string): CardMesh | undefined {
     return this.cards.find((c) => c.card?.type === type);
+  }
+
+  setLocked(type: string | null): void {
+    this.lockedType = type;
+    for (const c of this.cards) this.applyLock(c);
+  }
+
+  private applyLock(c: CardMesh): void {
+    const on = !!c.card && c.card.type === this.lockedType;
+    const has = c.root.getObjectByName('lock');
+    if (on && !has) {
+      if (!this.lockTex) {
+        const cv = document.createElement('canvas');
+        cv.width = cv.height = 128;
+        const x = cv.getContext('2d')!;
+        x.fillStyle = 'rgba(20,14,10,0.85)';
+        x.beginPath();
+        x.arc(64, 64, 60, 0, Math.PI * 2);
+        x.fill();
+        x.strokeStyle = '#c9c2b6';
+        x.lineWidth = 10;
+        x.beginPath();
+        x.arc(64, 52, 20, Math.PI, 0);
+        x.stroke();
+        x.fillStyle = '#d8b25a';
+        x.fillRect(36, 52, 56, 40);
+        x.fillStyle = '#2a1a0a';
+        x.beginPath();
+        x.arc(64, 68, 7, 0, Math.PI * 2);
+        x.fill();
+        this.lockTex = new THREE.CanvasTexture(cv);
+        this.lockTex.colorSpace = THREE.SRGBColorSpace;
+      }
+      const m = new THREE.Mesh(new THREE.PlaneGeometry(0.08, 0.08), new THREE.MeshBasicMaterial({ map: this.lockTex, transparent: true, depthWrite: false }));
+      m.name = 'lock';
+      m.position.set(0, 0, 0.002);
+      c.root.add(m);
+      c.tint(0.42, 0.42, 0.48);
+    } else if (!on && has) {
+      c.root.remove(has);
+      c.tint(1, 1, 1);
+    }
   }
 
   update(dt: number): void {
@@ -117,8 +170,9 @@ export class HandView {
       let sc = sl.s;
       if (c.card && this.highlight.has(c.card.id)) {
         const pulse = 0.5 + 0.5 * Math.sin(this.t * 7);
-        sc *= 1 + pulse * 0.06;
-        c.root.position.y += pulse * 0.004;
+        const amp = this.softHighlight ? 0.012 : 0.06;
+        sc *= 1 + pulse * amp;
+        c.root.position.y += pulse * (this.softHighlight ? 0.001 : 0.004);
       }
       c.root.scale.setScalar(c.root.scale.x + (sc - c.root.scale.x) * k);
     }

@@ -20,7 +20,7 @@ export interface Nav {
   layer: HTMLElement;
   toMenu(from?: 'title' | 'play'): void;
   toPlay(): void;
-  startMatch(mode: GameMode): void;
+  startMatch(mode: GameMode | import('../match/matchScreen').MatchOptions): void;
 }
 
 // ====================================================================== title

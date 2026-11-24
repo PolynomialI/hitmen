@@ -3,7 +3,7 @@
  * client's animation finishes before the next decision point. Client animations must fit inside these.
  */
 export const DUR = {
-  start: 400,
+  start: 2000,
   deal: 560,
   intro: 3000,
   turn: 900,

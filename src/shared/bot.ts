@@ -229,7 +229,7 @@ export class Bot {
       const others = this.enemies(v).filter((e) => e !== p.player && e !== p.target);
       if (mis && (smart || p.effect !== 'pickpocket')) {
         const to = others.length ? this.rng.pick(others) : p.player;
-        if (to !== p.target && to !== p.player) return { t: 'react', cardId: mis.id, targetId: to };
+        if (to !== p.target && to !== this.id) return { t: 'react', cardId: mis.id, targetId: to };
       }
       if (parry && (p.effect !== 'pickpocket' || this.rng.next() < 0.45) && (this.danger(v) > 0.1 || smart)) return { t: 'react', cardId: parry.id };
       return null;

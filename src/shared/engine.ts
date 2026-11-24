@@ -64,6 +64,7 @@ export class Engine {
   lock: { type: CardType; turns: number } | null = null;
   wards = new Set<PlayerId>();
   lastPlayed: CardType | null = null;
+  private holds = new Set<PlayerId>();
   winner: PlayerId | null = null;
   busyUntil = 0;
   deadline: number | null = null;
@@ -209,7 +210,7 @@ export class Engine {
     for (const d of interleave(this.players, deals)) {
       this.deck.shift();
       d.p.hand.push(d.c);
-      this.emit({ e: 'deal', to: d.p.id, secret: this.sec([[d.p.id, { card: d.c }]]) });
+      this.emit({ e: 'deal', to: d.p.id, secret: this.sec([[d.p.id, { card: d.c }]]) }, n <= 2 ? DUR.deal : n <= 4 ? 330 : 250);
     }
     this.deck = stash;
     this.emit({ e: 'intro' });
@@ -327,7 +328,7 @@ export class Engine {
         if (card.type === 'misdirect') {
           if (!MARKS.has(pend.effect) || pend.effect === 'aegis' || pend.cancelled) return fail('nothing to misdirect');
           const t = a.targetId ? this.player(a.targetId) : undefined;
-          if (!t || !t.alive || t.id === pend.target || t.id === pend.player) return fail('bad target');
+          if (!t || !t.alive || t.id === pend.target || t.id === pid) return fail('bad target');
           removeCard(p.hand, card.id);
           this.discard.push(card);
           p.stats.played++;
@@ -354,6 +355,15 @@ export class Engine {
         if (card.type === 'breath') pend.burned = true;
         this.emit({ e: 'parry', player: pid, card, cancelled: pend.cancelled, burned: card.type === 'breath' });
         this.openWindow();
+        return ok();
+      }
+      case 'hold': {
+        // A player reaching for a reaction card that needs a choice gets a few more seconds, once per card.
+        if (this.phase !== 'reaction' || !this.pending || this.deadline == null) return fail('not now');
+        if (this.holds.has(pid)) return fail('already waiting');
+        if (!p.hand.some((c) => def(c.type).timing === 'reaction')) return fail('nothing to answer with');
+        this.holds.add(pid);
+        this.deadline = Math.max(this.deadline, now + 4500);
         return ok();
       }
       case 'draw': {
@@ -399,6 +409,7 @@ export class Engine {
 
   private openWindow(): void {
     this.phase = 'reaction';
+    this.holds.clear();
     const custom = this.pending && this.setup.reactionFor ? this.setup.reactionFor(this.pending) : null;
     const ms = custom ?? this.cfg.reactionMs;
     this.emit({ e: 'window', ms });

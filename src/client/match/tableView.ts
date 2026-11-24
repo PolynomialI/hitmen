@@ -1,23 +1,66 @@
 import * as THREE from 'three';
 import type { Text } from 'troika-three-text';
-import type { SeatInfo } from '../../shared/types';
+import type { PlayerId, SeatInfo } from '../../shared/types';
 import type { App } from '../app';
 import type { CardTexSet } from '../cards/cardTextures';
 import { damp, ease, tweens } from '../core/tween';
 import { paint } from '../gfx/textures';
 import { Figure } from '../world/figure';
 import { FONT3D } from '../world/fonts3d';
+import { chair as makeChair } from '../world/props';
 import { makeText, type Tavern } from '../world/tavern';
 import { CARD_H, CARD_W, CardMesh } from './cardMesh';
 
 export const Q_FLAT_UP = new THREE.Quaternion().setFromEuler(new THREE.Euler(-Math.PI / 2, -Math.PI / 2, 0, 'YXZ'));
 export const Q_FLAT_DOWN = new THREE.Quaternion().setFromEuler(new THREE.Euler(Math.PI / 2, -Math.PI / 2, 0, 'YXZ'));
-/** Standing upright, face toward the player's seat (-x). */
 export const Q_FACE_PLAYER = new THREE.Quaternion().setFromEuler(new THREE.Euler(0, -Math.PI / 2, 0));
-/** Standing upright, face toward the rival (+x) — i.e. back toward the player. */
 export const Q_FACE_RIVAL = new THREE.Quaternion().setFromEuler(new THREE.Euler(0, Math.PI / 2, 0));
 
 const CARD_T = 0.0011;
+const SEAT_R = 1.34;
+const TEAM_COLORS = ['#e0503a', '#3a8ae0'];
+
+/** Angles (radians, 0 = across the table from the player) for k rivals. */
+function rivalAngles(k: number): number[] {
+  switch (k) {
+    case 1:
+      return [0];
+    case 2:
+      return [-0.62, 0.62];
+    case 3:
+      return [-1.12, 0, 1.12];
+    case 4:
+      return [-1.45, -0.5, 0.5, 1.45];
+    default:
+      return [-1.7, -0.86, 0, 0.86, 1.7];
+  }
+}
+
+export interface SeatView {
+  info: SeatInfo;
+  angle: number;
+  /** Floor position of the chair. */
+  pos: THREE.Vector3;
+  /** Unit vector from the table centre toward the seat (xz). */
+  out: THREE.Vector3;
+  figure: Figure;
+  chair: THREE.Group;
+  hand: CardMesh[];
+  name: Text;
+  badge: THREE.Sprite;
+  badgeTex: THREE.CanvasTexture | null;
+  ward: THREE.Mesh;
+  wardK: number;
+  wardOn: boolean;
+  marker: THREE.Mesh;
+  markerK: number;
+  markerOn: boolean;
+  markerHover: number;
+  glow: THREE.Mesh;
+  glowK: number;
+  alive: boolean;
+  mate: boolean;
+}
 
 /** Everything physical on and around the card table during a match. */
 export class TableView {
@@ -26,6 +69,7 @@ export class TableView {
   readonly tex: CardTexSet;
   readonly deckPos: THREE.Vector3;
   readonly pilePos: THREE.Vector3;
+  readonly center: THREE.Vector3;
   private deckBox: THREE.Mesh;
   readonly deckTop: CardMesh;
   readonly deckHit: THREE.Mesh;
@@ -35,38 +79,38 @@ export class TableView {
   deckCount = 0;
   private label: Text;
   readonly pile: CardMesh[] = [];
-  // Hourglass.
   private hg = new THREE.Group();
   private sandTop!: THREE.Mesh;
   private sandBot!: THREE.Mesh;
   hgFrac = 1;
-  // Rival.
-  rival: Figure | null = null;
-  rivalSeat: SeatInfo | null = null;
-  readonly rivalHand: CardMesh[] = [];
-  private rivalName: Text | null = null;
-  private rivalBadge: THREE.Sprite;
-  private rivalBadgeTex: THREE.CanvasTexture | null = null;
-  readonly marker: THREE.Mesh;
-  markerHover = 0;
-  private markerK = 0;
-  markerOn = false;
+  readonly seats = new Map<PlayerId, SeatView>();
+  /** Seat marker for "yourself" (Aegis) near the player's edge. */
+  readonly selfMarker: THREE.Mesh;
+  selfMarkerOn = false;
+  selfMarkerHover = 0;
+  private selfMarkerK = 0;
   private ring: THREE.Mesh;
   private ringMat: THREE.ShaderMaterial;
+  private orderRing: THREE.Mesh;
+  orderDir: 1 | -1 = 1;
+  private orderSpin = 0;
+  private orderFlash = 0;
+  private chains: THREE.Group | null = null;
   private signLit = 0;
   private signTarget = 0;
   private plaqueVals = { odds: '', hands: '', souls: '' };
-  private chairBase: { obj: THREE.Object3D; pos: THREE.Vector3; rot: THREE.Euler } | null = null;
+  me: PlayerId = '';
+  myTeam: number | undefined;
 
   constructor(private app: App) {
     this.tv = app.tavern;
     this.tex = app.cards;
     const T = this.tv.tableCenter;
+    this.center = T.clone();
     const top = this.tv.tableTop + 0.0015;
     this.deckPos = new THREE.Vector3(T.x - 0.12, top, T.z - 0.42);
     this.pilePos = new THREE.Vector3(T.x + 0.12, top, T.z + 0.08);
 
-    // Deck: a block of card edges plus a real card on top.
     const edge = paint(64, 64, (ctx, w, h) => {
       ctx.fillStyle = '#e6d4ac';
       ctx.fillRect(0, 0, w, h);
@@ -76,8 +120,7 @@ export class TableView {
       }
     });
     edge.wrapS = edge.wrapT = THREE.RepeatWrapping;
-    const edgeMat = new THREE.MeshStandardMaterial({ map: edge, roughness: 0.85 });
-    this.deckBox = new THREE.Mesh(new THREE.BoxGeometry(CARD_H * 0.985, 1, CARD_W * 0.985), edgeMat);
+    this.deckBox = new THREE.Mesh(new THREE.BoxGeometry(CARD_H * 0.985, 1, CARD_W * 0.985), new THREE.MeshStandardMaterial({ map: edge, roughness: 0.85 }));
     this.deckBox.castShadow = this.deckBox.receiveShadow = true;
     this.group.add(this.deckBox);
     this.deckTop = new CardMesh(this.tex, null);
@@ -101,19 +144,11 @@ export class TableView {
 
     this.buildHourglass();
 
-    // Target marker (in front of the rival's place).
-    const tri = new THREE.Shape();
-    tri.moveTo(0, 0.07);
-    tri.lineTo(-0.06, -0.04);
-    tri.lineTo(0.06, -0.04);
-    tri.closePath();
-    this.marker = new THREE.Mesh(new THREE.ShapeGeometry(tri), new THREE.MeshBasicMaterial({ color: new THREE.Color(3, 3, 3), transparent: true, opacity: 0, depthWrite: false }));
-    this.marker.quaternion.copy(Q_FLAT_UP);
-    this.marker.position.set(T.x + 0.78, top + 0.002, T.z);
-    this.marker.renderOrder = 25;
-    this.group.add(this.marker);
+    this.selfMarker = this.makeMarker();
+    this.selfMarker.position.set(T.x - 0.78, top + 0.002, T.z);
+    this.selfMarker.rotation.z = Math.PI;
+    this.group.add(this.selfMarker);
 
-    // Reaction window ring around the discard pile.
     this.ringMat = new THREE.ShaderMaterial({
       transparent: true,
       depthWrite: false,
@@ -132,13 +167,48 @@ export class TableView {
     this.ring.renderOrder = 24;
     this.group.add(this.ring);
 
-    this.rivalBadge = new THREE.Sprite(new THREE.SpriteMaterial({ transparent: true, depthWrite: false }));
-    this.rivalBadge.scale.setScalar(0.0001);
-    this.rivalBadge.renderOrder = 26;
-    this.group.add(this.rivalBadge);
+    // Turn-order ring: faint gilded chevrons circling the felt in the direction of play.
+    const chevrons = paint(1024, 1024, (ctx, w) => {
+      ctx.translate(w / 2, w / 2);
+      ctx.strokeStyle = 'rgba(255,210,120,0.9)';
+      ctx.lineWidth = 10;
+      ctx.lineCap = 'round';
+      for (let i = 0; i < 24; i++) {
+        const a = (i / 24) * Math.PI * 2;
+        ctx.save();
+        ctx.rotate(a);
+        ctx.translate(0, -w * 0.43);
+        ctx.beginPath();
+        ctx.moveTo(-18, -16);
+        ctx.lineTo(4, 0);
+        ctx.lineTo(-18, 16);
+        ctx.stroke();
+        ctx.restore();
+      }
+    });
+    this.orderRing = new THREE.Mesh(
+      new THREE.PlaneGeometry(2.0, 2.0),
+      new THREE.MeshBasicMaterial({ map: chevrons, color: new THREE.Color(0.9, 0.7, 0.35), transparent: true, opacity: 0.18, blending: THREE.AdditiveBlending, depthWrite: false })
+    );
+    this.orderRing.rotation.x = -Math.PI / 2;
+    this.orderRing.position.set(T.x, top + 0.0015, T.z);
+    this.orderRing.renderOrder = 5;
+    this.group.add(this.orderRing);
 
     app.gfx.scene.add(this.group);
     this.setDeckCount(0);
+  }
+
+  private makeMarker(): THREE.Mesh {
+    const tri = new THREE.Shape();
+    tri.moveTo(0, 0.07);
+    tri.lineTo(-0.06, -0.04);
+    tri.lineTo(0.06, -0.04);
+    tri.closePath();
+    const m = new THREE.Mesh(new THREE.ShapeGeometry(tri), new THREE.MeshBasicMaterial({ color: new THREE.Color(3, 3, 3), transparent: true, opacity: 0, depthWrite: false }));
+    m.rotation.x = -Math.PI / 2;
+    m.renderOrder = 25;
+    return m;
   }
 
   private buildHourglass(): void {
@@ -203,10 +273,9 @@ export class TableView {
     return this.deckPos.clone().add(new THREE.Vector3(0, this.deckCount * CARD_T + 0.002, 0));
   }
 
-  /** World transform for the next card on the discard pile. */
   pileSlot(): { p: THREE.Vector3; q: THREE.Quaternion } {
     const n = this.pile.length;
-    const yaw = (Math.sin(n * 12.9898) * 0.5) * 0.5;
+    const yaw = Math.sin(n * 12.9898) * 0.25;
     const q = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), yaw).multiply(Q_FLAT_UP);
     const p = this.pilePos.clone().add(new THREE.Vector3(Math.sin(n * 3.1) * 0.012, 0.0006 + Math.min(n, 40) * 0.0009, Math.cos(n * 4.7) * 0.012));
     return { p, q };
@@ -214,46 +283,135 @@ export class TableView {
 
   pushPile(c: CardMesh): void {
     this.pile.push(c);
-    if (this.pile.length > 28) {
-      const old = this.pile.shift()!;
-      old.dispose();
-    }
+    if (this.pile.length > 28) this.pile.shift()!.dispose();
   }
 
   pileTop(): CardMesh | undefined {
     return this.pile[this.pile.length - 1];
   }
 
-  // ------------------------------------------------------------------ rival
-
-  setRival(seat: SeatInfo): void {
-    this.rivalSeat = seat;
-    const f = new Figure({ cloak: seat.cloak, eyes: '#ffb347', seated: true });
-    f.root.position.copy(this.tv.opponentSeat).add(new THREE.Vector3(0, 0.47, 0));
-    f.root.rotation.y = -Math.PI / 2;
-    f.setReach(0.55, 'L');
-    f.setReach(0.55, 'R');
-    this.group.add(f.root);
-    this.rival = f;
-    this.rivalName = makeText(seat.name, { size: 0.06, color: '#f3e6c4', glow: 1.1, font: FONT3D.gothic, outline: 0.004 });
-    this.rivalName.position.copy(f.root.position).add(new THREE.Vector3(0, 0.98, 0));
-    this.group.add(this.rivalName);
+  /** Remove a specific card mesh from the pile (it is leaving: burned, retaken). */
+  takeFromPile(id: number): CardMesh | undefined {
+    const i = this.pile.findIndex((c) => c.card?.id === id);
+    if (i < 0) return undefined;
+    return this.pile.splice(i, 1)[0];
   }
 
-  rivalSlot(i: number, n: number): { p: THREE.Vector3; q: THREE.Quaternion; s: number } {
+  // ------------------------------------------------------------------ seats
+
+  setSeats(seats: SeatInfo[], me: PlayerId): void {
+    this.me = me;
+    this.myTeam = seats.find((s) => s.id === me)?.team;
+    const myIdx = seats.findIndex((s) => s.id === me);
+    const order = [...seats.slice(myIdx + 1), ...seats.slice(0, myIdx)];
+    const angles = rivalAngles(order.length);
+    // Hide the tavern's single display chair; we place our own.
+    const oldChair = this.tv.group.children.find((o) => o.position.distanceTo(this.tv.opponentSeat) < 0.01);
+    if (oldChair) oldChair.visible = false;
+    order.forEach((info, i) => {
+      // Turn order goes clockwise from the player's left, so seat 1 sits at the far left angle.
+      const angle = angles[angles.length - 1 - i];
+      const out = new THREE.Vector3(Math.cos(angle), 0, Math.sin(angle));
+      const pos = this.center.clone().setY(0).addScaledVector(out, SEAT_R);
+      const chair = makeChair(this.tv.mats);
+      chair.position.copy(pos).addScaledVector(out, 0.02);
+      chair.lookAt(this.center.clone().setY(0));
+      this.group.add(chair);
+      const f = new Figure({ cloak: info.cloak, eyes: info.team != null ? TEAM_COLORS[info.team] : '#ffb347', seated: true });
+      f.root.position.copy(pos).add(new THREE.Vector3(0, 0.47, 0));
+      f.root.lookAt(this.center.clone().setY(0.47));
+      f.setReach(0.55, 'L');
+      f.setReach(0.55, 'R');
+      this.group.add(f.root);
+      const mate = this.myTeam != null && info.team === this.myTeam;
+      const nameColor = info.team != null ? TEAM_COLORS[info.team] : '#f3e6c4';
+      const name = makeText(info.name, { size: 0.058, color: nameColor, glow: 1.1, font: FONT3D.gothic, outline: 0.004 });
+      name.position.copy(f.root.position).add(new THREE.Vector3(0, 0.98, 0));
+      this.group.add(name);
+      const badge = new THREE.Sprite(new THREE.SpriteMaterial({ transparent: true, depthWrite: false }));
+      badge.scale.setScalar(0.0001);
+      badge.position.copy(f.root.position).add(new THREE.Vector3(0, 0.84, 0)).addScaledVector(out, -0.05);
+      badge.renderOrder = 26;
+      this.group.add(badge);
+      const ward = new THREE.Mesh(
+        new THREE.SphereGeometry(0.42, 24, 16, 0, Math.PI * 2, 0, Math.PI / 2),
+        new THREE.MeshBasicMaterial({ color: new THREE.Color(1.6, 1.3, 0.5), transparent: true, opacity: 0, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide })
+      );
+      ward.position.copy(pos).add(new THREE.Vector3(0, 0.5, 0));
+      ward.scale.set(1, 1.5, 1);
+      this.group.add(ward);
+      const marker = this.makeMarker();
+      const mp = this.center.clone().addScaledVector(out, 0.78);
+      marker.position.set(mp.x, this.tv.tableTop + 0.0035, mp.z);
+      marker.rotation.z = -angle - Math.PI / 2;
+      this.group.add(marker);
+      const glow = new THREE.Mesh(
+        new THREE.PlaneGeometry(0.9, 0.5),
+        new THREE.MeshBasicMaterial({ map: this.tv.glowTex, color: new THREE.Color(1.6, 1.1, 0.5), transparent: true, opacity: 0, blending: THREE.AdditiveBlending, depthWrite: false })
+      );
+      glow.rotation.x = -Math.PI / 2;
+      glow.rotation.z = -angle;
+      const gp = this.center.clone().addScaledVector(out, 0.82);
+      glow.position.set(gp.x, this.tv.tableTop + 0.003, gp.z);
+      this.group.add(glow);
+      this.seats.set(info.id, {
+        info,
+        angle,
+        pos,
+        out,
+        figure: f,
+        chair,
+        hand: [],
+        name,
+        badge,
+        badgeTex: null,
+        ward,
+        wardK: 0,
+        wardOn: false,
+        marker,
+        markerK: 0,
+        markerOn: false,
+        markerHover: 0,
+        glow,
+        glowK: 0,
+        alive: true,
+        mate,
+      });
+    });
+  }
+
+  seat(id: PlayerId): SeatView | undefined {
+    return this.seats.get(id);
+  }
+
+  /** Transform for card i of n held by a seat (backs toward the table, or faces to us for teammates). */
+  handSlot(id: PlayerId, i: number, n: number): { p: THREE.Vector3; q: THREE.Quaternion; s: number } {
+    const sv = this.seats.get(id)!;
     const d = i - (n - 1) / 2;
-    const base = this.tv.opponentSeat.clone().add(new THREE.Vector3(-0.36, 1.0, 0));
-    const p = base.add(new THREE.Vector3(Math.abs(d) * 0.004, -Math.abs(d) * 0.006, d * 0.04));
-    const q = Q_FACE_RIVAL.clone()
-      .multiply(new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1, 0, 0), 0.25))
-      .multiply(new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 0, 1), d * 0.13));
-    return { p, q, s: 0.72 };
+    const side = new THREE.Vector3(-sv.out.z, 0, sv.out.x);
+    const base = sv.pos.clone().setY(1.0).addScaledVector(sv.out, -0.36);
+    const spread = n > 6 ? 0.028 : 0.04;
+    const p = base.addScaledVector(side, d * spread).add(new THREE.Vector3(0, -Math.abs(d) * 0.006, 0)).addScaledVector(sv.out, Math.abs(d) * 0.004);
+    const dummy = new THREE.Object3D();
+    dummy.position.copy(p);
+    if (sv.mate) {
+      // Teammates show you their hand.
+      dummy.lookAt(this.app.gfx.camera.position);
+      dummy.rotateX(-0.1);
+    } else {
+      dummy.lookAt(sv.figure.root.position.clone().add(new THREE.Vector3(0, 0.45, 0)));
+      dummy.rotateX(0.25);
+    }
+    dummy.rotateZ(sv.mate ? -d * 0.08 : d * 0.13);
+    return { p, q: dummy.quaternion.clone(), s: sv.mate ? 0.8 : 0.72 };
   }
 
-  layoutRival(dur = 0.35): Promise<void> {
-    const n = this.rivalHand.length;
-    const jobs = this.rivalHand.map((c, i) => {
-      const s = this.rivalSlot(i, n);
+  layoutSeat(id: PlayerId, dur = 0.35): Promise<void> {
+    const sv = this.seats.get(id);
+    if (!sv) return Promise.resolve();
+    const n = sv.hand.length;
+    const jobs = sv.hand.map((c, i) => {
+      const s = this.handSlot(id, i, n);
       const p0 = c.root.position.clone();
       const q0 = c.root.quaternion.clone();
       const s0 = c.root.scale.x;
@@ -266,14 +424,15 @@ export class TableView {
     return Promise.all(jobs).then(() => undefined);
   }
 
-  showRivalBadge(turns: number): void {
-    if (!this.rival) return;
+  setBadge(id: PlayerId, turns: number): void {
+    const sv = this.seats.get(id);
+    if (!sv) return;
     if (turns <= 1) {
-      void tweens.to(0.3, (k) => this.rivalBadge.scale.setScalar(Math.max(0.0001, 0.16 * (1 - k))));
+      if (sv.badge.scale.x > 0.001) void tweens.to(0.3, (k) => sv.badge.scale.setScalar(Math.max(0.0001, 0.15 * (1 - k))));
       return;
     }
-    this.rivalBadgeTex?.dispose();
-    this.rivalBadgeTex = paint(128, 128, (ctx, w, h) => {
+    sv.badgeTex?.dispose();
+    sv.badgeTex = paint(128, 128, (ctx, w, h) => {
       const g = ctx.createRadialGradient(w * 0.4, h * 0.35, 4, w / 2, h / 2, w / 2);
       g.addColorStop(0, '#e0503a');
       g.addColorStop(1, '#6a0c06');
@@ -291,29 +450,35 @@ export class TableView {
       ctx.textBaseline = 'middle';
       ctx.fillText('×' + turns, w / 2, h / 2 + 4);
     });
-    const mat = this.rivalBadge.material as THREE.SpriteMaterial;
-    mat.map = this.rivalBadgeTex;
+    const mat = sv.badge.material as THREE.SpriteMaterial;
+    mat.map = sv.badgeTex;
     mat.needsUpdate = true;
-    this.rivalBadge.position.copy(this.rival.root.position).add(new THREE.Vector3(0, 0.88, 0.22));
-    void tweens.to(0.45, (k) => this.rivalBadge.scale.setScalar(Math.max(0.0001, 0.16 * k)), { ease: ease.outBack });
+    void tweens.to(0.45, (k) => sv.badge.scale.setScalar(Math.max(0.0001, 0.15 * k)), { ease: ease.outBack });
   }
 
-  /** Remember the chair so the death animation can knock it over (and we can stand it back up). */
-  rivalChair(): THREE.Object3D | null {
-    if (this.chairBase) return this.chairBase.obj;
-    let found: THREE.Object3D | null = null;
-    const seat = this.tv.opponentSeat;
-    this.tv.group.children.forEach((o) => {
-      if (o.position.distanceTo(seat) < 0.01) found = o;
-    });
-    if (found) this.chairBase = { obj: found, pos: (found as THREE.Object3D).position.clone(), rot: (found as THREE.Object3D).rotation.clone() };
-    return found;
+  clearBadges(): void {
+    for (const id of this.seats.keys()) this.setBadge(id, 0);
   }
 
-  resetChair(): void {
-    if (!this.chairBase) return;
-    this.chairBase.obj.position.copy(this.chairBase.pos);
-    this.chairBase.obj.rotation.copy(this.chairBase.rot);
+  setWard(id: PlayerId, on: boolean): void {
+    const sv = this.seats.get(id);
+    if (sv) sv.wardOn = on;
+  }
+
+  setTurn(id: PlayerId | null): void {
+    for (const sv of this.seats.values()) {
+      const on = sv.info.id === id;
+      sv.name.color = new THREE.Color(on ? '#ffd27a' : sv.info.team != null ? TEAM_COLORS[sv.info.team] : '#f3e6c4').multiplyScalar(on ? 1.8 : 1.05);
+      if (on) sv.figure.lookPitch = 0.25;
+      else sv.figure.lookPitch = 0;
+    }
+    this.turnId = id;
+  }
+  private turnId: PlayerId | null = null;
+
+  setMarkers(ids: PlayerId[], self = false): void {
+    for (const sv of this.seats.values()) sv.markerOn = ids.includes(sv.info.id) && sv.alive;
+    this.selfMarkerOn = self;
   }
 
   // ------------------------------------------------------------------ boards & sign
@@ -344,6 +509,56 @@ export class TableView {
     }
   }
 
+  /** Spin the turn-order ring the other way. */
+  reverse(dir: 1 | -1): void {
+    this.orderDir = dir;
+    this.orderSpin = 6 * -dir;
+    this.orderFlash = 1;
+  }
+
+  // ------------------------------------------------------------------ shackles
+
+  showChains(on: boolean): void {
+    if (on && !this.chains) {
+      const g = new THREE.Group();
+      const linkGeo = new THREE.TorusGeometry(0.018, 0.0055, 6, 12);
+      const mat = this.tv.mats.iron;
+      const N = 26;
+      for (let i = 0; i < N; i++) {
+        const a = (i / N) * Math.PI * 2;
+        const l = new THREE.Mesh(linkGeo, mat);
+        l.position.set(Math.cos(a) * 0.15, 0.01 + Math.sin(a * 3) * 0.004, Math.sin(a) * 0.15);
+        l.rotation.y = -a;
+        l.rotation.x = i % 2 ? Math.PI / 2 : 0;
+        l.castShadow = true;
+        g.add(l);
+      }
+      const lock = new THREE.Group();
+      const body = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.045, 0.02), this.tv.mats.brass);
+      const shackle = new THREE.Mesh(new THREE.TorusGeometry(0.016, 0.004, 6, 12, Math.PI), this.tv.mats.iron);
+      shackle.position.y = 0.022;
+      lock.add(body, shackle);
+      lock.position.set(-0.15, 0.03, 0);
+      lock.rotation.y = Math.PI / 2;
+      g.add(lock);
+      g.position.copy(this.pilePos);
+      g.scale.setScalar(0.01);
+      this.group.add(g);
+      this.chains = g;
+      void tweens.to(0.6, (k) => {
+        g.scale.setScalar(Math.max(0.01, k));
+        g.rotation.y = (1 - k) * 2;
+      }, { ease: ease.outBack });
+    } else if (!on && this.chains) {
+      const g = this.chains;
+      this.chains = null;
+      void tweens.to(0.5, (k) => {
+        g.scale.setScalar(1 + k * 0.6);
+        g.children.forEach((c, i) => c.position.addScaledVector(new THREE.Vector3(Math.cos(i), 0.6, Math.sin(i)), 0.012));
+      }).then(() => this.group.remove(g));
+    }
+  }
+
   // ------------------------------------------------------------------ timers
 
   flipHourglass(): void {
@@ -359,33 +574,47 @@ export class TableView {
   }
 
   update(t: number, dt: number): void {
-    this.rival?.update(t, dt);
-    // Hourglass sand.
     const f = Math.max(0, Math.min(1, this.hgFrac));
     this.sandTop.scale.set(Math.max(0.05, Math.sqrt(f)), Math.max(0.02, f), Math.max(0.05, Math.sqrt(f)));
     this.sandBot.scale.set(Math.max(0.05, Math.sqrt(1 - f)), Math.max(0.02, 1 - f), Math.max(0.05, Math.sqrt(1 - f)));
-    // Deck glow when it is drawable.
     this.deckGlowK = damp(this.deckGlowK, this.deckGlowTarget, 6, dt);
     (this.deckGlow.material as THREE.MeshBasicMaterial).opacity = this.deckGlowK * (0.55 + Math.sin(t * 3) * 0.2);
-    // Target marker.
-    this.markerK = damp(this.markerK, this.markerOn ? 1 : 0, 8, dt);
-    const mm = this.marker.material as THREE.MeshBasicMaterial;
-    mm.opacity = this.markerK;
-    mm.color.setRGB(3 - this.markerHover * 2.2, 3, 3 - this.markerHover * 2.4);
-    this.marker.scale.setScalar(0.8 + this.markerK * 0.3 + Math.sin(t * 5) * 0.06 * this.markerK + this.markerHover * 0.2);
-    // Sign glow.
+    const cam = this.app.gfx.camera;
+    for (const sv of this.seats.values()) {
+      if (sv.figure.root.visible) sv.figure.update(t, dt);
+      sv.name.quaternion.copy(cam.quaternion);
+      sv.markerK = damp(sv.markerK, sv.markerOn ? 1 : 0, 8, dt);
+      const mm = sv.marker.material as THREE.MeshBasicMaterial;
+      mm.opacity = sv.markerK;
+      mm.color.setRGB(3 - sv.markerHover * 2.2, 3, 3 - sv.markerHover * 2.4);
+      sv.marker.scale.setScalar(0.8 + sv.markerK * 0.3 + Math.sin(t * 5) * 0.06 * sv.markerK + sv.markerHover * 0.25);
+      sv.wardK = damp(sv.wardK, sv.wardOn ? 1 : 0, 4, dt);
+      (sv.ward.material as THREE.MeshBasicMaterial).opacity = sv.wardK * (0.16 + Math.sin(t * 2.4) * 0.05);
+      sv.ward.visible = sv.wardK > 0.01;
+      sv.glowK = damp(sv.glowK, this.turnId === sv.info.id ? 1 : 0, 4, dt);
+      (sv.glow.material as THREE.MeshBasicMaterial).opacity = sv.glowK * (0.5 + Math.sin(t * 3) * 0.12);
+    }
+    this.selfMarkerK = damp(this.selfMarkerK, this.selfMarkerOn ? 1 : 0, 8, dt);
+    const sm = this.selfMarker.material as THREE.MeshBasicMaterial;
+    sm.opacity = this.selfMarkerK;
+    sm.color.setRGB(3 - this.selfMarkerHover * 2.2, 3, 3 - this.selfMarkerHover * 2.4);
+    // Turn-order ring.
+    this.orderSpin = damp(this.orderSpin, 0, 2.5, dt);
+    this.orderFlash = damp(this.orderFlash, 0, 2, dt);
+    this.orderRing.rotation.z += dt * (0.05 * this.orderDir + this.orderSpin);
+    this.orderRing.scale.x = this.orderDir;
+    (this.orderRing.material as THREE.MeshBasicMaterial).opacity = 0.14 + this.orderFlash * 0.6;
+    if (this.chains) this.chains.rotation.y += dt * 0.15;
     this.signLit = damp(this.signLit, this.signTarget, 5, dt);
-    const s = this.signLit;
     const flick = 0.92 + Math.sin(t * 17) * 0.04 + Math.sin(t * 7.3) * 0.04;
-    this.tv.sign.text.color = new THREE.Color(1, 0.82, 0.48).multiplyScalar(0.25 + s * 2.6 * flick);
-    // Name tag faces the camera.
-    if (this.rivalName) this.rivalName.quaternion.copy(this.app.gfx.camera.quaternion);
+    this.tv.sign.text.color = new THREE.Color(1, 0.82, 0.48).multiplyScalar(0.25 + this.signLit * 2.6 * flick);
   }
 
   dispose(): void {
     this.app.gfx.scene.remove(this.group);
-    this.rival = null;
-    this.resetChair();
+    for (const sv of this.seats.values()) sv.hand.forEach((c) => c.dispose());
+    const oldChair = this.tv.group.children.find((o) => o.position.distanceTo(this.tv.opponentSeat) < 0.01);
+    if (oldChair) oldChair.visible = true;
     for (const f of this.tv.sign.flames) this.tv.flames.setLit(f, 0);
     for (const k of ['odds', 'hands', 'souls'] as const) {
       this.tv.plaques[k].text = '—';
@@ -394,4 +623,4 @@ export class TableView {
   }
 }
 
-export { CARD_W, CARD_H };
+export { CARD_W, CARD_H, TEAM_COLORS };
