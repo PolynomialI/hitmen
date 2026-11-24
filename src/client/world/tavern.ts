@@ -454,6 +454,86 @@ export class Tavern {
       g.add(t);
     }
 
+    // ---- Dressing: a red runner with gilt edges, a brass bumper rail, ale taps, shelf candles.
+    const runnerTex = paint(1024, 128, (ctx, w, h) => {
+      ctx.fillStyle = '#7a1420';
+      ctx.fillRect(0, 0, w, h);
+      for (let i = 0; i < 4000; i++) {
+        ctx.fillStyle = `rgba(${Math.random() < 0.5 ? '40,0,6' : '160,40,50'},${Math.random() * 0.12})`;
+        ctx.fillRect(Math.random() * w, Math.random() * h, 3, 1);
+      }
+      ctx.fillStyle = '#d9a443';
+      ctx.fillRect(0, 10, w, 6);
+      ctx.fillRect(0, h - 16, w, 6);
+      ctx.fillStyle = '#5a0c14';
+      ctx.fillRect(0, 0, w, 8);
+      ctx.fillRect(0, h - 8, w, 8);
+      for (let x = 30; x < w; x += 60) {
+        ctx.fillStyle = 'rgba(217,164,67,0.5)';
+        ctx.beginPath();
+        ctx.moveTo(x, h / 2 - 14);
+        ctx.lineTo(x + 10, h / 2);
+        ctx.lineTo(x, h / 2 + 14);
+        ctx.lineTo(x - 10, h / 2);
+        ctx.fill();
+      }
+    });
+    const runner = new THREE.Mesh(new THREE.PlaneGeometry(len, 0.56), new THREE.MeshStandardMaterial({ map: runnerTex, roughness: 0.9, color: '#9a8c8c' }));
+    runner.rotation.x = -Math.PI / 2;
+    runner.position.set(cx, topY + 0.002, zFront - 0.36);
+    runner.receiveShadow = true;
+    g.add(runner);
+    const bumper = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.03, len + 0.2, 12), m.brass);
+    bumper.rotation.z = Math.PI / 2;
+    bumper.position.set(cx, topY - 0.03, zFront + 0.08);
+    g.add(bumper);
+    const tapTower = (x: number, z: number, handles: number) => {
+      const tg = new THREE.Group();
+      const tray = box(0.34, 0.025, 0.14, m.brass);
+      tray.position.y = 0.0125;
+      tg.add(tray);
+      const col = cyl(0.04, 0.05, 0.36, m.brass, 14);
+      col.position.y = 0.2;
+      tg.add(col);
+      const cap = new THREE.Mesh(new THREE.SphereGeometry(0.05, 14, 10), m.brass);
+      cap.position.y = 0.39;
+      tg.add(cap);
+      const bar2 = cyl(0.022, 0.022, 0.1 * handles + 0.06, m.brass, 10);
+      bar2.rotation.z = Math.PI / 2;
+      bar2.position.y = 0.33;
+      tg.add(bar2);
+      for (let i = 0; i < handles; i++) {
+        const hx = (i - (handles - 1) / 2) * 0.1;
+        const spout = new THREE.Mesh(new THREE.TorusGeometry(0.04, 0.012, 8, 12, Math.PI), m.brass);
+        spout.position.set(hx, 0.29, 0.04);
+        spout.rotation.y = Math.PI / 2;
+        tg.add(spout);
+        const nozzle = cyl(0.012, 0.009, 0.05, m.brass, 8);
+        nozzle.position.set(hx, 0.235, 0.08);
+        tg.add(nozzle);
+        const handle = cyl(0.016, 0.024, 0.2, i % 2 ? m.woodDark : m.woodLight, 10);
+        handle.position.set(hx, 0.46, 0.0);
+        handle.rotation.x = -0.12;
+        tg.add(handle);
+        const fer = cyl(0.026, 0.026, 0.025, m.gold, 10);
+        fer.position.set(hx, 0.365, 0);
+        tg.add(fer);
+      }
+      tg.position.set(x, topY, z);
+      g.add(tg);
+    };
+    tapTower(-3.08, zFront - 0.66, 3);
+    tapTower(-2.08, zFront - 0.7, 2);
+    for (const [x, y] of [
+      [-5.3, 1.275],
+      [-3.2, 1.745],
+      [-1.4, 1.275],
+      [0.2, 1.745],
+    ]) {
+      const c = candle(m, this.flames, new THREE.Vector3(x, y, backZ + 0.24), 0.1, 0.02);
+      g.add(c.group);
+    }
+
     // ---- Menu props on the counter, in front of the camera.
     const counterZ = -3.38;
     // PLAY: card box, fanned cards, dice.
@@ -516,45 +596,64 @@ export class Tavern {
     inv.rotation.y = -0.35;
     g.add(inv);
 
-    // CHALLENGES: pinned parchment with a dagger on the back-bar post.
+    // CHALLENGES: a knife-throwing target hung in front of the back bar, three daggers in it.
     const chal = new THREE.Group();
-    chal.position.set(-3.85, 2.55, backZ + 0.05);
-    const notice = new THREE.Mesh(
-      new THREE.PlaneGeometry(0.42, 0.55),
-      new THREE.MeshStandardMaterial({
-        roughness: 0.9,
-        map: paint(256, 336, (ctx, w, h) => {
-          ctx.fillStyle = '#e4d2a8';
-          ctx.fillRect(0, 0, w, h);
-          const gr = ctx.createRadialGradient(w / 2, h / 2, 20, w / 2, h / 2, w * 0.8);
-          gr.addColorStop(0, 'rgba(0,0,0,0)');
-          gr.addColorStop(1, 'rgba(90,50,10,0.55)');
-          ctx.fillStyle = gr;
-          ctx.fillRect(0, 0, w, h);
-          ctx.fillStyle = '#3a1a0a';
-          ctx.font = '44px "Grenze Gotisch"';
-          ctx.textAlign = 'center';
-          ctx.fillText('Wanted', w / 2, 62);
-          ctx.font = '22px "Alegreya"';
-          for (let i = 0; i < 6; i++) {
-            ctx.fillRect(40, 110 + i * 30, w - 80 - (i % 3) * 30, 3);
-          }
-          ctx.font = '28px "Grenze Gotisch"';
-          ctx.fillText('Reward', w / 2, 310);
-        }),
-      })
-    );
-    chal.add(notice);
-    const knife = new THREE.Group();
-    const blade = box(0.012, 0.16, 0.004, m.iron);
-    blade.position.y = -0.08;
-    knife.add(blade);
-    const grip = cyl(0.012, 0.012, 0.09, m.leather, 8);
-    grip.position.y = 0.05;
-    knife.add(grip);
-    knife.position.set(0.13, 0.2, 0.03);
-    knife.rotation.set(-0.6, 0, 0.5);
-    chal.add(knife);
+    chal.position.set(-3.95, 1.86, backZ + 0.4);
+    const targetTex = paint(512, 512, (ctx, w) => {
+      const c2 = w / 2;
+      const rings = ['#e8d6a8', '#b02a22', '#e8d6a8', '#b02a22', '#e8d6a8', '#2a1a10'];
+      rings.forEach((col, i) => {
+        ctx.fillStyle = col;
+        ctx.beginPath();
+        ctx.arc(c2, c2, c2 * (1 - i * 0.16) - 6, 0, Math.PI * 2);
+        ctx.fill();
+      });
+      ctx.strokeStyle = 'rgba(40,20,10,0.6)';
+      ctx.lineWidth = 3;
+      for (let i = 0; i < 12; i++) {
+        const a2 = (i / 12) * Math.PI * 2;
+        ctx.beginPath();
+        ctx.moveTo(c2 + Math.cos(a2) * 40, c2 + Math.sin(a2) * 40);
+        ctx.lineTo(c2 + Math.cos(a2) * (c2 - 8), c2 + Math.sin(a2) * (c2 - 8));
+        ctx.stroke();
+      }
+      for (let i = 0; i < 90; i++) {
+        ctx.fillStyle = 'rgba(40,20,10,0.5)';
+        ctx.fillRect(c2 + (Math.random() - 0.5) * w * 0.8, c2 + (Math.random() - 0.5) * w * 0.8, 3, 3);
+      }
+    });
+    const slab = new THREE.Mesh(new THREE.CylinderGeometry(0.3, 0.3, 0.07, 40), [m.woodDark, new THREE.MeshStandardMaterial({ map: targetTex, roughness: 0.8 }), m.woodDark]);
+    slab.rotation.x = Math.PI / 2;
+    chal.add(slab);
+    const hoop = new THREE.Mesh(new THREE.TorusGeometry(0.305, 0.018, 8, 40), m.iron);
+    chal.add(hoop);
+    for (const [dx, dy, rz] of [
+      [-0.06, 0.08, 0.5],
+      [0.1, -0.02, -0.4],
+      [0.0, -0.12, 0.15],
+    ]) {
+      const k = new THREE.Group();
+      const kb = box(0.014, 0.12, 0.004, m.iron);
+      kb.position.y = -0.04;
+      k.add(kb);
+      const kg = box(0.06, 0.012, 0.012, m.brass);
+      kg.position.y = 0.025;
+      k.add(kg);
+      const kh = cyl(0.012, 0.012, 0.09, m.leather, 8);
+      kh.position.y = 0.075;
+      k.add(kh);
+      const kp = new THREE.Mesh(new THREE.SphereGeometry(0.016, 8, 6), m.brass);
+      kp.position.y = 0.125;
+      k.add(kp);
+      k.position.set(dx, dy, 0.08);
+      k.rotation.set(-1.1, 0, rz);
+      chal.add(k);
+    }
+    for (const sx of [-0.18, 0.18]) {
+      const chain = cyl(0.004, 0.004, 0.5, m.iron, 4);
+      chain.position.set(sx, 0.48, -0.05);
+      chal.add(chain);
+    }
     g.add(chal);
 
     return { play, shop, inventory: inv, challenges: chal };

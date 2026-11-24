@@ -101,7 +101,7 @@ export class MainMenu implements Screen {
       ['shop', 'Shop', new THREE.Vector3(-3.44, 1.47, -3.28), tv.menuProps.shop, 0.15],
       ['play', 'Play', new THREE.Vector3(-2.6, 1.42, -3.22), tv.menuProps.play, 0.19],
       ['inventory', 'Inventory', new THREE.Vector3(-1.84, 1.66, -3.36), tv.menuProps.inventory, 0.13],
-      ['challenges', 'Challenges', new THREE.Vector3(-3.84, 2.22, -5.5), tv.menuProps.challenges, 0.14],
+      ['challenges', 'Challenges', new THREE.Vector3(-3.95, 2.27, -5.3), tv.menuProps.challenges, 0.14],
     ];
     for (const [key, label, pos, prop, size] of defs) {
       const text = makeText(label, { size, color: '#f3e6c4', glow: 1.05, font: FONT3D.gothicBlack, letterSpacing: 0.02, outline: 0.006, outlineColor: '#1a0a04' });
