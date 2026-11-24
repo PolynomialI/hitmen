@@ -5,7 +5,7 @@ import type { App } from '../app';
 import type { CardTexSet } from '../cards/cardTextures';
 import { damp, ease, tweens } from '../core/tween';
 import { paint } from '../gfx/textures';
-import { Figure } from '../world/figure';
+import { accessoryFor, Figure } from '../world/figure';
 import { FONT3D } from '../world/fonts3d';
 import { buildCharm, buildSeat } from '../cosmetics/art';
 import { makeText, type Tavern } from '../world/tavern';
@@ -338,7 +338,7 @@ export class TableView {
         ch.lookAt(this.center.x, ch.position.y, this.center.z);
         this.group.add(ch);
       }
-      const f = new Figure({ cloak: info.cloak, eyes: info.team != null ? TEAM_COLORS[info.team] : '#ffb347', seated: true });
+      const f = new Figure({ cloak: info.cloak, eyes: info.team != null ? TEAM_COLORS[info.team] : '#ffb347', seated: true, accessory: accessoryFor(info.name), trim: info.team != null ? TEAM_COLORS[info.team] : undefined });
       f.root.position.copy(pos).add(new THREE.Vector3(0, 0.47, 0));
       f.root.lookAt(this.center.clone().setY(0.47));
       f.setReach(0.55, 'L');

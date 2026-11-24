@@ -90,7 +90,7 @@ export class Tavern {
 
     this.buildRoom();
     this.menuProps = this.buildBar(cardBack);
-    this.barkeep = new Figure({ cloak: '#2e2620', eyes: '#ffc46b', seated: false, scale: 1.06 });
+    this.barkeep = new Figure({ cloak: '#2e2620', eyes: '#ffc46b', seated: false, scale: 1.06, accessory: 'beard', trim: '#c9a050' });
     this.barkeep.root.position.set(-2.45, 0, -4.55);
     this.barkeep.setReach(0.35, 'L');
     this.barkeep.setReach(0.25, 'R');
@@ -949,7 +949,7 @@ export class Tavern {
     // Lantern.
     lantern(m, this.flames, g, new THREE.Vector3(stallX, 2.0, stallZ - 0.9), 0.3);
     // The peddler.
-    const mer = new Figure({ cloak: '#2a3a1a', eyes: '#9aff6a', seated: false, scale: 0.98 });
+    const mer = new Figure({ cloak: '#2a3a1a', eyes: '#9aff6a', seated: false, scale: 0.98, accessory: 'feathercap', trim: '#d8b048' });
     mer.root.position.set(stallX - 0.2, 0, stallZ + 0.1);
     mer.root.rotation.y = Math.PI;
     mer.setReach(0.4, 'L');
