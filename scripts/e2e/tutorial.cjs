@@ -1,0 +1,66 @@
+// Requires a running dev server (npm run dev) and Playwright with Chromium (npx playwright install chromium).
+// BASE=http://localhost:5173 SHOTS=e2e-shots node scripts/e2e/<name>.cjs
+const fs = require('fs');
+const BASE = process.env.BASE || 'http://localhost:5173';
+const SHOTS = process.env.SHOTS || 'e2e-shots';
+fs.mkdirSync(SHOTS, { recursive: true });
+const { chromium } = require('playwright');
+(async () => {
+  const out = SHOTS;
+  const browser = await chromium.launch({ args: ['--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader'] });
+  const page = await browser.newPage({ viewport: { width: 1280, height: 720 } });
+  page.on('console', (m) => { const t = m.text(); if ((m.type() === 'error' || m.type() === 'warning') && !t.includes('GPU stall')) console.log('[console]', m.type(), t.slice(0, 300)); });
+  page.on('pageerror', (e) => console.log('[pageerror]', e.message));
+  await page.goto(BASE + '/?start=tutorial&q=low&dtcap=0.35');
+  await page.waitForSelector('body[data-ready]', { timeout: 120000, state: 'attached' });
+  const S = (fn) => page.evaluate(fn);
+  const state = () => S(() => { const s = window.__app.screen; return { phase: s.phase, cur: s.current, q: s.queue.length, proc: s.processing, hand: s.hand.cards.map(c => c.card && c.card.type), doomed: s.doomed, deck: s.sync && s.sync.deck, over: !!s.result }; });
+  const until = async (pred, label, ms = 120000) => { const t0 = Date.now(); while (Date.now() - t0 < ms) { const st = await state(); if (pred(st)) return st; await page.waitForTimeout(400); } console.log('TIMEOUT waiting', label, JSON.stringify(await state())); throw new Error('timeout ' + label); };
+  const proj = (expr) => page.evaluate((expr) => { const app = window.__app; const s = app.screen; const o = eval(expr); const v = new o.position.constructor(); o.getWorldPosition(v); v.project(app.gfx.camera); return { x: (v.x + 1) / 2 * innerWidth, y: (1 - v.y) / 2 * innerHeight }; }, expr);
+  const shot = (n) => page.screenshot({ path: `${out}/t_${n}.png` });
+  const idleMine = (st) => st.phase === 'turn' && st.cur === 'you' && st.q === 0 && !st.proc;
+  const clickCard = async (type) => { const p = await proj(`s.hand.cards.find(c => c.card.type === '${type}').root`); await page.mouse.move(p.x, p.y + 10); await page.waitForTimeout(500); await page.mouse.click(p.x, p.y + 10); };
+
+  let st = await until(idleMine, 'first turn');
+  console.log('hand', st.hand);
+  await shot('01_dealt');
+  let p = await proj(`s.hand.cards[0].root`);
+  await page.mouse.move(p.x, p.y + 10); await page.waitForTimeout(1200); await shot('02_hover');
+  await clickCard('scry');
+  await until((s) => s.phase === 'scry' && !s.proc, 'scry');
+  await page.waitForTimeout(800); await shot('03_scry');
+  await page.click('text=Done');
+  await until(idleMine, 'after scry');
+  await shot('04_afterscry');
+  p = await proj('s.table.deckHit'); await page.mouse.click(p.x, p.y);
+  await until((s) => s.cur === 'b1', 'rival turn');
+  await until((s) => s.phase === 'reaction' && !s.proc, 'pickpocket window');
+  await page.waitForTimeout(500); await shot('05_pickpocket');
+  await clickCard('parry');
+  await until(idleMine, 'my second turn');
+  await shot('06_myturn2');
+  await clickCard('bounty');
+  await page.waitForTimeout(2500); await shot('07_aim');
+  p = await proj('[...s.table.seats.values()][0].marker'); await page.mouse.move(p.x, p.y); await page.waitForTimeout(400); await page.mouse.click(p.x, p.y);
+  await page.waitForTimeout(1200); await shot('08_bountyplayed');
+  await until(idleMine, 'draw prompt');
+  await shot('09_drawprompt');
+  p = await proj('s.table.deckHit'); await page.mouse.click(p.x, p.y);
+  await until((s) => s.phase === 'rescue', 'doom');
+  await page.waitForTimeout(1500); await shot('10_doom');
+  await until((s) => s.phase === 'rescue' && !s.proc, 'rescue window');
+  await shot('11_rescuewindow');
+  await clickCard('angel');
+  await page.waitForTimeout(1600); await shot('12_angel');
+  await until((s) => s.phase === 'hide', 'hide');
+  await page.waitForTimeout(800); await shot('13_hide');
+  await page.click('text=Confirm');
+  await until((s) => s.cur === 'b1', 'rival draws');
+  await until((s) => s.doomed === 'b1', 'rival doomed', 60000);
+  await page.waitForTimeout(1500); await shot('14_rivaldoom');
+  for (let i = 0; i < 6; i++) { await page.waitForTimeout(1500); await shot('15_slain_' + i); }
+  await until((s) => s.over, 'over');
+  await page.waitForTimeout(2500); await shot('16_results');
+  console.log('DONE');
+  await browser.close();
+})();

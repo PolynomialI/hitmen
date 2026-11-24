@@ -5,3 +5,4 @@ dist-server/
 .DS_Store
 .env
 scratch/
+e2e-shots/
