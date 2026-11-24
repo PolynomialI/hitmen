@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { CARD_DEFS, type Card, type CardType } from '../../shared/cards';
+import { EMOTE_COOLDOWN_MS, EMOTES, emoteText, type EmoteId } from '../../shared/emotes';
 import type { GameEvent, GameMode, PendingInfo, PlayerId, PlayerStats, SeatInfo, SyncInfo } from '../../shared/types';
 import type { App, Screen } from '../app';
 import { audio } from '../audio/audio';
@@ -8,7 +9,7 @@ import { clamp, damp, ease, tweens } from '../core/tween';
 import type { OnlineSession } from '../net/online';
 import { LocalTransport, WsTransport, type Transport } from '../net/transport';
 import type { Nav } from '../screens/menus';
-import { h } from '../ui/dom';
+import { h, icon } from '../ui/dom';
 import { toast } from '../ui/hud';
 import { profile } from '../ui/profile';
 import { lookFromProfile } from '../cosmetics/apply';
@@ -75,6 +76,8 @@ export class MatchScreen implements Screen {
   private started = false;
   private restarting = false;
   private offSession: (() => void) | null = null;
+  private emoteReady = 0;
+  private emoteList: HTMLElement | null = null;
   /** What the scene held before this match (anything else is ours to remove on dispose). */
   private sceneBefore: Set<THREE.Object3D>;
   private tableStation: Station;
@@ -168,6 +171,8 @@ export class MatchScreen implements Screen {
     this.keyHandler = (e) => {
       if (e.key === 'Escape' && this.aiming) this.cancelAim();
       if ((e.key === 'd' || e.key === ' ') && !this.aiming) this.tryDraw();
+      if (this.emoteList && e.key >= '1' && e.key <= String(EMOTES.length)) this.sendEmote(EMOTES[Number(e.key) - 1].id);
+      if (e.key === 'Escape') this.emoteList?.classList.add('out');
     };
     addEventListener('keydown', this.keyHandler);
     app.gfx.renderer.domElement.addEventListener('contextmenu', this.onContext);
@@ -193,6 +198,8 @@ export class MatchScreen implements Screen {
       return true;
     });
     if (online) this.watchSession(online);
+    this.t.onEmote((from, id) => this.showEmote(from, id));
+    if (!this.opts.spectate) this.buildEmotes();
 
     void (async () => {
       tv.setLightLevel(1);
@@ -200,6 +207,55 @@ export class MatchScreen implements Screen {
       audio.startMusic();
       this.t.start();
     })();
+  }
+
+  // ==================================================================== emotes
+
+  /** The speech button beside Sound/Leave: a short list of phrases to call across the table (keys 1-6). */
+  private buildEmotes(): void {
+    const list = h('div', { class: 'emote-list out' });
+    EMOTES.forEach((e, i) => {
+      const b = h('button', { class: 'emote-opt' }, h('i', {}, String(i + 1)), e.text);
+      b.addEventListener('pointerenter', () => audio.play('hover', { vol: 0.4 }));
+      b.addEventListener('click', () => {
+        this.sendEmote(e.id);
+        list.classList.add('out');
+      });
+      list.append(b);
+    });
+    const btn = h('button', { class: 'icon-btn emote-btn', title: 'Call across the table (1-6)', 'aria-label': 'Call across the table' }, icon('speech'));
+    btn.addEventListener('click', () => {
+      audio.play('click');
+      list.classList.toggle('out');
+    });
+    this.emoteList = list;
+    this.ui.append(h('div', { class: 'emote-wrap' }, btn, list));
+  }
+
+  private sendEmote(id: EmoteId): void {
+    const now = performance.now();
+    if (now < this.emoteReady) return;
+    this.emoteReady = now + EMOTE_COOLDOWN_MS;
+    this.t.emote(id);
+    this.showEmote(this.me, id);
+  }
+
+  /** A speech scroll over the speaker's head (yours rises above your hand). */
+  showEmote(from: PlayerId, id: EmoteId): void {
+    if (tweens.instant || this.disposed) return;
+    let el: HTMLElement;
+    if (this.isMe(from)) el = h('div', { class: 'emote-bubble mine' }, emoteText(id));
+    else {
+      const v = this.seatHead(from).add(V(0, 0.32, 0)).project(this.app.gfx.camera);
+      if (v.z > 1) return;
+      const x = Math.min(88, Math.max(12, ((v.x + 1) / 2) * 100));
+      const y = Math.max(14, ((1 - v.y) / 2) * 100);
+      el = h('div', { class: 'emote-bubble', style: `left:${x}%;top:${y}%` }, h('b', {}, this.nameOf(from)), emoteText(id));
+    }
+    this.ui.append(el);
+    audio.play('paper', { vol: 0.45 });
+    setTimeout(() => el.classList.add('out'), 2700);
+    setTimeout(() => el.remove(), 3200);
   }
 
   /** Online: connection state, other players dropping out and coming back, the table closing. */

@@ -2207,3 +2207,130 @@ h4 .timer {
     width: 96px;
   }
 }
+
+/* ------------------------------------------------------------ emotes */
+
+.emote-wrap {
+  position: absolute;
+  left: 112px;
+  top: 14px;
+  pointer-events: auto;
+}
+.emote-list {
+  position: absolute;
+  left: 0;
+  top: 48px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 8px;
+  border-radius: 10px;
+  background: linear-gradient(180deg, rgba(40, 24, 14, 0.94), rgba(18, 10, 6, 0.94));
+  border: 1px solid rgba(227, 185, 90, 0.4);
+  box-shadow: 0 14px 30px rgba(0, 0, 0, 0.55);
+  transform-origin: top left;
+  transition: opacity 0.2s, transform 0.25s var(--ease);
+}
+.emote-list.out {
+  opacity: 0;
+  transform: scale(0.9) translateY(-6px);
+  pointer-events: none;
+}
+.emote-opt {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 12px 6px 8px;
+  border-radius: 6px;
+  text-align: left;
+  white-space: nowrap;
+  font-family: var(--f-body);
+  font-style: italic;
+  font-size: 16px;
+  color: #f3e6c4;
+  transition: background 0.15s, transform 0.15s var(--ease);
+}
+.emote-opt:hover {
+  background: rgba(255, 220, 150, 0.1);
+  transform: translateX(3px);
+}
+.emote-opt i {
+  width: 20px;
+  height: 20px;
+  border-radius: 4px;
+  display: grid;
+  place-items: center;
+  font-style: normal;
+  font-family: var(--f-label);
+  font-size: 12px;
+  color: #1a0b05;
+  background: var(--gold-2);
+}
+.emote-bubble {
+  position: absolute;
+  transform: translate(-50%, -100%);
+  max-width: 260px;
+  padding: 8px 14px 9px;
+  border-radius: 10px;
+  text-align: center;
+  pointer-events: none;
+  font-family: var(--f-body);
+  font-style: italic;
+  font-weight: 700;
+  font-size: 17px;
+  line-height: 1.2;
+  color: #2a1206;
+  background: linear-gradient(180deg, #f3e3bd, #dcc495);
+  box-shadow: 0 0 0 2px #3a2416, 0 0 0 3px #8a5d1a, 0 10px 22px rgba(0, 0, 0, 0.55);
+  animation: emote-in 0.45s var(--ease);
+  transition: opacity 0.45s, transform 0.45s var(--ease);
+}
+.emote-bubble::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  bottom: -9px;
+  width: 14px;
+  height: 14px;
+  margin-left: -7px;
+  transform: rotate(45deg);
+  background: #dcc495;
+  box-shadow: 2px 2px 0 #3a2416;
+}
+.emote-bubble b {
+  display: block;
+  font-family: var(--f-label);
+  font-style: normal;
+  font-weight: 400;
+  font-size: 12px;
+  letter-spacing: 0.06em;
+  color: #7a3a1e;
+}
+.emote-bubble.mine {
+  left: 50%;
+  top: auto;
+  bottom: 36%;
+  transform: translate(-50%, 0);
+}
+.emote-bubble.out {
+  opacity: 0;
+  transform: translate(-50%, calc(-100% - 10px));
+}
+.emote-bubble.mine.out {
+  transform: translate(-50%, -10px);
+}
+@keyframes emote-in {
+  from {
+    opacity: 0;
+    transform: translate(-50%, -100%) translateY(10px) scale(0.85);
+  }
+}
+.emote-bubble.mine {
+  animation-name: emote-in-mine;
+}
+@keyframes emote-in-mine {
+  from {
+    opacity: 0;
+    transform: translate(-50%, 10px) scale(0.85);
+  }
+}

@@ -1,6 +1,7 @@
 import { createLocalMatch, HUMAN_ID, type LocalMatchOptions } from '../../shared/match';
 import type { Host } from '../../shared/host';
 import type { Action, GameEvent, PlayerId, PlayResult } from '../../shared/types';
+import type { EmoteId } from '../../shared/emotes';
 import type { OnlineSession } from './online';
 
 /**
@@ -15,6 +16,10 @@ export interface Transport {
    */
   onEvent(fn: (ev: GameEvent, replay: boolean) => boolean | void): void;
   send(a: Action): Promise<PlayResult>;
+  /** Phrases called across the table by others (players or regulars). */
+  onEmote(fn: (from: PlayerId, id: EmoteId) => void): void;
+  /** Call a phrase across the table (the screen shows your own). */
+  emote(id: EmoteId): void;
   start(): void;
   dispose(): void;
 }
@@ -43,6 +48,13 @@ export class LocalTransport implements Transport {
   send(a: Action): Promise<PlayResult> {
     return Promise.resolve(this.host.act(this.me, a, this.now()));
   }
+
+  onEmote(fn: (from: PlayerId, id: EmoteId) => void): void {
+    this.host.onEmote = fn;
+  }
+
+  /** Nobody but bots to hear it. */
+  emote(): void {}
 
   start(): void {
     this.host.start(this.now());
@@ -75,11 +87,24 @@ export class WsTransport implements Transport {
     return this.session.action(a);
   }
 
+  private offEmote: (() => void) | null = null;
+
+  onEmote(fn: (from: PlayerId, id: EmoteId) => void): void {
+    this.offEmote?.();
+    this.offEmote = this.session.on({ emote: fn });
+  }
+
+  emote(id: EmoteId): void {
+    this.session.emote(id);
+  }
+
   /** The server starts the match. */
   start(): void {}
 
   dispose(): void {
     if (this.sink) this.session.detach(this.sink);
     this.sink = null;
+    this.offEmote?.();
+    this.offEmote = null;
   }
 }

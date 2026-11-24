@@ -31,10 +31,39 @@ function faceMat(tex: CardTexSet, type: CardType, v: CardVariant): THREE.MeshSta
   return m;
 }
 
+/** Top-rarity sleeves shimmer: every few seconds a band of light sweeps across every card back. */
+export const backGlint = { time: { value: 0 }, strength: { value: 0 }, color: { value: new THREE.Color(1, 0.8, 0.45) } };
+
+/** Teach a card-back material the shimmer (off while backGlint.strength is 0). */
+export function addGlint(m: THREE.MeshStandardMaterial): void {
+  if (m.userData.glint) return;
+  m.userData.glint = true;
+  m.onBeforeCompile = (sh) => {
+    sh.uniforms.uGlintT = backGlint.time;
+    sh.uniforms.uGlintK = backGlint.strength;
+    sh.uniforms.uGlintC = backGlint.color;
+    sh.fragmentShader = sh.fragmentShader
+      .replace('#include <common>', '#include <common>\nuniform float uGlintT;\nuniform float uGlintK;\nuniform vec3 uGlintC;')
+      .replace(
+        '#include <emissivemap_fragment>',
+        `#include <emissivemap_fragment>
+#ifdef USE_MAP
+  float gp = fract(uGlintT * 0.2);
+  float gd = (vMapUv.x + vMapUv.y * 0.7) - (gp * 4.0 - 0.6);
+  float band = exp(-gd * gd * 160.0) + 0.4 * exp(-(gd + 0.13) * (gd + 0.13) * 1100.0);
+  totalEmissiveRadiance += uGlintC * band * uGlintK;
+#endif`
+      );
+  };
+  m.customProgramCacheKey = () => 'card-back-glint';
+  m.needsUpdate = true;
+}
+
 function backMaterial(tex: CardTexSet, v: CardVariant): THREE.MeshStandardMaterial {
   let m = backMats.get(v);
   if (!m) {
     m = new THREE.MeshStandardMaterial({ map: tex.back, roughness: 0.5, alphaTest: 0.5 });
+    addGlint(m);
     if (v === 'hand') {
       m.emissiveMap = tex.back;
       m.emissive.setRGB(0.35, 0.3, 0.28);

@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import type { SeatInfo } from '../../shared/types';
 import type { App } from '../app';
+import { addGlint, backGlint } from '../match/cardMesh';
 import { profile } from '../ui/profile';
 import { bannerSVG, buildCharm, buildSeat, feltCanvas, sleeveCanvas, svgCanvas } from './art';
 import { item, type Mutation } from './catalog';
@@ -46,11 +47,21 @@ export async function bannerTexture(id: string): Promise<THREE.Texture> {
   return tex(c);
 }
 
+let glintClock = false;
+
 /** Apply everything you have equipped to the shared world (deck backs, table felt, banners, display). */
 export async function applyCosmetics(app: App): Promise<void> {
   const e = profile.equipped;
   // Sleeve: replace the shared back texture in place, so every card back updates.
   const sl = item(e.sleeve);
+  // Legendary and contraband sleeves (and any prismatic one) shimmer in their accent colour.
+  const shimmer = !!sl && (sl.rarity === 'legendary' || sl.rarity === 'contraband' || mutOf(e.sleeve) === 'prismatic');
+  backGlint.strength.value = shimmer ? 1.7 : 0;
+  backGlint.color.value.set(sl?.style.accent ?? '#f6d270');
+  if (!glintClock) {
+    glintClock = true;
+    app.onUpdate((_t, dt) => (backGlint.time.value += dt));
+  }
   if (sl) {
     const c = await sleeveCanvas(sl.style, mutOf(e.sleeve), 512);
     app.cards.back.image = c;
@@ -81,6 +92,7 @@ export function updateDisplay(app: App, bannerTex?: THREE.Texture): void {
   }
   if (D.card) {
     const m = D.card.material as THREE.MeshStandardMaterial;
+    addGlint(m);
     m.map = app.cards.back;
     m.needsUpdate = true;
   }

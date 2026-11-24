@@ -152,6 +152,19 @@ Bots: `src/shared/bot.ts` play every card with human-like delays; they only see 
   `apply.ts` (applies the loadout to card backs, table felt, banners; `lookFromProfile()` is sent with the player's
   seat so other clients/bots can render it). Categories: card sleeve, playmat, death impact (dust, embers, gold,
   frost, ravens, holy, smoke), table charm, chair, banner. Bots wear random looks.
+- Legendary and contraband sleeves (and any prismatic one) **shimmer**: a band of light in the sleeve's accent colour
+  sweeps across every card back every few seconds (`backGlint` / `addGlint` in `match/cardMesh.ts`, switched in
+  `applyCosmetics`, so shop/inventory previews show it too).
+
+## Emotes
+
+The speech button beside Sound/Leave in a match (or keys 1-6) calls a phrase across the table: *Well played.*,
+*Ha! Ha!*, *Mercy, I beg you!*, *Curses!*, *The Hand is coming for you.*, *A toast to the fallen!*
+(`src/shared/emotes.ts`). It shows as a parchment speech bubble over the speaker's head (yours rises above your hand),
+2.5 s cooldown. Tavern regulars react now and then (marked with a Bounty, drawing the Hand, surviving it, a rival
+slain, winning), timed to land as the animation plays out; this lives in `Host` so bot tables and the server's
+online tables behave the same. Online, emotes go through the server (`emote` message, validated and rate-limited)
+to everyone else at the table. Emotes are cosmetic: never part of the rules or the event log.
 
 ## Architecture
 
@@ -230,9 +243,9 @@ local profile (see Next steps).
 
 1. Owner: create the Render service from `render.yaml`; check it loads on the managed Chromebook; then review on the
    real device (quality tiers, timings, camera framing).
-2. Online polish once real players try it: emotes/quick chat, a host "kick", a public lobby chat, spectating an
-   online table, and a server-side profile/economy if coins must be trusted (today they live in localStorage).
-3. More cosmetics and seasonal wares; card-back animations for top-rarity sleeves.
+2. Online polish once real players try it: a host "kick", spectating an online table, and a server-side
+   profile/economy if coins must be trusted (today they live in localStorage).
+3. More cosmetics and seasonal wares; per-player sleeves at the table (today every back shows your own sleeve).
 4. The Leaderboard is the local ranked ladder (named rivals); a real one needs server-side accounts.
 
 ## Gotchas

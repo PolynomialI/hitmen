@@ -53,6 +53,7 @@ export type ClientMsg =
   | { t: 'start' }
   | { t: 'again' }
   | { t: 'leave' }
+  | { t: 'emote'; id: string }
   | { t: 'action'; id: number; action: Action };
 
 export type ServerMsg =
@@ -63,6 +64,8 @@ export type ServerMsg =
   | { t: 'event'; ev: GameEvent }
   | { t: 'result'; id: number; result: PlayResult }
   | { t: 'presence'; id: string; connected: boolean }
+  /** A phrase called across the table (by a player or a regular). */
+  | { t: 'emote'; from: string; id: string }
   | { t: 'error'; message: string; fatal?: boolean };
 
 export const ROOM_CODE = /^[A-Z0-9]{4,8}$/;
