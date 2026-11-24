@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { emblemHalo, frameBody, frameDefs, frameFinish, mix } from '../art/cardFrame';
 import { crestHooded } from '../art/emblems';
 import { Noise2 } from '../gfx/noise';
 import type { Mats } from '../world/materials';
@@ -91,33 +92,28 @@ function mutationLayer(m: Mutation, w: number, h: number, rx: number): string {
 export function sleeveSVG(style: Record<string, string>, mut: Mutation = 'basic'): string {
   const { field, shade, accent, pattern: pat, crest: cr } = style;
   const gold = mut === 'gilded' ? '#f6d270' : accent;
+  const frame = {
+    color: field,
+    shade,
+    patternId: 'pat',
+    rim: mut === 'gilded' ? (['#fff3c0', '#e9c25e', '#a8782a'] as [string, string, string]) : undefined,
+  };
+  const ring = mix(shade, '#000000', 0.3);
   return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 500 700" width="500" height="700">
-    <defs>
-      <radialGradient id="f" cx="50%" cy="46%" r="72%"><stop offset="0" stop-color="${field}"/><stop offset="1" stop-color="${shade}"/></radialGradient>
-      <radialGradient id="v" cx="50%" cy="46%" r="70%"><stop offset="0.55" stop-color="#000" stop-opacity="0"/><stop offset="1" stop-color="#000" stop-opacity="0.5"/></radialGradient>
-      <linearGradient id="parch" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#f3e7cb"/><stop offset="1" stop-color="#d6c095"/></linearGradient>
-      ${pattern(pat, gold)}
-      <clipPath id="in"><rect x="16" y="16" width="468" height="668" rx="26"/></clipPath>
-      <filter id="grain" x="0" y="0" width="100%" height="100%"><feTurbulence type="fractalNoise" baseFrequency="0.9" numOctaves="2" seed="4"/><feColorMatrix type="matrix" values="0 0 0 0 0.2  0 0 0 0 0.14  0 0 0 0 0.08  0 0 0 0.45 -0.1"/><feComposite in2="SourceGraphic" operator="in"/></filter>
-    </defs>
-    <rect width="500" height="700" rx="38" fill="url(#parch)"/>
-    <g clip-path="url(#in)">
-      <rect x="16" y="16" width="468" height="668" fill="url(#f)"/>
-      <rect x="16" y="16" width="468" height="668" fill="url(#pat)"/>
-      <rect x="16" y="16" width="468" height="668" fill="#fff" filter="url(#grain)" opacity="0.6"/>
-      <rect x="16" y="16" width="468" height="668" fill="url(#v)"/>
+    <defs>${pattern(pat, gold)}${frameDefs(frame)}</defs>
+    ${frameBody(frame)}
+    ${emblemHalo(accent, 250, 350, 200)}
+    <g filter="url(#kdrop)">
+      <circle cx="250" cy="350" r="156" fill="url(#krim)" stroke="${ring}" stroke-width="4"/>
+      <circle cx="250" cy="350" r="134" fill="${shade}" stroke="${gold}" stroke-width="7"/>
+      ${Array.from({ length: 20 }, (_, i) => {
+        const a = (i / 20) * Math.PI * 2;
+        return `<circle cx="${(250 + Math.cos(a) * 145).toFixed(1)}" cy="${(350 + Math.sin(a) * 145).toFixed(1)}" r="3.6" fill="${ring}"/>`;
+      }).join('')}
+      <g transform="translate(250,350) scale(2.15)">${crest(cr, gold)}</g>
     </g>
-    <rect x="16" y="16" width="468" height="668" rx="26" fill="none" stroke="#1b110b" stroke-width="4"/>
-    <rect x="30" y="30" width="440" height="640" rx="18" fill="none" stroke="${gold}" stroke-width="5" opacity="0.9"/>
-    <rect x="40" y="40" width="420" height="620" rx="12" fill="none" stroke="${gold}" stroke-width="1.6" opacity="0.7"/>
-    <circle cx="250" cy="340" r="150" fill="${shade}" stroke="${gold}" stroke-width="10"/>
-    <circle cx="250" cy="340" r="134" fill="none" stroke="${gold}" stroke-width="2.5"/>
-    ${Array.from({ length: 24 }, (_, i) => {
-      const a = (i / 24) * Math.PI * 2;
-      return `<circle cx="${(250 + Math.cos(a) * 142).toFixed(1)}" cy="${(340 + Math.sin(a) * 142).toFixed(1)}" r="3" fill="${gold}"/>`;
-    }).join('')}
-    <g transform="translate(250,340) scale(1.9)">${crest(cr, gold)}</g>
-    ${mutationLayer(mut, 500, 700, 38)}
+    ${frameFinish(frame)}
+    ${mutationLayer(mut, 500, 700, 44)}
   </svg>`;
 }
 

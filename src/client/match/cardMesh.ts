@@ -4,24 +4,109 @@ import type { CardTexSet } from '../cards/cardTextures';
 
 export const CARD_W = 0.16;
 export const CARD_H = 0.224;
+/** Cardstock thickness: chunky on purpose, so cards read as solid little slabs. */
+export const CARD_THICK = 0.0018;
+/** Corner radius (matches the 44/500 rim radius of the card art). */
+export const CARD_R = (CARD_W * 44) / 500;
 
-let geo: THREE.PlaneGeometry | null = null;
+/** Points around a rounded rectangle centred on the origin (counter-clockwise). */
+export function roundedRectPoints(w: number, h: number, r: number, seg = 6): THREE.Vector2[] {
+  const pts: THREE.Vector2[] = [];
+  const corners: Array<[number, number, number]> = [
+    [w / 2 - r, -h / 2 + r, -Math.PI / 2],
+    [w / 2 - r, h / 2 - r, 0],
+    [-w / 2 + r, h / 2 - r, Math.PI / 2],
+    [-w / 2 + r, -h / 2 + r, Math.PI],
+  ];
+  for (const [cx, cy, a0] of corners)
+    for (let i = 0; i <= seg; i++) {
+      const a = a0 + (i / seg) * (Math.PI / 2);
+      pts.push(new THREE.Vector2(cx + Math.cos(a) * r, cy + Math.sin(a) * r));
+    }
+  return pts;
+}
+
+/** Side walls of a rounded slab, extruded along z from -t/2 to t/2. v runs 0..1 across the thickness. */
+export function roundedWallGeometry(w: number, h: number, r: number, t: number, seg = 6): THREE.BufferGeometry {
+  const pts = roundedRectPoints(w, h, r, seg);
+  const pos: number[] = [];
+  const nor: number[] = [];
+  const uv: number[] = [];
+  const idx: number[] = [];
+  let per = 0;
+  const n = pts.length;
+  for (let i = 0; i <= n; i++) {
+    const p = pts[i % n];
+    const prev = pts[(i - 1 + n) % n];
+    const next = pts[(i + 1) % n];
+    if (i > 0) per += p.distanceTo(prev);
+    const tx = next.x - prev.x;
+    const ty = next.y - prev.y;
+    const l = Math.hypot(tx, ty) || 1;
+    const nx = ty / l;
+    const ny = -tx / l;
+    for (const z of [-t / 2, t / 2]) {
+      pos.push(p.x, p.y, z);
+      nor.push(nx, ny, 0);
+      uv.push(per / (2 * (w + h)), z > 0 ? 1 : 0);
+    }
+    if (i > 0) {
+      const a = (i - 1) * 2;
+      idx.push(a, a + 2, a + 1, a + 1, a + 2, a + 3);
+    }
+  }
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  g.setAttribute('normal', new THREE.Float32BufferAttribute(nor, 3));
+  g.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
+  g.setIndex(idx);
+  return g;
+}
+
+/** Flat rounded-rectangle face with UVs spanning the card art. */
+export function roundedFaceGeometry(w: number, h: number, r: number, seg = 6): THREE.BufferGeometry {
+  const shape = new THREE.Shape(roundedRectPoints(w, h, r, seg));
+  const g = new THREE.ShapeGeometry(shape, 1);
+  const p = g.attributes.position as THREE.BufferAttribute;
+  const uv = g.attributes.uv as THREE.BufferAttribute;
+  for (let i = 0; i < p.count; i++) uv.setXY(i, p.getX(i) / w + 0.5, p.getY(i) / h + 0.5);
+  return g;
+}
+
+let faceGeo: THREE.BufferGeometry | null = null;
+let edgeGeo: THREE.BufferGeometry | null = null;
+const edgeMats = new Map<string, THREE.MeshStandardMaterial>();
 const faceMats = new Map<string, THREE.MeshStandardMaterial>();
 const backMats = new Map<string, THREE.MeshStandardMaterial>();
 
 /** 'table' cards are lit by the room; 'hand' cards get a little self-light so they stay readable. */
 export type CardVariant = 'table' | 'hand';
 
-function plane(): THREE.PlaneGeometry {
-  if (!geo) geo = new THREE.PlaneGeometry(CARD_W, CARD_H);
-  return geo;
+function plane(): THREE.BufferGeometry {
+  if (!faceGeo) faceGeo = roundedFaceGeometry(CARD_W, CARD_H, CARD_R);
+  return faceGeo;
+}
+
+function edge(): THREE.BufferGeometry {
+  if (!edgeGeo) edgeGeo = roundedWallGeometry(CARD_W, CARD_H, CARD_R, CARD_THICK);
+  return edgeGeo;
+}
+
+function edgeMaterial(v: CardVariant): THREE.MeshStandardMaterial {
+  let m = edgeMats.get(v);
+  if (!m) {
+    m = new THREE.MeshStandardMaterial({ color: '#efe3c6', roughness: 0.6 });
+    if (v === 'hand') m.emissive.setRGB(0.3, 0.27, 0.22);
+    edgeMats.set(v, m);
+  }
+  return m;
 }
 
 function faceMat(tex: CardTexSet, type: CardType, v: CardVariant): THREE.MeshStandardMaterial {
   const key = type + v;
   let m = faceMats.get(key);
   if (!m) {
-    m = new THREE.MeshStandardMaterial({ map: tex.faces[type], roughness: 0.55, metalness: 0, alphaTest: 0.5, side: THREE.FrontSide });
+    m = new THREE.MeshStandardMaterial({ map: tex.faces[type], roughness: 0.42, metalness: 0, side: THREE.FrontSide });
     if (v === 'hand') {
       m.emissiveMap = tex.faces[type];
       m.emissive.setRGB(0.42, 0.38, 0.34);
@@ -34,7 +119,7 @@ function faceMat(tex: CardTexSet, type: CardType, v: CardVariant): THREE.MeshSta
 function backMaterial(tex: CardTexSet, v: CardVariant): THREE.MeshStandardMaterial {
   let m = backMats.get(v);
   if (!m) {
-    m = new THREE.MeshStandardMaterial({ map: tex.back, roughness: 0.5, alphaTest: 0.5 });
+    m = new THREE.MeshStandardMaterial({ map: tex.back, roughness: 0.42 });
     if (v === 'hand') {
       m.emissiveMap = tex.back;
       m.emissive.setRGB(0.35, 0.3, 0.28);
@@ -52,6 +137,7 @@ export class CardMesh {
   readonly root = new THREE.Group();
   readonly face: THREE.Mesh;
   readonly back: THREE.Mesh;
+  readonly edge: THREE.Mesh;
   card: Card | null;
   private tex: CardTexSet;
   private ownMat: THREE.MeshStandardMaterial | null = null;
@@ -74,9 +160,12 @@ export class CardMesh {
     this.face = new THREE.Mesh(plane(), card ? faceMat(tex, card.type, variant) : backMaterial(tex, variant));
     this.back = new THREE.Mesh(plane(), backMaterial(tex, variant));
     this.back.rotation.y = Math.PI;
+    this.face.position.z = CARD_THICK / 2;
+    this.back.position.z = -CARD_THICK / 2;
+    this.edge = new THREE.Mesh(edge(), edgeMaterial(variant));
     this.face.castShadow = this.back.castShadow = true;
     this.face.receiveShadow = this.back.receiveShadow = true;
-    this.root.add(this.face, this.back);
+    this.root.add(this.face, this.back, this.edge);
   }
 
   setCard(card: Card | null): void {
@@ -89,6 +178,7 @@ export class CardMesh {
     if (v === this.variant) return;
     this.variant = v;
     this.back.material = backMaterial(this.tex, v);
+    this.edge.material = edgeMaterial(v);
     this.setCard(this.card);
   }
 

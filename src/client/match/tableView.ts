@@ -9,14 +9,18 @@ import { Figure } from '../world/figure';
 import { FONT3D } from '../world/fonts3d';
 import { buildCharm, buildSeat } from '../cosmetics/art';
 import { makeText, type Tavern } from '../world/tavern';
-import { CARD_H, CARD_W, CardMesh } from './cardMesh';
+import { CARD_H, CARD_R, CARD_THICK, CARD_W, CardMesh, roundedWallGeometry } from './cardMesh';
 
 export const Q_FLAT_UP = new THREE.Quaternion().setFromEuler(new THREE.Euler(-Math.PI / 2, -Math.PI / 2, 0, 'YXZ'));
 export const Q_FLAT_DOWN = new THREE.Quaternion().setFromEuler(new THREE.Euler(Math.PI / 2, -Math.PI / 2, 0, 'YXZ'));
 export const Q_FACE_PLAYER = new THREE.Quaternion().setFromEuler(new THREE.Euler(0, -Math.PI / 2, 0));
 export const Q_FACE_RIVAL = new THREE.Quaternion().setFromEuler(new THREE.Euler(0, Math.PI / 2, 0));
 
-const CARD_T = 0.0011;
+const CARD_T = 0.0016;
+const PILE_STEP = CARD_THICK + 0.00018;
+const PILE_MAX = 16;
+/** Visual deck height: full thickness for the first 30 cards, then compressed. */
+const deckHeight = (n: number) => Math.max(0.0005, Math.min(n, 30) * CARD_T + Math.max(0, n - 30) * 0.0007);
 const SEAT_R = 1.34;
 const TEAM_COLORS = ['#e0503a', '#3a8ae0'];
 
@@ -71,6 +75,7 @@ export class TableView {
   readonly pilePos: THREE.Vector3;
   readonly center: THREE.Vector3;
   private deckBox: THREE.Mesh;
+  private deckEdgeTex: THREE.Texture;
   readonly deckTop: CardMesh;
   readonly deckHit: THREE.Mesh;
   private deckGlow: THREE.Mesh;
@@ -111,16 +116,20 @@ export class TableView {
     this.deckPos = new THREE.Vector3(T.x - 0.12, top, T.z - 0.42);
     this.pilePos = new THREE.Vector3(T.x + 0.12, top, T.z + 0.08);
 
-    const edge = paint(64, 64, (ctx, w, h) => {
-      ctx.fillStyle = '#e6d4ac';
+    // Deck: a rounded slab whose sides show one ivory layer per card.
+    const edge = paint(8, 16, (ctx, w, h) => {
+      ctx.fillStyle = '#efe3c6';
       ctx.fillRect(0, 0, w, h);
-      for (let y = 0; y < h; y += 2) {
-        ctx.fillStyle = `rgba(90,60,30,${0.15 + Math.random() * 0.2})`;
-        ctx.fillRect(0, y, w, 1);
-      }
+      ctx.fillStyle = 'rgba(120,90,50,0.55)';
+      ctx.fillRect(0, h - 3, w, 3);
+      ctx.fillStyle = 'rgba(255,255,255,0.5)';
+      ctx.fillRect(0, 0, w, 2);
     });
     edge.wrapS = edge.wrapT = THREE.RepeatWrapping;
-    this.deckBox = new THREE.Mesh(new THREE.BoxGeometry(CARD_H * 0.985, 1, CARD_W * 0.985), new THREE.MeshStandardMaterial({ map: edge, roughness: 0.85 }));
+    this.deckEdgeTex = edge;
+    const deckGeo = roundedWallGeometry(CARD_H * 0.992, CARD_W * 0.992, CARD_R, 1);
+    deckGeo.rotateX(-Math.PI / 2);
+    this.deckBox = new THREE.Mesh(deckGeo, new THREE.MeshStandardMaterial({ map: edge, roughness: 0.7 }));
     this.deckBox.castShadow = this.deckBox.receiveShadow = true;
     this.group.add(this.deckBox);
     this.deckTop = new CardMesh(this.tex, null);
@@ -259,31 +268,36 @@ export class TableView {
 
   setDeckCount(n: number): void {
     this.deckCount = n;
-    const h = Math.max(0.0005, n * CARD_T);
+    const h = deckHeight(n);
     this.deckBox.scale.y = h;
+    this.deckEdgeTex.repeat.set(1, Math.max(1, n - 1));
     this.deckBox.position.copy(this.deckPos).add(new THREE.Vector3(0, h / 2, 0));
     this.deckBox.visible = n > 1;
     this.deckTop.root.visible = n > 0;
-    this.deckTop.root.position.copy(this.deckPos).add(new THREE.Vector3(0, h + 0.0004, 0));
+    this.deckTop.root.position.copy(this.deckPos).add(new THREE.Vector3(0, h + CARD_THICK / 2 + 0.0002, 0));
     this.label.text = n === 1 ? '1 card left' : `${n} cards left`;
     this.label.sync();
   }
 
   deckTopWorld(): THREE.Vector3 {
-    return this.deckPos.clone().add(new THREE.Vector3(0, this.deckCount * CARD_T + 0.002, 0));
+    return this.deckPos.clone().add(new THREE.Vector3(0, deckHeight(this.deckCount) + CARD_THICK + 0.002, 0));
   }
 
   pileSlot(): { p: THREE.Vector3; q: THREE.Quaternion } {
     const n = this.pile.length;
     const yaw = Math.sin(n * 12.9898) * 0.25;
     const q = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), yaw).multiply(Q_FLAT_UP);
-    const p = this.pilePos.clone().add(new THREE.Vector3(Math.sin(n * 3.1) * 0.012, 0.0006 + Math.min(n, 40) * 0.0009, Math.cos(n * 4.7) * 0.012));
+    const p = this.pilePos.clone().add(new THREE.Vector3(Math.sin(n * 3.1) * 0.014, CARD_THICK / 2 + 0.0004 + n * PILE_STEP, Math.cos(n * 4.7) * 0.014));
     return { p, q };
   }
 
   pushPile(c: CardMesh): void {
     this.pile.push(c);
-    if (this.pile.length > 28) this.pile.shift()!.dispose();
+    if (this.pile.length > PILE_MAX) {
+      // Drop the buried card and settle the rest one layer down so heights stay unique.
+      this.pile.shift()!.dispose();
+      for (const pc of this.pile) pc.root.position.y -= PILE_STEP;
+    }
   }
 
   pileTop(): CardMesh | undefined {

@@ -1084,7 +1084,7 @@ export class MatchScreen implements Screen {
           const dirS = s === 0 ? -1 : 1;
           const t = clamp((k - 0.35 - i * 0.03) / 0.3, 0, 1);
           const arch = Math.sin(t * Math.PI) * 0.06;
-          g.root.position.copy(center).addScaledVector(side, dirS * 0.13 * split).add(V(0, i * 0.0012 + arch + (s ? 0.0006 : 0), 0));
+          g.root.position.copy(center).addScaledVector(side, dirS * 0.13 * split).add(V(0, i * 0.004 + arch + (s ? 0.002 : 0), 0));
           g.root.quaternion.copy(Q_FLAT_DOWN).multiply(new THREE.Quaternion().setFromAxisAngle(V(1, 0, 0), dirS * arch * 4));
         })
       );

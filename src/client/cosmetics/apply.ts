@@ -4,6 +4,7 @@ import type { App } from '../app';
 import { profile } from '../ui/profile';
 import { bannerSVG, buildCharm, buildSeat, feltCanvas, sleeveCanvas, svgCanvas } from './art';
 import { item, type Mutation } from './catalog';
+import { opaqueCard } from '../cards/cardTextures';
 
 export function mutOf(id: string): Mutation {
   return (profile.equippedMut[id] as Mutation) ?? (profile.owned[id]?.[0] as Mutation) ?? 'basic';
@@ -53,7 +54,7 @@ export async function applyCosmetics(app: App): Promise<void> {
   const sl = item(e.sleeve);
   if (sl) {
     const c = await sleeveCanvas(sl.style, mutOf(e.sleeve), 512);
-    app.cards.back.image = c;
+    app.cards.back.image = opaqueCard(c);
     app.cards.back.needsUpdate = true;
     app.cards.urls.back = c.toDataURL('image/webp', 0.9);
   }

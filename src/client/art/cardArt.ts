@@ -1,5 +1,6 @@
 import { CARD_DEFS, type CardType } from '../../shared/cards';
 import { crestHooded, EMBLEMS, INK, IVORY } from './emblems';
+import { emblemHalo, frameBody, frameDefs, frameFinish, mix } from './cardFrame';
 import { EMBLEMS2 } from './emblems2';
 
 const ALL_EMBLEMS: Record<string, () => string> = { ...EMBLEMS, ...EMBLEMS2 };
@@ -7,14 +8,6 @@ const ALL_EMBLEMS: Record<string, () => string> = { ...EMBLEMS, ...EMBLEMS2 };
 export const CARD_W = 500;
 export const CARD_H = 700;
 
-function mix(hex: string, other: string, t: number): string {
-  const a = parseInt(hex.slice(1), 16);
-  const b = parseInt(other.slice(1), 16);
-  const r = Math.round(((a >> 16) & 255) * (1 - t) + ((b >> 16) & 255) * t);
-  const g = Math.round(((a >> 8) & 255) * (1 - t) + ((b >> 8) & 255) * t);
-  const bl = Math.round((a & 255) * (1 - t) + (b & 255) * t);
-  return '#' + ((1 << 24) | (r << 16) | (g << 8) | bl).toString(16).slice(1);
-}
 
 const FLEUR =
   'M 0,-11 C 3,-7 4,-3 2,1 C 5,-1 9,-1 10,3 C 8,4 5,4 3,3 L 2,6 L 5,6 L 5,8 L -5,8 L -5,6 L -2,6 L -3,3 C -5,4 -8,4 -10,3 C -9,-1 -5,-1 -2,1 C -4,-3 -3,-7 0,-11 Z';
@@ -97,106 +90,63 @@ function defs(color: string, shade: string): string {
   </defs>`;
 }
 
-function cornerFlourish(): string {
-  // One corner scroll, drawn for the top-left corner; mirrored for the others.
-  const d =
-    'M 40,98 C 40,66 52,48 74,42 C 84,40 96,44 98,54 C 99,62 92,68 85,64 C 80,61 82,54 87,54 M 40,98 C 46,90 54,88 60,92 M 98,40 C 90,46 88,54 92,60';
-  const g = `<path d="${d}" fill="none" stroke="url(#gold)" stroke-width="4" stroke-linecap="round"/>
-             <circle cx="40" cy="40" r="6" fill="url(#gold)" stroke="${INK}" stroke-width="1.5"/>`;
-  return `
-    <g>${g}</g>
-    <g transform="translate(500,0) scale(-1,1)">${g}</g>
-    <g transform="translate(0,700) scale(1,-1)">${g}</g>
-    <g transform="translate(500,700) scale(-1,-1)">${g}</g>`;
-}
-
-function ribbon(): string {
-  return `
-    <g filter="url(#drop)">
-      <path d="M 62,590 L 26,574 L 44,606 L 26,640 L 84,630 Z" fill="#b39a6c" stroke="${INK}" stroke-width="4" stroke-linejoin="round"/>
-      <path d="M 438,590 L 474,574 L 456,606 L 474,640 L 416,630 Z" fill="#b39a6c" stroke="${INK}" stroke-width="4" stroke-linejoin="round"/>
-      <path d="M 60,566 C 160,552 340,552 440,566 L 440,630 C 340,616 160,616 60,630 Z" fill="url(#ribbon)" stroke="${INK}" stroke-width="5" stroke-linejoin="round"/>
-      <path d="M 70,574 C 165,561 335,561 430,574" fill="none" stroke="#fff" stroke-width="3" opacity="0.5"/>
-    </g>`;
-}
-
-function badge(kind: 'instant' | 'target'): string {
-  const cx = 430;
-  const cy = 74;
+function badge(kind: 'instant' | 'target', color: string, ink: string): string {
+  const cx = 414;
+  const cy = 88;
+  const ic = mix(color, '#000000', 0.15);
   const icon =
     kind === 'instant'
-      ? `<path d="M ${cx + 4},${cy - 21} L ${cx - 12},${cy + 3} L ${cx - 1},${cy + 3} L ${cx - 5},${cy + 21} L ${cx + 13},${cy - 4} L ${cx + 2},${cy - 4} Z" fill="${IVORY}" stroke="${INK}" stroke-width="3.5" stroke-linejoin="round"/>`
-      : `<circle cx="${cx}" cy="${cy}" r="17" fill="${IVORY}" stroke="${INK}" stroke-width="3.5"/>
-         <circle cx="${cx}" cy="${cy}" r="10.5" fill="#b3261e" stroke="${INK}" stroke-width="2.5"/>
-         <circle cx="${cx}" cy="${cy}" r="4" fill="${IVORY}" stroke="${INK}" stroke-width="2"/>
-         <path d="M ${cx + 2},${cy - 2} L ${cx + 22},${cy - 22}" stroke="${INK}" stroke-width="4" stroke-linecap="round"/>
-         <path d="M ${cx + 16},${cy - 22} L ${cx + 24},${cy - 26} L ${cx + 22},${cy - 16}" fill="${IVORY}" stroke="${INK}" stroke-width="2.5" stroke-linejoin="round"/>`;
-  return `<g filter="url(#drop)">
-      <circle cx="${cx}" cy="${cy}" r="32" fill="url(#gold)" stroke="${INK}" stroke-width="4"/>
-      <circle cx="${cx}" cy="${cy}" r="25" fill="#3a2410" stroke="#f3d98b" stroke-width="2"/>
+      ? `<path d="M ${cx + 6},${cy - 25} L ${cx - 14},${cy + 4} L ${cx - 1},${cy + 4} L ${cx - 6},${cy + 25} L ${cx + 15},${cy - 5} L ${cx + 2},${cy - 5} Z" fill="${ic}" stroke="${ink}" stroke-width="3" stroke-linejoin="round"/>`
+      : `<circle cx="${cx}" cy="${cy}" r="21" fill="none" stroke="${ic}" stroke-width="7"/>
+         <circle cx="${cx}" cy="${cy}" r="9" fill="${ic}"/>
+         <path d="M ${cx},${cy - 30} L ${cx},${cy - 18} M ${cx},${cy + 18} L ${cx},${cy + 30} M ${cx - 30},${cy} L ${cx - 18},${cy} M ${cx + 18},${cy} L ${cx + 30},${cy}" stroke="${ic}" stroke-width="6" stroke-linecap="round"/>`;
+  return `<g filter="url(#kdrop)">
+      <circle cx="${cx}" cy="${cy}" r="46" fill="url(#krim)" stroke="${mix(color, '#000000', 0.45)}" stroke-width="3"/>
+      <circle cx="${cx}" cy="${cy}" r="37" fill="#fffaf0" stroke="${mix(color, '#ffffff', 0.5)}" stroke-width="2"/>
       ${icon}
     </g>`;
 }
 
 export function cardFaceSVG(type: CardType): string {
   const d = CARD_DEFS[type];
-  const badgeSvg = d.instant ? badge('instant') : d.targeted ? badge('target') : '';
+  const ink = mix(d.shade, '#000000', 0.5);
+  const badgeSvg = d.instant ? badge('instant', d.color, ink) : d.targeted ? badge('target', d.color, ink) : '';
+  const frame = { color: d.color, shade: d.shade, ink };
+  const emblem = ALL_EMBLEMS[type]().split(INK).join(ink);
   return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${CARD_W} ${CARD_H}" width="${CARD_W}" height="${CARD_H}">
-    ${defs(d.color, d.shade)}
-    <rect x="0" y="0" width="500" height="700" rx="38" fill="url(#parch)"/>
-    <rect x="0" y="0" width="500" height="700" rx="38" fill="#fff" filter="url(#stain)" opacity="0.9"/>
-    <rect x="0" y="0" width="500" height="700" rx="38" fill="#fff" filter="url(#grain)"/>
-    <g clip-path="url(#inner)">
-      <rect x="16" y="16" width="468" height="668" fill="url(#field)"/>
-      <rect x="16" y="16" width="468" height="668" fill="url(#damask)"/>
-      <rect x="16" y="16" width="468" height="668" fill="#fff" filter="url(#grain)" opacity="0.6"/>
-      <rect x="16" y="16" width="468" height="668" fill="url(#vig)"/>
-    </g>
-    <rect x="16" y="16" width="468" height="668" rx="26" fill="none" stroke="${INK}" stroke-width="4"/>
-    <rect x="30" y="30" width="440" height="640" rx="18" fill="none" stroke="url(#gold)" stroke-width="5"/>
-    <rect x="40" y="40" width="420" height="620" rx="12" fill="none" stroke="url(#gold)" stroke-width="1.6" opacity="0.8"/>
-    ${cornerFlourish()}
-    <g filter="url(#drop)">${ALL_EMBLEMS[type]()}</g>
-    ${ribbon()}
+    ${defs(d.color, d.shade).replace('</defs>', frameDefs(frame) + '</defs>')}
+    ${frameBody(frame)}
+    ${emblemHalo(d.color)}
+    <g filter="url(#kbold)"><g transform="translate(250,352) scale(1.05) translate(-250,-318)">${emblem}</g></g>
     ${badgeSvg}
+    ${frameFinish(frame)}
   </svg>`;
 }
 
 export function cardBackSVG(): string {
-  const color = '#5a1016';
-  const shade = '#16040a';
+  const color = '#7a1820';
+  const shade = '#1a0508';
   const lattice = `<pattern id="lattice" width="40" height="40" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
-      <rect width="40" height="40" fill="none"/>
-      <path d="M 0,0 L 40,0 M 0,0 L 0,40" stroke="#e6c56a" stroke-width="1.6" opacity="0.22"/>
-      <circle cx="20" cy="20" r="2.2" fill="#e6c56a" opacity="0.28"/>
+      <path d="M 0,0 L 40,0 M 0,0 L 0,40" stroke="#f0d27a" stroke-width="1.8" opacity="0.26"/>
+      <circle cx="20" cy="20" r="2.4" fill="#f0d27a" opacity="0.32"/>
     </pattern>`;
+  const frame = { color, shade, patternId: 'lattice' };
   return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${CARD_W} ${CARD_H}" width="${CARD_W}" height="${CARD_H}">
-    ${defs(color, shade).replace('</defs>', lattice + '</defs>')}
-    <rect x="0" y="0" width="500" height="700" rx="38" fill="url(#parch)"/>
-    <rect x="0" y="0" width="500" height="700" rx="38" fill="#fff" filter="url(#stain)" opacity="0.9"/>
-    <g clip-path="url(#inner)">
-      <rect x="16" y="16" width="468" height="668" fill="url(#field)"/>
-      <rect x="16" y="16" width="468" height="668" fill="url(#lattice)"/>
-      <rect x="16" y="16" width="468" height="668" fill="#fff" filter="url(#grain)" opacity="0.6"/>
-      <rect x="16" y="16" width="468" height="668" fill="url(#vig)"/>
-    </g>
-    <rect x="16" y="16" width="468" height="668" rx="26" fill="none" stroke="${INK}" stroke-width="4"/>
-    <rect x="30" y="30" width="440" height="640" rx="18" fill="none" stroke="url(#gold)" stroke-width="5"/>
-    <rect x="40" y="40" width="420" height="620" rx="12" fill="none" stroke="url(#gold)" stroke-width="1.6" opacity="0.8"/>
-    ${cornerFlourish()}
-    <g filter="url(#drop)">
-      <circle cx="250" cy="340" r="150" fill="#1a0507" stroke="url(#gold)" stroke-width="10"/>
-      <circle cx="250" cy="340" r="134" fill="none" stroke="url(#gold)" stroke-width="2.5"/>
-      ${Array.from({ length: 24 }, (_, i) => {
-        const a = (i / 24) * Math.PI * 2;
-        return `<circle cx="${(250 + Math.cos(a) * 142).toFixed(1)}" cy="${(340 + Math.sin(a) * 142).toFixed(1)}" r="3" fill="#e6c56a"/>`;
+    ${defs(color, shade).replace('</defs>', lattice + frameDefs(frame) + '</defs>')}
+    ${frameBody(frame)}
+    ${emblemHalo('#d9a842', 250, 350, 190)}
+    <g filter="url(#kdrop)">
+      <circle cx="250" cy="350" r="132" fill="url(#krim)" stroke="#2a0a0c" stroke-width="4"/>
+      <circle cx="250" cy="350" r="112" fill="${shade}" stroke="url(#gold)" stroke-width="6"/>
+      ${Array.from({ length: 20 }, (_, i) => {
+        const a = (i / 20) * Math.PI * 2;
+        return `<circle cx="${(250 + Math.cos(a) * 122).toFixed(1)}" cy="${(350 + Math.sin(a) * 122).toFixed(1)}" r="3.2" fill="#c9a24c"/>`;
       }).join('')}
-      <g transform="translate(250,350) rotate(-35) translate(-250,-350)"><path d="M 244,470 L 246,250 L 250,222 L 254,250 L 256,470 Z" fill="#c9a24c"/><rect x="226" y="466" width="48" height="10" rx="4" fill="#c9a24c"/></g>
-      <g transform="translate(250,350) rotate(35) translate(-250,-350)"><path d="M 244,470 L 246,250 L 250,222 L 254,250 L 256,470 Z" fill="#c9a24c"/><rect x="226" y="466" width="48" height="10" rx="4" fill="#c9a24c"/></g>
-      <g transform="translate(250,340) scale(0.78) translate(-250,-330)">${crestHooded()}</g>
+      <g transform="translate(250,356) rotate(-35) translate(-250,-350) translate(0,10) scale(1) "><path d="M 245,440 L 246,262 L 250,240 L 254,262 L 255,440 Z" fill="#d9b25a" stroke="#2a0a0c" stroke-width="3"/></g>
+      <g transform="translate(250,356) rotate(35) translate(-250,-350) translate(0,10)"><path d="M 245,440 L 246,262 L 250,240 L 254,262 L 255,440 Z" fill="#d9b25a" stroke="#2a0a0c" stroke-width="3"/></g>
+      <g transform="translate(250,350) scale(0.8) translate(-250,-330)">${crestHooded('#f0d27a')}</g>
     </g>
-    <path d="M 120,116 C 190,100 310,100 380,116 L 380,152 C 310,138 190,138 120,152 Z" fill="#1a0507" stroke="url(#gold)" stroke-width="3"/>
-    <path d="M 120,548 C 190,562 310,562 380,548 L 380,584 C 310,598 190,598 120,584 Z" fill="#1a0507" stroke="url(#gold)" stroke-width="3"/>
+    ${frameFinish(frame)}
   </svg>`;
 }
 
@@ -215,8 +165,6 @@ export function dedupeAttrs(svg: string): string {
 
 // ------------------------------------------------------------------ rasterising
 
-const FONT_TITLE = '"Grenze Gotisch", "IM Fell English SC", serif';
-
 function svgToImage(svg: string): Promise<HTMLImageElement> {
   return new Promise((resolve, reject) => {
     const img = new Image();
@@ -224,16 +172,6 @@ function svgToImage(svg: string): Promise<HTMLImageElement> {
     img.onerror = (e) => reject(e);
     img.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svg);
   });
-}
-
-function fitText(ctx: CanvasRenderingContext2D, text: string, maxW: number, size: number, font: string): number {
-  let s = size;
-  ctx.font = `${s}px ${font}`;
-  while (ctx.measureText(text).width > maxW && s > 10) {
-    s -= 1;
-    ctx.font = `${s}px ${font}`;
-  }
-  return s;
 }
 
 /** Render one card face (or the back) to a canvas at the given pixel width. */
@@ -245,24 +183,5 @@ export async function renderCard(type: CardType | 'back', width = 512): Promise<
   const ctx = c.getContext('2d')!;
   const img = await svgToImage(dedupeAttrs(type === 'back' ? cardBackSVG() : cardFaceSVG(type)));
   ctx.drawImage(img, 0, 0, c.width, c.height);
-  ctx.save();
-  ctx.scale(scale, scale);
-  ctx.textAlign = 'center';
-  ctx.textBaseline = 'middle';
-  if (type === 'back') {
-    ctx.fillStyle = '#e6c56a';
-    fitText(ctx, 'The Hooded Hand', 230, 30, FONT_TITLE);
-    ctx.fillText('The Hooded Hand', 250, 128);
-    ctx.font = `22px ${FONT_TITLE}`;
-    ctx.fillText('Trust no draw', 250, 570);
-  } else {
-    const name = CARD_DEFS[type].name;
-    fitText(ctx, name, 330, 46, FONT_TITLE);
-    ctx.fillStyle = 'rgba(255,255,255,0.55)';
-    ctx.fillText(name, 250, 597);
-    ctx.fillStyle = '#2a140a';
-    ctx.fillText(name, 250, 595);
-  }
-  ctx.restore();
   return c;
 }

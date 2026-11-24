@@ -60,7 +60,7 @@ export class HandView {
     const arc = Math.abs(d) * Math.abs(d) * ch * 0.012;
     const lowered = this.loweredK * ch * 0.7;
     const y = -halfH + ch * 0.36 - arc + hover * ch * 0.32 - lowered;
-    const z = -this.dist + i * 0.0015 + hover * 0.04;
+    const z = -this.dist + i * 0.0024 + hover * 0.04;
     const r = new THREE.Euler(-0.08 * (1 - hover), 0, -d * 0.045 * (1 - hover));
     return { p: new THREE.Vector3(x, y, z), r, s: s * (1 + hover * 0.14) };
   }
