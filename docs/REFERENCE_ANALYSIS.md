@@ -21,7 +21,7 @@ the moment the deadly card is drawn (~1:19) and stays silent through the death s
 | Time | What happens |
 |---|---|
 | 0:00-0:05 | Main menu. 3D bar interior, camera gently follows the mouse. Floating 3D words: SHOP / PLAY / INVENTORY / CHALLENGES. Hover turns a word red and outlines the linked prop (inventory = briefcase). |
-| 0:06-0:23 | Shop and Inventory (out of scope for now). |
+| 0:06-0:23 | Shop and Inventory. Our original takes are built: the Peddler's Cart shop and the corkboard chest inventory (see HANDOFF.md, "Progression, Shop and Inventory"). |
 | 0:24-0:26 | PLAY clicked: camera glides to a second spot in the same world (theatre box with red curtains, brass lamps). |
 | 0:26-0:31 | Play menu: room list, create room, join private room, card index, leaderboard, ranked. |
 | 0:32-0:37 | Create room -> mode picker: ORIGINAL / TEAMS / SCRIMMAGE / FESTIVE (seasonal) / TUTORIAL. Selected row expands to show a one-line description ("Learn to play."). CLOSE / CHOOSE. |

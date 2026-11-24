@@ -1,6 +1,8 @@
 # The Hooded Hand — handoff notes
 
-Read this first if you are a new Claude session (or a new developer) picking up the project.
+Read this first if you are a new Claude session (or a new developer) picking up the project. Then read
+[`docs/SESSION_CONTEXT.md`](docs/SESSION_CONTEXT.md) (the owner's requests verbatim, decisions, a starter prompt) and
+look at [`docs/screenshots/`](docs/screenshots/) to see the current state.
 
 ## What this is
 

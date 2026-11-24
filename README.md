@@ -13,4 +13,11 @@ npm install
 npm run dev     # http://localhost:5173
 ```
 
-See **[HANDOFF.md](HANDOFF.md)** for architecture, deployment, status and next steps.
+See **[HANDOFF.md](HANDOFF.md)** for architecture, deployment, status and next steps, and
+**[docs/SESSION_CONTEXT.md](docs/SESSION_CONTEXT.md)** for the project's history and a starter prompt for a new chat.
+
+| | |
+|---|---|
+| ![Main menu](docs/screenshots/01-main-menu.jpg) | ![Play menu](docs/screenshots/02-play-menu.jpg) |
+| ![Drawing the Hand](docs/screenshots/05-drew-the-hand.jpg) | ![Teams](docs/screenshots/07-teams-2v2.jpg) |
+| ![Shop](docs/screenshots/09-shop.jpg) | ![Inventory](docs/screenshots/10-inventory.jpg) |
