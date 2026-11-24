@@ -36,7 +36,7 @@ Useful URL parameters (client):
 | Param | Effect |
 |---|---|
 | `?start=original` / `?start=tutorial` | Skip menus, jump straight into a match |
-| `?station=menu\|play\|table\|intro` | Dev: open at a camera station |
+| `?station=play` | Dev: open straight at the play menu (after the title card) |
 | `?q=low\|medium\|high` | Force a quality tier (otherwise auto-detected and adapted at runtime) |
 | `?dtcap=0.4` | Test only: allow big frame steps so slow headless renderers finish animations |
 

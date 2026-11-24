@@ -672,7 +672,7 @@ export class MatchScreen implements Screen {
     }
     if (this.isMe(player) && cards) {
       const jobs = this.scryMeshes.map((cm, i) =>
-        this.fly(cm.root, () => this.camX((i - 1) * 0.135, 0.05 - Math.abs(i - 1) * 0.012, 0.6, 1.1), 0.55, { arc: 0.12, ease: ease.outCubic })
+        this.fly(cm.root, () => this.camX((i - 1) * 0.165, 0.05 - Math.abs(i - 1) * 0.012, 0.62 + Math.abs(i - 1) * 0.02, 1.05), 0.55, { arc: 0.12, ease: ease.outCubic })
       );
       for (let i = 0; i < n; i++) {
         const fl = this.fx.flash(this.table.deckTopWorld(), new THREE.Color(1.8, 0.8, 3), 0.5);

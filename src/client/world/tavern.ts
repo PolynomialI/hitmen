@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { Text } from 'troika-three-text';
 import { FlameField, HearthFire } from '../gfx/flames';
 import { glowSprite, paint } from '../gfx/textures';
+import { batchStatic } from './batch';
 import { Figure } from './figure';
 import { FONT3D } from './fonts3d';
 import { buildMaterials, type Mats } from './materials';
@@ -131,6 +132,13 @@ export class Tavern {
       { light: tableFill, base: 2.2, amp: 0.15, speed: 11, seed: 3 },
       { light: stage, base: 5, amp: 0.1, speed: 8, seed: 4 }
     );
+
+    // ---------------------------------------------------------------- batching
+    const oppChair = this.group.children.find((o) => o.position.distanceTo(this.opponentSeat) < 0.01);
+    const keep: THREE.Object3D[] = [this.barkeep.root, this.menuProps.play, this.menuProps.shop, this.menuProps.inventory, this.menuProps.challenges, this.fire.group, this.flames.mesh];
+    if (oppChair) keep.push(oppChair);
+    const stats = batchStatic(this.group, keep);
+    console.info(`[tavern] batched ${stats.before} static meshes into ${stats.after}`);
 
     // ---------------------------------------------------------------- stations
     this.stations = {
