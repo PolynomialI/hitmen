@@ -105,8 +105,8 @@ export class MatchScreen implements Screen {
       k === 1
         ? tv.stations.table
         : k === 2
-          ? { pos: V(2.82, 1.5, 0.6), target: V(6.2, 1.12, 0.6), look: [0.45, 0.16], fov: 56 }
-          : { pos: V(2.62, 1.66, 0.6), target: V(6.0, 0.98, 0.6), look: [0.5, 0.16], fov: 62 };
+          ? { pos: V(2.05, 1.7, 0.6), target: V(6.2, 0.85, 0.6), look: [0.45, 0.16, 0.035], fov: 60 }
+          : { pos: V(2.0, 1.85, 0.6), target: V(6.2, 0.75, 0.6), look: [0.5, 0.16, 0.035], fov: 62 };
     this.aimStation = k === 1 ? { pos: V(3.4, 2.05, 0.6), target: V(5.25, 0.82, 0.6), look: [0.06, 0.04], fov: 52 } : { pos: V(3.05, 2.65, 0.6), target: V(4.75, 0.5, 0.6), look: [0.06, 0.04], fov: 60 };
     // Opening shot: high above the table, then settle into the seat.
     app.rig.snap({ pos: V(3.4, 3.2, 2.6), target: V(4.6, 0.8, 0.4), look: [0.05, 0.03], fov: 55 });
@@ -326,7 +326,7 @@ export class MatchScreen implements Screen {
     const p: Pickable = {
       object: cm.face,
       priority: -1,
-      enabled: () => !this.aiming && this.hand.cards.includes(cm),
+      enabled: () => !this.aiming && !this.hideUi && this.hand.cards.includes(cm),
       onHover: (on) => {
         if (on) {
           this.hand.hovered = cm;
@@ -1508,14 +1508,21 @@ export class MatchScreen implements Screen {
     tick();
     setPos(0);
     this.hint(this.tut ? 'No one will know where you hide the Hooded Hand. Put it on top.' : 'No one will know where you hide it.');
-    this.hintEl.classList.add('top');
+    this.hintEl.classList.add('below');
     this.hidePreview();
+    // Nothing to play while hiding: put the hand away so it does not cover the Hand.
+    this.hand.hovered = null;
+    this.hand.lowered = 1;
+    // The pointer lives on the slider at the far left; keep the view steady instead of swinging after it.
+    this.app.rig.lookScale = 0.25;
   }
 
   private closeHideUi(): void {
     this.hideUi?.remove();
     this.hideUi = null;
-    this.hintEl.classList.remove('top');
+    this.hintEl.classList.remove('below');
+    this.hand.lowered = 0;
+    this.app.rig.lookScale = 1;
   }
 
   private async onHidden(player: PlayerId, position?: number): Promise<void> {

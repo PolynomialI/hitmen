@@ -822,6 +822,7 @@ button:focus-visible {
   color: #ff3b26;
   text-shadow: 0 0 20px rgba(255, 40, 20, 0.5), 0 3px 0 #2a0402;
   text-align: center;
+  text-wrap: balance;
 }
 .hide-ui .labels {
   display: flex;
@@ -1135,14 +1136,16 @@ button:focus-visible {
     transform: translate(-50%, -140%);
   }
 }
-.hint.top {
+/* Under the cards standing in the air (hiding the Hand), clear of the boards and the sign. */
+.hint.below {
   left: 50%;
-  top: 7%;
-  transform: translateX(-50%);
+  top: 76%;
+  max-width: min(760px, 70vw);
+  transform: translateX(-38%);
   text-align: center;
 }
-.hint.top.out {
-  transform: translate(-50%, 8px);
+.hint.below.out {
+  transform: translate(-38%, 8px);
 }
 .hide-timer {
   grid-column: 1 / 3;

@@ -332,8 +332,11 @@ export class TableView {
       this.group.add(f.root);
       const mate = this.myTeam != null && info.team === this.myTeam;
       const nameColor = info.team != null ? TEAM_COLORS[info.team] : '#f3e6c4';
-      const name = makeText(info.name, { size: 0.058, color: nameColor, glow: 1.1, font: FONT3D.gothic, outline: 0.004 });
-      name.position.copy(f.root.position).add(new THREE.Vector3(0, 0.98, 0));
+      const name = makeText(info.name, { size: 0.07, color: nameColor, glow: 1.1, font: FONT3D.gothic, outline: 0.005 });
+      // Just above the hood tip (hood top is ~1.14 above the figure root), drawn over everything so it is never hidden.
+      name.position.copy(f.root.position).add(new THREE.Vector3(0, 1.2, 0));
+      for (const mt of ([] as THREE.Material[]).concat(name.material)) mt.depthTest = false;
+      name.renderOrder = 27;
       this.group.add(name);
       const badge = new THREE.Sprite(new THREE.SpriteMaterial({ transparent: true, depthWrite: false }));
       badge.scale.setScalar(0.0001);
