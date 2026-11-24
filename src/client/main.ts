@@ -12,6 +12,8 @@ import { h } from './ui/dom';
 import { Hud } from './ui/hud';
 import { profile } from './ui/profile';
 import type { GameMode } from '../shared/types';
+import type { LobbyInfo } from '../shared/online';
+import { OnlineSession } from './net/online';
 
 const uiRoot = document.getElementById('ui')!;
 const app = new App(document.getElementById('app')!, uiRoot);
@@ -55,8 +57,8 @@ document.body.append(loading);
     toMenu(from = 'title') {
       app.setScreen(new MainMenu(nav, from));
     },
-    toPlay() {
-      app.setScreen(new PlayMenu(nav));
+    toPlay(opts) {
+      app.setScreen(new PlayMenu(nav, opts));
     },
     toShop() {
       app.setScreen(new ShopScreen(nav));
@@ -82,16 +84,40 @@ document.body.append(loading);
   const params = new URLSearchParams(location.search);
   const quick = params.get('start') as GameMode | null;
   const rivals = Number(params.get('rivals')) || 1;
+  // Reloaded while seated at an online table? Take the seat back.
+  const resumed = quick ? null : OnlineSession.resume();
+  let lobby: LobbyInfo | null = null;
+  if (resumed) {
+    label.textContent = 'Returning to your table';
+    lobby = await new Promise<LobbyInfo | null>((res) => {
+      const done = (l: LobbyInfo | null) => {
+        off();
+        clearTimeout(t);
+        res(l);
+      };
+      const off = resumed.on({ lobby: (l) => done(l), closed: () => done(null) });
+      const t = setTimeout(() => done(null), 6000);
+    });
+    if (!lobby) resumed.leave();
+  }
   loading.classList.add('gone');
   setTimeout(() => loading.remove(), 1400);
-  if (quick) {
+  if (resumed && lobby?.status === 'playing') {
+    app.gfx.grade.u('uFade').value = 1;
+    app.setScreen(new MatchScreen(nav, { mode: lobby.mode, rivals: lobby.size - 1, online: resumed }));
+  } else if (resumed && lobby) {
+    app.rig.snap(app.tavern.stations.play);
+    nav.toPlay({ lobby: resumed });
+    await tweens.to(1.2, (k) => (app.gfx.grade.u('uFade').value = 1 - k), { ease: ease.outCubic });
+  } else if (quick) {
     app.gfx.grade.u('uFade').value = 1;
     app.setScreen(new MatchScreen(nav, { mode: quick, rivals }));
   } else {
     app.setScreen(new TitleScreen(nav));
     await tweens.to(1.6, (k) => (app.gfx.grade.u('uFade').value = 1 - k), { ease: ease.outCubic });
   }
-  const st = params.get('station');
+  // Dev shortcuts (not when the tab just took its seat back at an online table).
+  const st = resumed && lobby ? null : params.get('station');
   if (st === 'play') nav.toPlay();
   if (st === 'shop') nav.toShop();
   if (st === 'inventory') nav.toInventory();

@@ -53,6 +53,12 @@ Paste this into the new chat (in a Claude Code session with the `PolynomialI/hit
    > Do not cheap out on anything
 7. > push everything including context and hand offs to github for another chat to continue
 
+Second chat (continuing from this file):
+
+8. The starter prompt below ("Continue building ... tell me what you plan to do next ...").
+9. > do whatever you can possiblt do without me creating a render blueprint for this yet but note that github is
+   > blocked on our managed Chromebook so don't build anything to access or refernce from tbere
+
 ## How the requests were interpreted
 
 - **Originality.** A 1:1 copy of another game's name, art and characters is not something we ship. The agreed
@@ -63,6 +69,12 @@ Paste this into the new chat (in a Claude Code session with the `PolynomialI/hit
   server). It is in the repo and works; the owner will set up the Render account and online UI later.
 - **"Ignore emojiRp"**: the cloud session was started on another repo (`emojiRP`); ignore it. All work goes to
   `PolynomialI/hitmen`, branch `main`.
+- **"github is blocked on our managed Chromebook"**: the game must never load anything from GitHub (or a CDN that
+  mirrors it) at runtime, and GitHub Pages is useless to the owner, so it was removed (CI only). The only runtime
+  dependency was troika's fallback-font CDN, now impossible (glyph-safe 3D text + CSP). The game will be played
+  from Render. Docs and dev scripts may still mention GitHub (the repo lives there).
+- **"without me creating a render blueprint yet"**: everything that does not need the owner's Render account was
+  built: online tables (server + UI + reconnect), tested locally with the real server and several browsers.
 - **Chromebook**: everything is procedural (no big asset files), with adaptive resolution, quality tiers
   (`?q=low|medium|high`), static mesh batching and a modest post-processing stack.
 - **Quality bar**: the owner repeatedly asked for nothing "cheap". Every new feature got its own art, animation,
@@ -90,24 +102,35 @@ Paste this into the new chat (in a Claude Code session with the `PolynomialI/hit
 15. Rival body language (lean, flinch, stare, recoil, look at the empty chair).
 16. Handoff docs + Playwright e2e scripts.
 
+Second chat:
+
+17. Self-hosted only: CSP, glyph-safe 3D text and names, e2e fail on off-origin requests, Pages → CI workflow.
+18. Table framing like the reference (camera further back and higher, tiny downward look, sign/boards/rival/deck/pile
+    all above the hand), readable rival name tags, hide step polish, tutorial parry made timing-proof.
+19. Online tables: server rooms (create/join/rejoin/team/start/again/leave, open-table list API, rate limits),
+    OnlineSession + WsTransport, waiting room and Join a Table UI, instant replay on reload, Back to the table.
+
 ## How work was verified
 
 - `npm test`: ~560 bot-vs-bot games across every mode and table size, card-conservation checks, event coverage,
   plus a scripted tutorial student. Passes locally and in GitHub Actions.
 - `scripts/e2e/*.cjs`: headless Chromium plays the tutorial, full 4-player original / teams / winter tables and the
   shop buy-equip-spin flow, clicking real 3D objects, with zero page errors. Screenshots were reviewed by eye.
-- **Not verified:** a real Chromebook (only headless SwiftShader), real online multiplayer in the UI (the server
-  smoke test passes, but there is no lobby UI), sound by ear (audio is generated, never listened to).
+- `scripts/serverSmoke.ts` (real sockets against the dev or bundled production server) and
+  `scripts/e2e/online.cjs` (three headless browsers: create, list, join by code, start, play, reload mid-match,
+  results, another round) cover online tables.
+- **Not verified:** a real Chromebook (only headless SwiftShader), a real Render deployment (the bundled server was
+  run locally), whether the managed Chromebook can reach `*.onrender.com`, sound by ear (audio is generated, never
+  listened to).
 
 ## Owner's open to-dos / known state
 
-- **GitHub Pages is not enabled yet.** Build and tests pass in Actions, but the deploy step fails until the owner
-  sets repo Settings → Pages → Source: **GitHub Actions**. Then it is live at
-  `https://polynomiali.github.io/hitmen/`.
-- Online multiplayer UI (lobby, room codes, reconnect) is deliberately not built yet; the owner wants to do the
-  Render setup together later. Engine, host, `WsTransport`, server and blueprint are ready for it.
-- Leaderboard and Private Table buttons are locked placeholders.
-- Coins/items live in the browser's localStorage; they would need to move server-side once online play exists.
+- **Render is not set up yet** (owner's account): Render dashboard → New → Blueprint → this repo. Until then the
+  game only runs where someone runs `npm start` (or `npm run dev` for bot tables).
+- Online tables are built and tested locally; they unlock automatically when the page is served by the server.
+- The Leaderboard is the local ranked ladder; a real one needs server-side accounts.
+- Coins/items live in the browser's localStorage (also for online tables); move them server-side if they must be
+  trusted.
 
 ## Working style the owner expects
 
@@ -115,4 +138,4 @@ Paste this into the new chat (in a Claude Code session with the `PolynomialI/hit
   and keep going.
 - Commit and push to `main` frequently with descriptive messages; the owner may stop the session at any moment.
 - Keep the owner informed with short progress notes; finish with a plain summary of what was done, what was
-  tested, and what they need to do (e.g. enabling Pages).
+  tested, and what they need to do (e.g. creating the Render service).

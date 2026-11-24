@@ -58,6 +58,8 @@ class Tweens {
   private time = 0;
   /** Global time scale (used to fast-forward when the event queue backs up). */
   scale = 1;
+  /** Every new tween finishes at once (replaying a match's history after a reload). */
+  instant = false;
 
   now(): number {
     return this.time;
@@ -84,6 +86,10 @@ class Tweens {
 
   /** Run fn(easedK, rawK) over dur seconds (after optional delay). Resolves when finished. */
   to(dur: number, fn: (k: number, t: number) => void, opts: { ease?: Ease; delay?: number; tag?: string } = {}): Promise<void> {
+    if (this.instant) {
+      fn((opts.ease ?? ease.inOutCubic)(1), 1);
+      return Promise.resolve();
+    }
     return new Promise((resolve) => {
       this.jobs.push({
         start: this.time + (opts.delay ?? 0),

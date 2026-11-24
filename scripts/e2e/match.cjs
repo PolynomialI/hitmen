@@ -24,6 +24,12 @@ const { autoplay } = require('./autoplay.cjs');
   console.log('final', JSON.stringify(fin), 'actions', actions, 'secs', secs);
   await page.waitForTimeout(3500);
   await snap('end');
+  // Leave the table: the tavern must still be there behind the notice board (a past bug removed it).
+  await page.click('text=Leave the table');
+  await page.waitForTimeout(3500);
+  const meshes = await page.evaluate(() => { let n = 0; window.__app.gfx.scene.traverse((o) => o.isMesh && n++); return n; });
+  if (meshes < 50) { errors.push(`tavern missing after leaving the table (${meshes} meshes)`); console.log('[FAIL] tavern missing after leaving', meshes); }
+  await snap('left');
   console.log('errors', errors.length);
   process.exitCode = errors.length ? 1 : 0;
   await browser.close();

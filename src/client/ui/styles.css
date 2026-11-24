@@ -1872,3 +1872,338 @@ h4 .timer {
     grid-template-columns: repeat(2, 1fr);
   }
 }
+
+/* ------------------------------------------------------------ online tables */
+
+.play-bar .pb {
+  position: relative;
+}
+.pb-count {
+  position: absolute;
+  top: 0;
+  right: 26px;
+  min-width: 20px;
+  height: 20px;
+  padding: 0 5px;
+  border-radius: 10px;
+  font-family: var(--f-title);
+  font-size: 14px;
+  line-height: 20px;
+  color: #fff3d0;
+  background: linear-gradient(180deg, #c4473a, #8a1f14);
+  box-shadow: 0 0 10px rgba(255, 90, 50, 0.6), 0 2px 4px rgba(0, 0, 0, 0.5);
+  opacity: 0;
+  transform: scale(0.4);
+  transition: opacity 0.3s, transform 0.3s var(--ease);
+}
+.pb-count.on {
+  opacity: 1;
+  transform: none;
+}
+
+.who-row .who {
+  font-size: 18px;
+  padding: 5px 10px;
+}
+.who-row .who[disabled] {
+  opacity: 0.35;
+  pointer-events: none;
+}
+
+.panel.lobby,
+.panel.join {
+  width: min(560px, 92vw);
+}
+.panel.lobby h2 {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.panel.lobby .code {
+  font-family: var(--f-title);
+  letter-spacing: 0.12em;
+  color: #8a1f14;
+  padding: 2px 12px 4px;
+  border-radius: 6px;
+  background: rgba(138, 31, 20, 0.1);
+  border: 1px dashed rgba(138, 31, 20, 0.5);
+}
+.panel.lobby .copy {
+  margin-left: auto;
+  font-family: var(--f-label);
+  font-size: 15px;
+  color: #5a3a1e;
+  padding: 6px 12px;
+  border-radius: 6px;
+  background: rgba(90, 50, 20, 0.12);
+  transition: background 0.2s, transform 0.2s var(--ease);
+}
+.panel.lobby .copy:hover {
+  background: rgba(90, 50, 20, 0.22);
+  transform: translateY(-1px);
+}
+.seats {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.seat {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 42px;
+  padding: 6px 12px;
+  border-radius: 6px;
+  background: rgba(90, 50, 20, 0.1);
+  border: 1px solid rgba(90, 50, 20, 0.18);
+  animation: fadein 0.4s ease;
+}
+.seat .dot {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  flex: none;
+  background: radial-gradient(circle at 35% 30%, #f6c76a, #8a5d1a);
+  box-shadow: 0 0 8px rgba(255, 190, 90, 0.6);
+}
+.seat b {
+  font-family: var(--f-title);
+  font-size: 22px;
+  font-weight: 600;
+  color: #3a1608;
+}
+.seat em {
+  font-style: normal;
+  font-family: var(--f-label);
+  font-size: 13px;
+  color: #7a5a3a;
+}
+.seat em.host {
+  color: #8a1f14;
+}
+.seat.me {
+  background: rgba(196, 71, 58, 0.12);
+  border-color: rgba(196, 71, 58, 0.35);
+}
+.seat.away {
+  opacity: 0.55;
+}
+.seat.away .dot {
+  background: #7a6a5a;
+  box-shadow: none;
+}
+.seat.empty {
+  background: transparent;
+  border-style: dashed;
+}
+.seat.empty .dot {
+  background: transparent;
+  border: 2px dashed rgba(90, 50, 20, 0.35);
+  box-shadow: none;
+}
+.seat.empty i {
+  color: #7a5a3a;
+}
+.seat.team-0 .dot {
+  background: radial-gradient(circle at 35% 30%, #ff8a7a, #8a1f14);
+}
+.seat.team-1 .dot {
+  background: radial-gradient(circle at 35% 30%, #8ab8ff, #1f3f8a);
+  box-shadow: 0 0 8px rgba(90, 150, 255, 0.6);
+}
+.team-chip {
+  margin-left: auto;
+  font-family: var(--f-label);
+  font-size: 14px;
+  padding: 4px 12px;
+  border-radius: 12px;
+  color: #fff3d0;
+  transition: transform 0.2s var(--ease), filter 0.2s;
+}
+.team-chip.t0 {
+  background: linear-gradient(180deg, #c4473a, #8a1f14);
+}
+.team-chip.t1 {
+  background: linear-gradient(180deg, #4a7ad8, #1f3f8a);
+}
+.team-chip:not([disabled]):hover {
+  transform: translateY(-1px);
+  filter: brightness(1.15);
+}
+.team-chip:not([disabled])::after {
+  content: ' ⇄';
+}
+.team-chip[disabled] {
+  cursor: default;
+}
+.panel.lobby .note {
+  margin: 10px 0 0;
+  font-style: italic;
+  font-size: 15px;
+  color: #6a4a2e;
+}
+.panel.lobby .wait {
+  font-style: italic;
+  color: #6a4a2e;
+}
+
+.panel.join h3 {
+  margin: 14px 0 8px;
+  font-family: var(--f-label);
+  font-size: 15px;
+  letter-spacing: 0.08em;
+  color: #6a4a2e;
+}
+.open-tables {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: 34vh;
+  overflow-y: auto;
+}
+.open-tables .empty {
+  margin: 0;
+  font-style: italic;
+  color: #6a4a2e;
+}
+.open-table {
+  display: grid;
+  grid-template-columns: 1fr auto auto;
+  align-items: center;
+  gap: 14px;
+  padding: 8px 14px;
+  border-radius: 6px;
+  text-align: left;
+  background: rgba(90, 50, 20, 0.1);
+  border: 1px solid rgba(90, 50, 20, 0.18);
+  transition: background 0.2s, transform 0.2s var(--ease);
+}
+.open-table:hover {
+  background: rgba(196, 71, 58, 0.14);
+  transform: translateX(3px);
+}
+.open-table b {
+  font-family: var(--f-title);
+  font-size: 21px;
+  font-weight: 600;
+  color: #3a1608;
+}
+.open-table span {
+  font-family: var(--f-label);
+  font-size: 14px;
+  color: #6a4a2e;
+}
+.open-table em {
+  font-style: normal;
+  font-family: var(--f-title);
+  font-size: 20px;
+  color: #8a1f14;
+}
+.code-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.code-input {
+  width: 9.5em;
+  padding: 6px 12px;
+  border-radius: 6px;
+  font-family: var(--f-title);
+  font-size: 26px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: #3a1608;
+  background: rgba(255, 250, 230, 0.6);
+  border: 1px solid rgba(90, 50, 20, 0.35);
+  outline: none;
+}
+.code-input:focus {
+  border-color: #c4473a;
+  box-shadow: 0 0 0 3px rgba(196, 71, 58, 0.2);
+}
+.code-input::placeholder {
+  color: rgba(90, 50, 20, 0.3);
+}
+
+/* In a match: the connection to the table is being restored. */
+.net-chip {
+  position: absolute;
+  left: 50%;
+  top: 64px;
+  transform: translateX(-50%);
+  padding: 8px 16px;
+  border-radius: 18px;
+  font-family: var(--f-label);
+  font-size: 15px;
+  color: #ffe0b0;
+  background: rgba(60, 14, 10, 0.88);
+  border: 1px solid rgba(255, 120, 80, 0.5);
+  box-shadow: 0 0 18px rgba(255, 80, 40, 0.35);
+  transition: opacity 0.4s, transform 0.4s var(--ease);
+  animation: netpulse 1.6s ease-in-out infinite;
+}
+.net-chip.out {
+  opacity: 0;
+  transform: translate(-50%, -8px);
+  animation: none;
+}
+@keyframes netpulse {
+  50% {
+    box-shadow: 0 0 4px rgba(255, 80, 40, 0.15);
+  }
+}
+
+/* Short screens (a Chromebook browser window is often ~650px tall): keep the long panels inside the view. */
+@media (max-height: 760px) {
+  .panel {
+    padding: 18px 22px 14px;
+  }
+  .panel h2 {
+    font-size: 32px;
+  }
+  .panel .lede {
+    margin-bottom: 8px;
+  }
+  .panel .row {
+    margin-top: 10px;
+  }
+  .modes {
+    gap: 5px;
+  }
+  .mode {
+    padding: 5px 14px;
+  }
+  .mode b {
+    font-size: 25px;
+  }
+  .size-row {
+    margin-top: 8px;
+  }
+  .size {
+    font-size: 19px;
+    padding: 3px 9px;
+  }
+  .who-row .who {
+    font-size: 16px;
+  }
+  .seat {
+    min-height: 34px;
+    padding: 4px 12px;
+  }
+  .seat b {
+    font-size: 19px;
+  }
+}
+
+/* Narrower windows: the bottom bar sits between Back and the profile chip instead of under the chip. */
+@media (max-width: 1400px) {
+  .play-bar {
+    left: calc(50% - 115px);
+  }
+  .play-bar .pb {
+    width: 96px;
+  }
+}

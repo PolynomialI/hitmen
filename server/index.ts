@@ -1,23 +1,29 @@
 // The Hooded Hand — game server.
-// Serves the built client (dist/) and runs authoritative game rooms over WebSocket at /ws.
+// Serves the built client (dist/) and runs authoritative game rooms over WebSocket at /ws, plus a tiny JSON API
+// (/api/info, /api/rooms). Everything is same-origin: the client never talks to any other host.
 // Deploy on Render with render.yaml (one web service). Locally: `npm run build && npm start`.
 
+import { randomBytes } from 'node:crypto';
 import { createReadStream, existsSync, statSync } from 'node:fs';
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
 import { extname, join, normalize, resolve } from 'node:path';
 import { WebSocketServer, type WebSocket } from 'ws';
-import { Bot } from '../src/shared/bot';
-import { Host } from '../src/shared/host';
-import { RIVALS } from '../src/shared/match';
-import { DEFAULT_TIMERS } from '../src/shared/timing';
-import type { Action, GameEvent, SeatInfo } from '../src/shared/types';
+import type { Host } from '../src/shared/host';
+import { createTableMatch } from '../src/shared/match';
+import { normalizeCode, ONLINE_MODES, ROOM_CODE, seatOptions, type ClientMsg, type LobbyInfo, type Look, type OnlineMode, type RoomSummary, type ServerMsg } from '../src/shared/online';
+import { cleanName } from '../src/shared/text';
+import type { Action, GameEvent } from '../src/shared/types';
 
 const PORT = Number(process.env.PORT) || 8787;
 const DIST = resolve(process.cwd(), 'dist');
-const MAX_SEATS = 6;
-const CLOAKS = ['#5a1a1a', '#2b3b2a', '#3b2a4a', '#4a3322', '#1f2633', '#3a1f1f'];
+const MAX_ROOMS = 300;
+/** How long a seat is kept for a player whose connection dropped. */
+const GRACE_WAITING_MS = 20_000;
+const GRACE_PLAYING_MS = 90_000;
+/** A finished table with nobody asking for another round closes after this long. */
+const OVER_TTL_MS = 5 * 60_000;
 
-// ------------------------------------------------------------------ static files
+// ------------------------------------------------------------------ static files + API
 
 const MIME: Record<string, string> = {
   '.html': 'text/html; charset=utf-8',
@@ -32,13 +38,20 @@ const MIME: Record<string, string> = {
   '.ico': 'image/x-icon',
 };
 
-function serveStatic(req: IncomingMessage, res: ServerResponse): void {
+function json(res: ServerResponse, body: unknown): void {
+  res.writeHead(200, { 'content-type': 'application/json', 'cache-control': 'no-store' });
+  res.end(JSON.stringify(body));
+}
+
+function serve(req: IncomingMessage, res: ServerResponse): void {
   const url = new URL(req.url ?? '/', 'http://x');
   if (url.pathname === '/healthz') {
     res.writeHead(200, { 'content-type': 'text/plain' });
     res.end('ok');
     return;
   }
+  if (url.pathname === '/api/info') return json(res, { online: true, rooms: rooms.size, players: [...rooms.values()].reduce((n, r) => n + r.clients.length, 0) });
+  if (url.pathname === '/api/rooms') return json(res, publicRooms());
   let p = normalize(join(DIST, decodeURIComponent(url.pathname)));
   if (!p.startsWith(DIST)) {
     res.writeHead(403);
@@ -62,108 +75,231 @@ function serveStatic(req: IncomingMessage, res: ServerResponse): void {
 // ------------------------------------------------------------------ rooms
 
 interface Client {
-  ws: WebSocket;
   pid: string;
   name: string;
-  ready: boolean;
+  look?: Look;
+  token: string;
+  ws: WebSocket | null;
+  team: number;
+  grace: NodeJS.Timeout | null;
 }
 
 class Room {
-  readonly code: string;
-  clients: Client[] = [];
+  readonly clients: Client[] = [];
   host: Host | null = null;
+  hostPid = '';
+  status: LobbyInfo['status'] = 'waiting';
+  round = 0;
   private timer: NodeJS.Timeout | null = null;
+  private overTimer: NodeJS.Timeout | null = null;
   private t0 = Date.now();
   private nextPid = 1;
 
-  constructor(code: string) {
-    this.code = code;
-  }
+  constructor(
+    readonly code: string,
+    readonly mode: OnlineMode,
+    readonly size: number,
+    readonly isPublic: boolean
+  ) {}
 
-  now(): number {
+  private now(): number {
     return Date.now() - this.t0;
   }
 
-  join(ws: WebSocket, name: string): Client | null {
-    if (this.host || this.clients.length >= MAX_SEATS) return null;
-    const c: Client = { ws, pid: 'p' + this.nextPid++, name: name.slice(0, 16) || 'Stranger', ready: false };
+  lobby(): LobbyInfo {
+    return {
+      code: this.code,
+      mode: this.mode,
+      size: this.size,
+      public: this.isPublic,
+      status: this.status,
+      round: this.round,
+      seats: this.clients.map((c) => ({ id: c.pid, name: c.name, look: c.look, host: c.pid === this.hostPid, connected: !!c.ws, team: this.mode === 'teams' ? c.team : undefined })),
+    };
+  }
+
+  broadcast(msg: ServerMsg): void {
+    for (const c of this.clients) if (c.ws) send(c.ws, msg);
+  }
+
+  broadcastLobby(): void {
+    this.broadcast({ t: 'lobby', lobby: this.lobby() });
+  }
+
+  /** Seat a new player (only while waiting). */
+  join(ws: WebSocket, name: string, look: Look | undefined): Client | string {
+    if (this.status !== 'waiting') return 'That table is already playing.';
+    if (this.clients.length >= this.size) return 'That table is full.';
+    const teamCount = [0, 1].map((t) => this.clients.filter((c) => c.team === t).length);
+    const c: Client = { pid: 'p' + this.nextPid++, name, look, token: randomBytes(18).toString('base64url'), ws, team: teamCount[0] <= teamCount[1] ? 0 : 1, grace: null };
     this.clients.push(c);
-    send(ws, { t: 'welcome', you: c.pid, room: this.code, seats: this.clients.map((x) => ({ id: x.pid, name: x.name })) });
+    if (!this.hostPid) this.hostPid = c.pid;
+    send(ws, { t: 'welcome', you: c.pid, token: c.token, room: this.code });
     this.broadcastLobby();
     return c;
   }
 
-  broadcastLobby(): void {
-    for (const c of this.clients) send(c.ws, { t: 'lobby', seats: this.clients.map((x) => ({ id: x.pid, name: x.name, ready: x.ready })) });
-  }
-
-  ready(c: Client): void {
-    c.ready = true;
-    this.broadcastLobby();
-    if (this.clients.every((x) => x.ready)) this.start();
-  }
-
-  start(): void {
-    if (this.host) return;
-    const seats: SeatInfo[] = this.clients.map((c, i) => ({ id: c.pid, name: c.name, isBot: false, seat: i, epithet: 'Known for playing with fire', cloak: CLOAKS[i % CLOAKS.length] }));
-    const bots: Bot[] = [];
-    if (seats.length < 2) {
-      const r = RIVALS[Math.floor(Math.random() * RIVALS.length)];
-      seats.push({ id: 'bot1', name: r.name, isBot: true, seat: seats.length, epithet: r.epithet, cloak: r.cloak });
-      bots.push(new Bot('bot1', Date.now() & 0xffff, 0.8));
+  /** Re-attach a player whose connection dropped (or who reloaded the page). */
+  rejoin(ws: WebSocket, token: string, since: number, round: number): Client | string {
+    const c = this.clients.find((x) => x.token === token);
+    if (!c) return 'Your seat at that table is gone.';
+    if (c.ws && c.ws !== ws) c.ws.close(4000, 'replaced');
+    c.ws = ws;
+    if (c.grace) clearTimeout(c.grace);
+    c.grace = null;
+    send(ws, { t: 'welcome', you: c.pid, token: c.token, room: this.code });
+    send(ws, { t: 'lobby', lobby: this.lobby() });
+    if (this.host && this.status === 'playing') {
+      const evs = this.host.history(c.pid);
+      // A different round (the table moved on while they were away) means the whole current match.
+      const from = round === this.round ? Math.max(0, Math.min(evs.length, Math.floor(since) || 0)) : 0;
+      send(ws, { t: 'history', evs: evs.slice(from), from });
     }
-    const host = new Host({ mode: 'original', deck: 'original', seed: (Math.random() * 2 ** 31) | 0, ...DEFAULT_TIMERS, handSize: seats.length >= 5 ? 4 : 5 }, seats, {}, bots);
-    for (const c of this.clients) host.listen(c.pid, (ev: GameEvent) => send(c.ws, { t: 'event', ev }));
+    this.broadcast({ t: 'presence', id: c.pid, connected: true });
+    if (this.status === 'waiting') this.broadcastLobby();
+    return c;
+  }
+
+  setTeam(c: Client, team: number): void {
+    if (this.status !== 'waiting' || this.mode !== 'teams' || (team !== 0 && team !== 1)) return;
+    if (this.clients.filter((x) => x.team === team && x !== c).length >= this.size / 2) return;
+    c.team = team;
+    this.broadcastLobby();
+  }
+
+  start(c: Client): void {
+    if (this.status !== 'waiting' || c.pid !== this.hostPid) return;
+    if (this.mode === 'teams' && [0, 1].some((t) => this.clients.filter((x) => x.team === t).length > this.size / 2)) {
+      send(c.ws!, { t: 'error', message: 'Too many players on one team.' });
+      return;
+    }
+    const humans = this.clients.map((x) => ({ id: x.pid, name: x.name, look: x.look, team: this.mode === 'teams' ? x.team : undefined }));
+    const { host } = createTableMatch({ mode: this.mode, size: this.size, humans, seed: (Math.random() * 2 ** 31) | 0 });
+    for (const x of this.clients) host.listen(x.pid, (ev: GameEvent) => x.ws && send(x.ws, { t: 'event', ev }));
     this.host = host;
+    this.status = 'playing';
+    this.round++;
+    this.t0 = Date.now();
+    this.broadcastLobby();
     host.start(this.now());
     this.timer = setInterval(() => {
       host.tick(this.now());
-      if (host.engine.phase === 'over') this.closeSoon();
+      if (host.engine.phase === 'over' && this.status === 'playing') this.finish();
     }, 50);
   }
 
-  act(c: Client, id: number, a: Action): void {
-    if (!this.host) return;
-    const result = this.host.act(c.pid, a, this.now());
-    send(c.ws, { t: 'result', id, result });
-  }
-
-  leave(c: Client): void {
-    this.clients = this.clients.filter((x) => x !== c);
-    if (this.host) this.host.leave(c.pid, this.now());
-    else this.broadcastLobby();
-    if (!this.clients.length) this.close();
-  }
-
-  private closing = false;
-  private closeSoon(): void {
-    if (this.closing) return;
-    this.closing = true;
-    setTimeout(() => this.close(), 30_000);
-  }
-
-  close(): void {
+  private finish(): void {
+    this.status = 'over';
     if (this.timer) clearInterval(this.timer);
     this.timer = null;
+    this.broadcastLobby();
+    this.overTimer = setTimeout(() => this.close('The table has closed.'), OVER_TTL_MS);
+  }
+
+  /** Back to the lobby for another round (anyone may ask once the match is over). */
+  again(): void {
+    if (this.status !== 'over') return;
+    if (this.overTimer) clearTimeout(this.overTimer);
+    this.overTimer = null;
+    this.host = null;
+    this.status = 'waiting';
+    // Players who never came back are not kept for the next round.
+    for (const c of [...this.clients]) if (!c.ws) this.remove(c);
+    if (this.clients.length) this.broadcastLobby();
+  }
+
+  act(c: Client, id: number, a: Action): void {
+    if (!this.host || this.status !== 'playing') return;
+    let result;
+    try {
+      result = this.host.act(c.pid, a, this.now());
+    } catch {
+      result = { ok: false, err: 'bad action' };
+    }
+    if (c.ws) send(c.ws, { t: 'result', id, result });
+  }
+
+  /** The socket closed: keep the seat for a while so the player can come back. */
+  dropped(c: Client): void {
+    c.ws = null;
+    if (c.grace) clearTimeout(c.grace);
+    c.grace = setTimeout(() => this.remove(c), this.status === 'playing' ? GRACE_PLAYING_MS : GRACE_WAITING_MS);
+    this.broadcast({ t: 'presence', id: c.pid, connected: false });
+    if (this.status !== 'playing') this.broadcastLobby();
+  }
+
+  /** The player is gone for good (left, or never came back). */
+  remove(c: Client): void {
+    if (c.grace) clearTimeout(c.grace);
+    c.grace = null;
+    const i = this.clients.indexOf(c);
+    if (i < 0) return;
+    this.clients.splice(i, 1);
+    if (this.host && this.status === 'playing') this.host.leave(c.pid, this.now());
+    if (c.pid === this.hostPid) this.hostPid = this.clients[0]?.pid ?? '';
+    if (!this.clients.length) this.close();
+    else this.broadcastLobby();
+  }
+
+  close(message?: string): void {
+    if (this.timer) clearInterval(this.timer);
+    if (this.overTimer) clearTimeout(this.overTimer);
+    this.timer = this.overTimer = null;
+    for (const c of this.clients) {
+      if (c.grace) clearTimeout(c.grace);
+      if (message && c.ws) send(c.ws, { t: 'error', message, fatal: true });
+    }
     rooms.delete(this.code);
   }
 }
 
 const rooms = new Map<string, Room>();
 
-function send(ws: WebSocket, msg: unknown): void {
+function publicRooms(): RoomSummary[] {
+  const out: RoomSummary[] = [];
+  for (const r of rooms.values()) {
+    if (!r.isPublic || r.status !== 'waiting' || r.clients.length >= r.size) continue;
+    out.push({ code: r.code, host: r.clients.find((c) => c.pid === r.hostPid)?.name ?? '?', mode: r.mode, size: r.size, players: r.clients.length });
+  }
+  return out.slice(0, 40);
+}
+
+function send(ws: WebSocket, msg: ServerMsg): void {
   if (ws.readyState === 1) ws.send(JSON.stringify(msg));
 }
 
-// ------------------------------------------------------------------ server
+function randomCode(): string {
+  const A = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+  for (;;) {
+    let s = '';
+    for (let i = 0; i < 5; i++) s += A[Math.floor(Math.random() * A.length)];
+    if (!rooms.has(s)) return s;
+  }
+}
 
-const http = createServer(serveStatic);
+/** Cosmetic ids are only ever used as lookup keys on the client; keep them short and plain. */
+function cleanLook(l: unknown): Look | undefined {
+  if (!l || typeof l !== 'object') return undefined;
+  const out: Look = {};
+  for (const k of ['sleeve', 'impact', 'seat', 'banner', 'charm'] as const) {
+    const v = (l as Record<string, unknown>)[k];
+    if (typeof v === 'string' && /^[a-z0-9_]{1,32}$/.test(v)) out[k] = v;
+  }
+  return out;
+}
+
+// ------------------------------------------------------------------ sockets
+
+const http = createServer(serve);
 const wss = new WebSocketServer({ server: http, path: '/ws', maxPayload: 16 * 1024 });
 
 wss.on('connection', (ws) => {
   let room: Room | null = null;
   let me: Client | null = null;
   let alive = true;
+  // Simple flood guard: at most 40 messages per 2 seconds.
+  let budget = 40;
+  const refill = setInterval(() => (budget = 40), 2000);
   ws.on('pong', () => (alive = true));
   const ping = setInterval(() => {
     if (!alive) return ws.terminate();
@@ -171,37 +307,76 @@ wss.on('connection', (ws) => {
     ws.ping();
   }, 20_000);
 
+  const fail = (message: string) => send(ws, { t: 'error', message, fatal: true });
+
   ws.on('message', (raw) => {
-    let msg: { t?: string; room?: string; name?: string; id?: number; action?: Action };
+    if (--budget < 0) return;
+    let msg: ClientMsg;
     try {
       msg = JSON.parse(String(raw));
     } catch {
       return;
     }
-    if (msg.t === 'join' && !room) {
-      const code = String(msg.room ?? '').toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 8) || randomCode();
-      room = rooms.get(code) ?? new Room(code);
-      rooms.set(code, room);
-      me = room.join(ws, String(msg.name ?? ''));
-      if (!me) {
-        send(ws, { t: 'error', message: 'That table is full or already playing.' });
-        room = null;
+    if (!msg || typeof msg !== 'object') return;
+    switch (msg.t) {
+      case 'create': {
+        if (room) return;
+        if (rooms.size >= MAX_ROOMS) return fail('The tavern is full tonight. Try again soon.');
+        const mode = ONLINE_MODES.includes(msg.mode) ? msg.mode : 'original';
+        const size = seatOptions(mode).includes(msg.size) ? msg.size : seatOptions(mode)[0];
+        const r = new Room(randomCode(), mode, size, !!msg.public);
+        rooms.set(r.code, r);
+        const c = r.join(ws, cleanName(msg.name), cleanLook(msg.look));
+        if (typeof c === 'string') return fail(c);
+        room = r;
+        me = c;
+        return;
       }
-    } else if (msg.t === 'ready' && room && me) room.ready(me);
-    else if (msg.t === 'action' && room && me && msg.action && typeof msg.id === 'number') room.act(me, msg.id, msg.action);
+      case 'join': {
+        if (room) return;
+        const code = normalizeCode(String(msg.room ?? ''));
+        const r = ROOM_CODE.test(code) ? rooms.get(code) : undefined;
+        if (!r) return fail('No table with that code. Check the letters and try again.');
+        const c = r.join(ws, cleanName(msg.name), cleanLook(msg.look));
+        if (typeof c === 'string') return fail(c);
+        room = r;
+        me = c;
+        return;
+      }
+      case 'rejoin': {
+        if (room) return;
+        const r = rooms.get(normalizeCode(String(msg.room ?? '')));
+        if (!r) return fail('That table has closed.');
+        const c = r.rejoin(ws, String(msg.token ?? ''), Number(msg.since), Number(msg.round));
+        if (typeof c === 'string') return fail(c);
+        room = r;
+        me = c;
+        return;
+      }
+    }
+    if (!room || !me) return;
+    switch (msg.t) {
+      case 'team':
+        return room.setTeam(me, Number(msg.team));
+      case 'start':
+        return room.start(me);
+      case 'again':
+        return room.again();
+      case 'leave':
+        room.remove(me);
+        room = me = null;
+        return;
+      case 'action':
+        if (msg.action && typeof msg.action === 'object' && typeof msg.id === 'number') room.act(me, msg.id, msg.action);
+        return;
+    }
   });
 
   ws.on('close', () => {
     clearInterval(ping);
-    if (room && me) room.leave(me);
+    clearInterval(refill);
+    if (room && me && me.ws === ws) room.dropped(me);
   });
 });
-
-function randomCode(): string {
-  const A = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
-  let s = '';
-  for (let i = 0; i < 5; i++) s += A[Math.floor(Math.random() * A.length)];
-  return s;
-}
 
 http.listen(PORT, () => console.log(`The Hooded Hand server listening on :${PORT} (static from ${DIST})`));

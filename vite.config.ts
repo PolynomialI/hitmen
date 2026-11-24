@@ -12,7 +12,9 @@ export default defineConfig({
   server: {
     port: 5173,
     proxy: {
+      // Online tables in dev: run the game server too (npm run server:dev).
       '/ws': { target: 'ws://localhost:8787', ws: true },
+      '/api': { target: 'http://localhost:8787' },
     },
   },
 });

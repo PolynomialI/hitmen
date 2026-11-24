@@ -46,6 +46,8 @@ class AudioEngine {
   private bar = 0;
   private drone: { stop: () => void; gain: GainNode } | null = null;
   private muted = false;
+  /** Silences effects without touching the player's mute setting (e.g. while replaying a match's history). */
+  suppressed = false;
   /** 0..1 tension (raises drone, adds pulse). */
   tension = 0;
 
@@ -171,7 +173,7 @@ class AudioEngine {
   }
 
   play(name: Sfx, opts: { vol?: number; at?: number } = {}): void {
-    if (!this.ctx || this.muted) return;
+    if (!this.ctx || this.muted || this.suppressed) return;
     const v = opts.vol ?? 1;
     const at = opts.at ?? 0;
     switch (name) {

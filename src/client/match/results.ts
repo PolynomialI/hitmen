@@ -137,10 +137,11 @@ export async function showResults(s: MatchScreen): Promise<void> {
   renderList('Daily', profile.daily.items);
   renderList('Weekly', profile.weekly.items);
 
-  const again = h('button', { class: 'btn-text' }, mode === 'tutorial' ? 'Play for real' : 'Another round');
+  const again = h('button', { class: 'btn-text' }, mode === 'tutorial' ? 'Play for real' : s.opts.online ? 'Back to the table' : 'Another round');
   again.addEventListener('click', () => {
     audio.play('click');
-    s.nav.startMatch(mode === 'tutorial' ? { mode: 'original', rivals: 1 } : s.opts);
+    if (s.opts.online) s.backToTable();
+    else s.nav.startMatch(mode === 'tutorial' ? { mode: 'original', rivals: 1 } : s.opts);
   });
   const leave = h('button', { class: 'btn-text' }, 'Leave the table');
   leave.addEventListener('click', () => {
