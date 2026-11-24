@@ -4,13 +4,16 @@ A candle-lit medieval tavern card game of nerve and treachery. Draw a card, and 
 
 - Plays in the browser (built for Chromebooks), fully 3D, all art and sound generated in code.
 - 20 cards; tables for 2–6 players: Original, Duel, Teams (2v2), Winter Feast, Ranked, Scrimmage, Tutorial and
-  spectating, all against bots for now. The engine and server are multiplayer-ready (Render blueprint included).
+  spectating against tavern regulars (bots), plus **online tables** with friends (open or private by code, bots fill
+  empty chairs, reconnect) when served by the game server (`npm start`, Render blueprint included).
+- Fully self-hosted: the page never loads anything from another site.
 - Peddler's Cart shop, inventory with mutations, cosmetics (sleeves, playmats, death impacts, charms, chairs,
   banners), levels, daily and weekly challenges, ranked renown.
 
 ```bash
 npm install
-npm run dev     # http://localhost:5173
+npm run dev     # bot tables only: http://localhost:5173
+npm run build && npm start   # everything incl. online tables: http://localhost:8787
 ```
 
 See **[HANDOFF.md](HANDOFF.md)** for architecture, deployment, status and next steps, and

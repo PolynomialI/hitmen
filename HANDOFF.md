@@ -17,8 +17,15 @@ Decisions the owner made:
 - Setting: **medieval tavern**. Name: **The Hooded Hand**.
 - Every card and mode of the reference game has an original equivalent (table below), plus Shop, Inventory,
   Challenges, levels and ranked.
-- Online play: wired in code (server + `WsTransport`) but **not exposed in the UI yet**. The owner will set up Render
-  later; until then all tables are vs bots ("support for multiplayer, but bot tables to test").
+- **Online tables are built** (create a table, open-tables list, join by code, waiting room, bots fill empty chairs,
+  reconnect/resume after a reload, another round). They appear whenever the page is served by the game server
+  (`npm start`, i.e. Render); on a bare static host they stay locked and every table is vs bots. The owner will create
+  the Render service from `render.yaml` later.
+- **GitHub is blocked on the owner's managed Chromebook.** Nothing the game loads at runtime may come from GitHub
+  (github.com, github.io, raw.githubusercontent) or a CDN that mirrors it: the page is fully self-hosted by whatever
+  serves it. A Content-Security-Policy (`index.html`) only allows fetch/WebSocket to the page's own origin, and the
+  e2e scripts fail on any off-origin request. GitHub Pages was dropped for this reason (CI only now); the game will
+  be played from Render.
 - Must run well on a **Chromebook** (adaptive resolution and quality tiers are built in).
 - Push everything to `PolynomialI/hitmen` on `main`. The owner may halt work at any moment, so commit and push often.
 
@@ -31,8 +38,12 @@ npm test               # rules simulation: ~560 bot games over every mode/size +
 npm run typecheck
 npm run build          # client -> dist/, server -> dist-server/
 npm start              # serves dist/ and the WebSocket game server on :8787 (Render runs this)
-npx tsx scripts/serverSmoke.ts   # with the server running: two WS players play a full online game
+npm run server:dev     # the game server alone (tsx watch); with `npm run dev`, Vite proxies /ws and /api to it
+npx tsx scripts/serverSmoke.ts   # with a server running (BASE=http://localhost:8787): the online protocol end to end
 ```
+
+To try online tables locally: `npm run build && npm start`, then open http://localhost:8787 in two browser windows
+(use a private window for the second player, since the profile lives in localStorage).
 
 Browser end-to-end tests (Playwright + Chromium; with `npm run dev` running in another terminal). They print page
 errors, save screenshots to `e2e-shots/` (gitignored) and exit non-zero on any page error:
@@ -43,7 +54,14 @@ node scripts/e2e/match.cjs original 3 orig    # auto-plays a 4-player table: <mo
 node scripts/e2e/match.cjs teams 3 teams
 node scripts/e2e/match.cjs winter 3 winter
 node scripts/e2e/shop.cjs                     # buys + equips a daily ware, spins Fate's Wheel, checks it in a match
+# Online (needs the game server serving the build: npm run build && npm start):
+BASE=http://localhost:8787 node scripts/e2e/online.cjs   # 3 players: create, open-tables list, join by code,
+                                                         # start, play, reload mid-match, results, another round
 ```
+
+Tip: the dev server hot-reloads, so editing `src/` while a long e2e run uses it reloads the test's pages. For long
+runs, test a frozen build instead: `npx vite build --outDir /tmp/snap && npx vite preview --outDir /tmp/snap --port
+5174`, then `BASE=http://localhost:5174`. Likewise, do not rebuild `dist/` while `online.cjs` runs against it.
 
 On a fresh machine run `npx playwright install chromium` once. Headless runs use SwiftShader, which is slow; the
 scripts pass `?q=low&dtcap=0.4` so animations still complete.
@@ -62,11 +80,13 @@ To reset a local profile: devtools → Application → Local Storage → delete 
 
 ## Deploy
 
-- **GitHub Pages (bot games only):** `.github/workflows/pages.yml` builds, runs the sims, and publishes `dist/` on
-  every push to `main`. **One-time, owner only:** repo Settings → Pages → Source: **GitHub Actions** (until then the
-  deploy step fails while build and tests pass). URL: `https://polynomiali.github.io/hitmen/`.
-- **Render (online-ready):** `render.yaml` is a Blueprint for one Node web service (`npm ci && npm run build`, then
-  `npm start`, health check `/healthz`). Free plan sleeps when idle (first visit waits ~1 min).
+- **Render (where the game will be played):** `render.yaml` is a Blueprint for one Node web service
+  (`npm ci && npm run build`, then `npm start`, health check `/healthz`). It serves the client and the online tables
+  from one origin. Free plan sleeps when idle (first visit waits ~1 min). Owner, when ready: Render dashboard → New →
+  Blueprint → pick this repo. (Check the Chromebook can reach `*.onrender.com`; if the school/admin blocks it too, a
+  custom domain on the Render service is the fallback.)
+- **CI:** `.github/workflows/ci.yml` runs typecheck, the sims and a full build on every push. There is no GitHub
+  Pages deploy (github.io is blocked on the owner's Chromebook).
 
 ## Cards
 
@@ -132,6 +152,19 @@ Bots: `src/shared/bot.ts` play every card with human-like delays; they only see 
   `apply.ts` (applies the loadout to card backs, table felt, banners; `lookFromProfile()` is sent with the player's
   seat so other clients/bots can render it). Categories: card sleeve, playmat, death impact (dust, embers, gold,
   frost, ravens, holy, smoke), table charm, chair, banner. Bots wear random looks.
+- Legendary and contraband sleeves (and any prismatic one) **shimmer**: a band of light in the sleeve's accent colour
+  sweeps across every card back every few seconds (`backGlint` / `addGlint` in `match/cardMesh.ts`, switched in
+  `applyCosmetics`, so shop/inventory previews show it too).
+
+## Emotes
+
+The speech button beside Sound/Leave in a match (or keys 1-6) calls a phrase across the table: *Well played.*,
+*Ha! Ha!*, *Mercy, I beg you!*, *Curses!*, *The Hand is coming for you.*, *A toast to the fallen!*
+(`src/shared/emotes.ts`). It shows as a parchment speech bubble over the speaker's head (yours rises above your hand),
+2.5 s cooldown. Tavern regulars react now and then (marked with a Bounty, drawing the Hand, surviving it, a rival
+slain, winning), timed to land as the animation plays out; this lives in `Host` so bot tables and the server's
+online tables behave the same. Online, emotes go through the server (`emote` message, validated and rate-limited)
+to everyone else at the table. Emotes are cosmetic: never part of the rules or the event log.
 
 ## Architecture
 
@@ -143,7 +176,11 @@ src/shared/        Pure TypeScript, runs in browser AND on the server
   host.ts          Runs a match: engine + bots + filtered event delivery to listeners
   bot.ts           Bot AI
   tutorial.ts      Stacked deck + scripted rival for the tutorial
-  match.ts         createLocalMatch() for every mode, named RIVALS, random bot looks
+  match.ts         createLocalMatch() for every mode, createTableMatch() for online tables (players + regulars,
+                   teams seated alternately), named RIVALS, seeded bot looks
+  online.ts        Online protocol types (ClientMsg / ServerMsg / LobbyInfo), modes and seat options
+  text.ts          safeGlyphs() / cleanName(): 3D text only uses glyphs the bundled fonts have (else troika would
+                   fetch fallback fonts from a CDN); names are cleaned to that set on client and server
   timing.ts        Presentation durations (DUR) the host reserves per event so clients can animate
   types.ts         GameMode, SeatInfo (with team, look), Action, GameEvent, PlayerView
 src/client/
@@ -162,12 +199,15 @@ src/client/
                    hints, rival body language), tableView.ts (2–6 seats around the table, chairs, hands, name
                    tags, wards, turn glow, order ring, chains, boards, hourglass), handView.ts (3D hand parented to
                    the camera, lock overlay), results.ts, cardMesh.ts, fx.ts
-  screens/         menus.ts (title, main menu, play menu: tickets, table picker, codex, ladder, spectate),
+  screens/         menus.ts (title, main menu, play menu: tickets, table picker incl. "who sits with you", codex,
+                   ladder, spectate), lobby.ts (online waiting room, Join a Table: open tables + code),
                    shop.ts (Shop, Inventory, Challenges board)
   audio/audio.ts   100% procedural WebAudio: lute music + drone, fire ambience, every SFX
-  net/transport.ts LocalTransport (in-browser host for bot games), WsTransport (online, not yet in UI)
+  net/transport.ts LocalTransport (in-browser host for bot games), WsTransport (online, over an OnlineSession)
+  net/online.ts    OnlineSession: one same-origin WebSocket per table, auto-reconnect, resume after reload
+                   (seat token in sessionStorage), event buffer; serverAvailable() / listRooms() via /api
   ui/              styles.css, dom helpers, HUD (level, coins, rubies), profile, progression
-server/index.ts    Static file server + WebSocket rooms (join/ready/action), same Host as the browser
+server/index.ts    Static files + /api/info + /api/rooms + WebSocket rooms (see "Online tables"), same Host as the browser
 scripts/           sim.ts (rules tests), serverSmoke.ts (online smoke test), e2e/ (Playwright browser tests)
 ```
 
@@ -179,13 +219,34 @@ The world is one continuous tavern: camera "stations" are defined in `Tavern.sta
 at the notice board, table at the card den, shop at the merchant stall, inventory at the corkboard). Menus glide
 between them; the match fades in at the table.
 
+## Online tables
+
+How it plays: Play menu → **Create Table** → pick a mode (Original, Teams, Winter Feast) and seats, then **Who sits
+with you**: *Tavern regulars* (bots, as before), *Open table* (listed for everyone) or *Private table* (code only).
+That opens the table's **waiting room** (code + Copy, seats, empty chairs, team chips in Teams). Others join from
+**Join a Table** (open tables, with a count badge on the button, or a code). The host clicks **Start the night**;
+regulars (named bots with random looks) take the empty chairs. In a match, a dropped connection shows a
+"reconnecting" chip and the seat is held (90 s in a match, 20 s in the waiting room; the turn timer keeps running,
+so an absent player auto-draws). Reloading the page takes the seat back: the server sends the match so far and the
+match screen replays it instantly (`tweens.instant`, `audio.suppressed`). After the results, **Back to the table**
+returns everyone to the waiting room for another round; if the host starts it while you are still on the results,
+you are sat down automatically. Leaving an online match gives up the seat (counts as slain).
+
+Server (`server/index.ts`): rooms keyed by a 5-letter code; `create` / `join` / `rejoin {token, since, round}` /
+`team` / `start` (host only) / `again` / `leave` / `action`; replies `welcome {you, token}`, `lobby {LobbyInfo}`,
+`event`, `history {evs, from}` (events missed since `since`, or the whole match when `from` is 0), `result`,
+`presence`, `error {fatal?}`. Names are cleaned (`cleanName`), looks are reduced to short ids, messages are
+rate-limited, at most 300 rooms, finished tables close after 5 min. Rewards are still granted client-side from the
+local profile (see Next steps).
+
 ## Next steps (suggested order)
 
-1. Owner review on a real Chromebook; tune quality tiers, timings and camera framing from feedback.
-2. Online play UI (owner wants this on Render later): lobby with create/join by room code via `WsTransport`, seat
-   looks from `SeatInfo.look`, reconnect using `Host.history()`, server-side profile/economy if coins must be trusted.
-3. More cosmetics and seasonal wares; emotes; card-back animations for top-rarity sleeves.
-4. Leaderboard and Private Table buttons in the play menu are placeholders (locked).
+1. Owner: create the Render service from `render.yaml`; check it loads on the managed Chromebook; then review on the
+   real device (quality tiers, timings, camera framing).
+2. Online polish once real players try it: a host "kick", spectating an online table, and a server-side
+   profile/economy if coins must be trusted (today they live in localStorage).
+3. More cosmetics and seasonal wares; per-player sleeves at the table (today every back shows your own sleeve).
+4. The Leaderboard is the local ranked ladder (named rivals); a real one needs server-side accounts.
 
 ## Gotchas
 
@@ -198,3 +259,9 @@ between them; the match fades in at the table.
 - Fonts: fontsource packages, loaded before card textures are rasterised (`loadFonts()`).
 - The merchant stall is built after static batching, so it can be animated and re-skinned.
 - The reference video is the `reference-video` release asset on this repo; see `docs/REFERENCE_ANALYSIS.md`.
+- Runtime is same-origin only (CSP `connect-src 'self'`). Any new 3D text goes through `makeText` (which applies
+  `safeGlyphs`); text set directly on a troika `Text` must stay within the bundled fonts' glyphs (Latin-1).
+- Table camera: `Station.look` takes an optional third value, the downward pitch limit (the table stations keep it
+  tiny so the Your Turn sign never leaves the frame while the pointer is over the hand).
+- Online match screen: a `start` event arriving at a screen that already started means a new round; the handler
+  returns false (event stays queued in the session) and a fresh MatchScreen takes it.

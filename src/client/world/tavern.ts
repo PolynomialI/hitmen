@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { Text } from 'troika-three-text';
+import { safeGlyphs } from '../../shared/text';
 import { FlameField, HearthFire } from '../gfx/flames';
 import { glowSprite, paint } from '../gfx/textures';
 import { batchStatic } from './batch';
@@ -12,7 +13,8 @@ export interface Station {
   pos: THREE.Vector3;
   target: THREE.Vector3;
   /** Look-around range in radians (yaw, pitch). */
-  look: [number, number];
+  /** Look-around range in radians: [yaw, pitch up, pitch down (defaults to pitch up)]. */
+  look: [number, number, number?];
   fov?: number;
 }
 
@@ -21,7 +23,7 @@ export function makeText(
   o: { font?: string; size?: number; color?: THREE.ColorRepresentation; glow?: number; anchorX?: string; anchorY?: string; maxWidth?: number; align?: 'left' | 'center' | 'right'; letterSpacing?: number; outline?: number; outlineColor?: string }
 ): Text {
   const t = new Text();
-  t.text = str;
+  t.text = safeGlyphs(str);
   t.font = o.font ?? FONT3D.gothic;
   t.fontSize = o.size ?? 0.1;
   t.anchorX = o.anchorX ?? 'center';
@@ -146,7 +148,9 @@ export class Tavern {
       intro: { pos: new THREE.Vector3(-0.6, 1.9, 2.6), target: new THREE.Vector3(-2.6, 1.3, -4.6), look: [0.05, 0.03], fov: 50 },
       menu: { pos: new THREE.Vector3(-2.64, 1.62, -1.92), target: new THREE.Vector3(-2.62, 1.3, -4.6), look: [0.16, 0.08], fov: 50 },
       play: { pos: new THREE.Vector3(-4.25, 1.7, 0.55), target: new THREE.Vector3(-7.9, 1.66, 0.55), look: [0.14, 0.07], fov: 48 },
-      table: { pos: new THREE.Vector3(2.9, 1.42, 0.6), target: new THREE.Vector3(6.4, 1.3, 0.6), look: [0.42, 0.16], fov: 52 },
+      // Seated back from the table and looking down on it, so the sign, boards, rival, deck and pile all sit above the
+      // hand. Barely tilts down: the pointer lives over the hand, and the Your Turn sign must stay in frame.
+      table: { pos: new THREE.Vector3(2.1, 1.6, 0.6), target: new THREE.Vector3(6.4, 0.85, 0.6), look: [0.42, 0.16, 0.035], fov: 58 },
       shop: { pos: new THREE.Vector3(-4.3, 1.55, 2.5), target: new THREE.Vector3(-4.95, 1.0, 5.6), look: [0.12, 0.06], fov: 50 },
       inventory: { pos: new THREE.Vector3(-3.9, 1.5, 3.3), target: new THREE.Vector3(-7.6, 1.0, 3.45), look: [0.12, 0.06], fov: 50 },
     };
@@ -719,7 +723,7 @@ export class Tavern {
     oppChair.rotation.y = -Math.PI / 2;
     g.add(oppChair);
     const myChair = chair(m);
-    myChair.position.set(2.85, 0, T.z);
+    myChair.position.set(2.25, 0, T.z); // under the player's eyes (the table camera), out of view
     myChair.rotation.y = Math.PI / 2;
     g.add(myChair);
 

@@ -17,6 +17,9 @@ export function tutorialSetup(human: PlayerId, bot: PlayerId): Setup {
     deck: ['scry', 'hand', 'slip', 'brawl', 'pickpocket', 'backdoor', 'bounty', 'slip', 'scry'],
     reactionFor: (p) => {
       if (p.player === bot && p.card.type === 'pickpocket' && !p.cancelled) return 60_000;
+      // The scripted rival always parries the player's Bounty (~1 s in). A long window guarantees it lands even when a
+      // slow device delays timers; otherwise the lesson on surviving the Hooded Hand would be skipped.
+      if (p.player === human && p.card.type === 'bounty' && !p.cancelled) return 10_000;
       return null;
     },
   };

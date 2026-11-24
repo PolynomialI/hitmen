@@ -12,6 +12,11 @@ import { toast, type Hud } from '../ui/hud';
 import { profile, saveProfile } from '../ui/profile';
 import { rankOf } from '../ui/progression';
 import { RIVALS } from '../../shared/match';
+import { ONLINE_MODES, type OnlineMode } from '../../shared/online';
+import { cleanName } from '../../shared/text';
+import { lookFromProfile } from '../cosmetics/apply';
+import { listRooms, OnlineSession, serverAvailable } from '../net/online';
+import { joinModal, lobbyModal, type Modal } from './lobby';
 import { FONT3D } from '../world/fonts3d';
 import { makeText } from '../world/tavern';
 
@@ -21,7 +26,8 @@ export interface Nav {
   picker: Picker;
   layer: HTMLElement;
   toMenu(from?: 'title' | 'play'): void;
-  toPlay(): void;
+  /** The notice board; `lobby` reopens an online table's waiting room. */
+  toPlay(opts?: { lobby?: OnlineSession }): void;
   toShop(): void;
   toInventory(): void;
   openChallenges(): void;
@@ -267,8 +273,12 @@ export class PlayMenu implements Screen {
   private unpick: Array<() => void> = [];
   private ui: HTMLElement;
   private panel: HTMLElement | null = null;
+  private modal: Modal | null = null;
+  /** A game server is behind this page: online tables are available. */
+  private online = false;
+  private roomTimer: number | null = null;
 
-  constructor(private nav: Nav) {
+  constructor(private nav: Nav, opts: { lobby?: OnlineSession } = {}) {
     const { app } = nav;
     const tv = app.tavern;
     void app.rig.glide(tv.stations.play, 1.9, 0.15);
@@ -326,7 +336,11 @@ export class PlayMenu implements Screen {
       return b;
     };
     const nameInput = h('input', { value: profile.name, maxlength: '16', 'aria-label': 'Your name' }) as HTMLInputElement;
-    nameInput.addEventListener('change', () => saveProfile({ name: nameInput.value.trim().slice(0, 16) || 'Stranger' }));
+    nameInput.addEventListener('change', () => {
+      const name = cleanName(nameInput.value);
+      nameInput.value = name;
+      saveProfile({ name });
+    });
     nameInput.addEventListener('keydown', (e) => e.stopPropagation());
     const back = h('button', { class: 'back-btn' }, 'Back');
     back.addEventListener('click', () => {
@@ -342,7 +356,7 @@ export class PlayMenu implements Screen {
         'div',
         { class: 'play-bar' },
         pb('Create Table', 'plus', '#d84a3a', () => this.openModes()),
-        pb('Private Table', 'key', '#5a5ad8', () => toast(nav.layer, 'Private tables — coming soon', 'Room codes arrive with online play.'), true),
+        (this.joinBtn = pb('Join a Table', 'key', '#5a5ad8', () => this.openJoin(), true)),
         pb('Card Codex', 'book', '#3aa86a', () => this.openCodex()),
         pb('Watch a Table', 'eye', '#8a5ad8', () => nav.startMatch({ mode: 'original', rivals: 4, spectate: true })),
         pb('Leaderboard', 'crown', '#d8a83a', () => this.openLeaderboard())
@@ -350,11 +364,54 @@ export class PlayMenu implements Screen {
       this.renownBadge()
     );
     nav.layer.append(this.ui);
+    if (opts.lobby) {
+      this.online = true;
+      this.openLobby(opts.lobby);
+    }
+    void serverAvailable().then((ok) => ok && this.enableOnline());
+  }
+
+  private joinBtn!: HTMLButtonElement;
+
+  /** Online tables need the game server (Render); on a bare static host they stay locked. */
+  private enableOnline(): void {
+    if (!this.ui.isConnected) return;
+    this.online = true;
+    this.joinBtn.classList.remove('locked');
+    const count = h('span', { class: 'pb-count' });
+    this.joinBtn.append(count);
+    const refresh = async () => {
+      const n = (await listRooms()).length;
+      count.textContent = n ? String(n) : '';
+      count.classList.toggle('on', n > 0);
+    };
+    void refresh();
+    this.roomTimer = window.setInterval(() => void refresh(), 5000);
   }
 
   private closePanel(): void {
     this.panel?.remove();
     this.panel = null;
+    this.modal?.dispose();
+    this.modal = null;
+  }
+
+  private showModal(m: Modal): void {
+    this.closePanel();
+    this.modal = m;
+    this.nav.layer.append(m.el);
+  }
+
+  private openLobby(session: OnlineSession): void {
+    this.showModal(lobbyModal(this.nav, session, () => (this.modal = null)));
+  }
+
+  private openJoin(): void {
+    if (!this.online) {
+      toast(this.nav.layer, 'Online tables need the game server', 'They open once the tavern runs on its own server.');
+      return;
+    }
+    this.showModal(joinModal(this.nav, (s) => this.openLobby(s), () => (this.modal = null)));
   }
 
   private renownBadge(): HTMLElement {
@@ -391,6 +448,31 @@ export class PlayMenu implements Screen {
     const els: HTMLElement[] = [];
     const list = h('div', { class: 'modes' });
     const sizeRow = h('div', { class: 'size-row' });
+    // Online: who fills the other chairs.
+    type Who = 'rivals' | 'open' | 'private';
+    let who: Who = 'rivals';
+    const whoRow = h('div', { class: 'size-row who-row' });
+    const renderWho = () => {
+      whoRow.replaceChildren();
+      if (!this.online) return;
+      const canOnline = ONLINE_MODES.includes(sel as OnlineMode);
+      if (!canOnline) who = 'rivals';
+      whoRow.append(h('span', {}, 'Who sits with you'));
+      const opts: Array<[Who, string, string]> = [
+        ['rivals', 'Tavern regulars', 'Bots only, right now'],
+        ['open', 'Open table', 'Anyone can join from the board'],
+        ['private', 'Private table', 'Only those with the code'],
+      ];
+      for (const [w, label, tip] of opts) {
+        const b = h('button', { class: 'size who' + (w === who ? ' sel' : ''), title: tip, disabled: w !== 'rivals' && !canOnline ? 'true' : null }, label) as HTMLButtonElement;
+        b.addEventListener('click', () => {
+          audio.play('tick');
+          who = w;
+          renderWho();
+        });
+        whoRow.append(b);
+      }
+    };
     const sizeBtns: HTMLButtonElement[] = [];
     const renderSizes = () => {
       sizeRow.replaceChildren();
@@ -419,12 +501,14 @@ export class PlayMenu implements Screen {
         els.forEach((e) => e.classList.remove('sel'));
         b.classList.add('sel');
         renderSizes();
+        renderWho();
       });
       b.addEventListener('dblclick', () => this.nav.startMatch({ mode, rivals: seats - 1 } as Opt));
       els.push(b);
       list.append(b);
     }
     renderSizes();
+    renderWho();
     const close = h('button', { class: 'btn-text' }, 'Close');
     close.addEventListener('click', () => {
       audio.play('click');
@@ -434,9 +518,13 @@ export class PlayMenu implements Screen {
     choose.addEventListener('click', () => {
       audio.play('paper');
       this.closePanel();
+      if (who !== 'rivals' && ONLINE_MODES.includes(sel as OnlineMode)) {
+        this.openLobby(OnlineSession.create({ name: profile.name, look: lookFromProfile(), mode: sel as OnlineMode, size: seats, public: who === 'open' }));
+        return;
+      }
       this.nav.startMatch({ mode: sel, rivals: seats - 1 });
     });
-    this.panel = h('div', { class: 'scrim' }, h('div', { class: 'panel' }, h('h2', {}, 'Create a Table'), h('p', { class: 'lede' }, 'Choose how the night will go.'), list, sizeRow, h('div', { class: 'row' }, close, choose)));
+    this.panel = h('div', { class: 'scrim' }, h('div', { class: 'panel' }, h('h2', {}, 'Create a Table'), h('p', { class: 'lede' }, 'Choose how the night will go.'), list, sizeRow, whoRow, h('div', { class: 'row' }, close, choose)));
     this.panel.addEventListener('click', (e) => e.target === this.panel && this.closePanel());
     this.nav.layer.append(this.panel);
   }
@@ -522,6 +610,7 @@ export class PlayMenu implements Screen {
 
   dispose(): void {
     for (const u of this.unpick) u();
+    if (this.roomTimer) clearInterval(this.roomTimer);
     this.closePanel();
     this.ui.remove();
     const g = this.group;

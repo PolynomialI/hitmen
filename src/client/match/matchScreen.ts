@@ -1,13 +1,16 @@
 import * as THREE from 'three';
 import { CARD_DEFS, type Card, type CardType } from '../../shared/cards';
+import { EMOTE_COOLDOWN_MS, EMOTES, emoteText, type EmoteId } from '../../shared/emotes';
 import type { GameEvent, GameMode, PendingInfo, PlayerId, PlayerStats, SeatInfo, SyncInfo } from '../../shared/types';
 import type { App, Screen } from '../app';
 import { audio } from '../audio/audio';
 import type { Pickable } from '../core/picker';
 import { clamp, damp, ease, tweens } from '../core/tween';
-import { LocalTransport, type Transport } from '../net/transport';
+import type { OnlineSession } from '../net/online';
+import { LocalTransport, WsTransport, type Transport } from '../net/transport';
 import type { Nav } from '../screens/menus';
-import { h } from '../ui/dom';
+import { h, icon } from '../ui/dom';
+import { toast } from '../ui/hud';
 import { profile } from '../ui/profile';
 import { lookFromProfile } from '../cosmetics/apply';
 import type { Station } from '../world/tavern';
@@ -26,6 +29,8 @@ export interface MatchOptions {
   rivalIndex?: number;
   /** Watch a table of bots instead of playing. */
   spectate?: boolean;
+  /** An online table (the server runs the match). */
+  online?: OnlineSession;
 }
 
 type AimKind = { kind: 'play'; card: Card; effect: CardType } | { kind: 'misdirect'; card: Card };
@@ -65,6 +70,16 @@ export class MatchScreen implements Screen {
   private aimPicks: Array<() => void> = [];
   result: { winner: PlayerId | null; winners: PlayerId[]; stats: Record<PlayerId, PlayerStats> } | null = null;
   private disposed = false;
+  private leaving = false;
+  /** Online: events still to replay instantly (rebuilding the match after a reload). */
+  private replayLeft = 0;
+  private started = false;
+  private restarting = false;
+  private offSession: (() => void) | null = null;
+  private emoteReady = 0;
+  private emoteList: HTMLElement | null = null;
+  /** What the scene held before this match (anything else is ours to remove on dispose). */
+  private sceneBefore: Set<THREE.Object3D>;
   private tableStation: Station;
   private aimStation: Station;
   readonly opts: MatchOptions;
@@ -105,12 +120,13 @@ export class MatchScreen implements Screen {
       k === 1
         ? tv.stations.table
         : k === 2
-          ? { pos: V(2.82, 1.5, 0.6), target: V(6.2, 1.12, 0.6), look: [0.45, 0.16], fov: 56 }
-          : { pos: V(2.62, 1.66, 0.6), target: V(6.0, 0.98, 0.6), look: [0.5, 0.16], fov: 62 };
+          ? { pos: V(2.05, 1.7, 0.6), target: V(6.2, 0.85, 0.6), look: [0.45, 0.16, 0.035], fov: 60 }
+          : { pos: V(2.0, 1.85, 0.6), target: V(6.2, 0.75, 0.6), look: [0.5, 0.16, 0.035], fov: 62 };
     this.aimStation = k === 1 ? { pos: V(3.4, 2.05, 0.6), target: V(5.25, 0.82, 0.6), look: [0.06, 0.04], fov: 52 } : { pos: V(3.05, 2.65, 0.6), target: V(4.75, 0.5, 0.6), look: [0.06, 0.04], fov: 60 };
     // Opening shot: high above the table, then settle into the seat.
     app.rig.snap({ pos: V(3.4, 3.2, 2.6), target: V(4.6, 0.8, 0.4), look: [0.05, 0.03], fov: 55 });
     app.rig.lookScale = 1;
+    this.sceneBefore = new Set(app.gfx.scene.children);
     app.gfx.scene.add(app.gfx.camera);
     nav.hud.showProfile(false);
     nav.hud.showLeave(true);
@@ -155,16 +171,35 @@ export class MatchScreen implements Screen {
     this.keyHandler = (e) => {
       if (e.key === 'Escape' && this.aiming) this.cancelAim();
       if ((e.key === 'd' || e.key === ' ') && !this.aiming) this.tryDraw();
+      if (this.emoteList && e.key >= '1' && e.key <= String(EMOTES.length)) this.sendEmote(EMOTES[Number(e.key) - 1].id);
+      if (e.key === 'Escape') this.emoteList?.classList.add('out');
     };
     addEventListener('keydown', this.keyHandler);
     app.gfx.renderer.domElement.addEventListener('contextmenu', this.onContext);
 
-    this.t = new LocalTransport({ mode, playerName: profile.name, rivals: k, rivalIndex: this.opts.rivalIndex, look: lookFromProfile(), spectate: this.opts.spectate });
+    const online = this.opts.online;
+    this.t = online
+      ? new WsTransport(online)
+      : new LocalTransport({ mode, playerName: profile.name, rivals: k, rivalIndex: this.opts.rivalIndex, look: lookFromProfile(), spectate: this.opts.spectate });
     this.me = this.t.me;
-    this.t.onEvent((ev) => {
+    this.t.onEvent((ev, replay) => {
+      if (ev.e === 'start' && this.started) {
+        // A new round began at this online table while the results were showing: sit down afresh.
+        if (!this.restarting) {
+          this.restarting = true;
+          this.nav.startMatch({ ...this.opts });
+        }
+        return false;
+      }
+      if (ev.e === 'start') this.started = true;
+      if (replay) this.replayLeft++;
       this.queue.push(ev);
       void this.pump();
+      return true;
     });
+    if (online) this.watchSession(online);
+    this.t.onEmote((from, id) => this.showEmote(from, id));
+    if (!this.opts.spectate) this.buildEmotes();
 
     void (async () => {
       tv.setLightLevel(1);
@@ -172,6 +207,75 @@ export class MatchScreen implements Screen {
       audio.startMusic();
       this.t.start();
     })();
+  }
+
+  // ==================================================================== emotes
+
+  /** The speech button beside Sound/Leave: a short list of phrases to call across the table (keys 1-6). */
+  private buildEmotes(): void {
+    const list = h('div', { class: 'emote-list out' });
+    EMOTES.forEach((e, i) => {
+      const b = h('button', { class: 'emote-opt' }, h('i', {}, String(i + 1)), e.text);
+      b.addEventListener('pointerenter', () => audio.play('hover', { vol: 0.4 }));
+      b.addEventListener('click', () => {
+        this.sendEmote(e.id);
+        list.classList.add('out');
+      });
+      list.append(b);
+    });
+    const btn = h('button', { class: 'icon-btn emote-btn', title: 'Call across the table (1-6)', 'aria-label': 'Call across the table' }, icon('speech'));
+    btn.addEventListener('click', () => {
+      audio.play('click');
+      list.classList.toggle('out');
+    });
+    this.emoteList = list;
+    this.ui.append(h('div', { class: 'emote-wrap' }, btn, list));
+  }
+
+  private sendEmote(id: EmoteId): void {
+    const now = performance.now();
+    if (now < this.emoteReady) return;
+    this.emoteReady = now + EMOTE_COOLDOWN_MS;
+    this.t.emote(id);
+    this.showEmote(this.me, id);
+  }
+
+  /** A speech scroll over the speaker's head (yours rises above your hand). */
+  showEmote(from: PlayerId, id: EmoteId): void {
+    if (tweens.instant || this.disposed) return;
+    let el: HTMLElement;
+    if (this.isMe(from)) el = h('div', { class: 'emote-bubble mine' }, emoteText(id));
+    else {
+      const v = this.seatHead(from).add(V(0, 0.32, 0)).project(this.app.gfx.camera);
+      if (v.z > 1) return;
+      const x = Math.min(88, Math.max(12, ((v.x + 1) / 2) * 100));
+      const y = Math.max(14, ((1 - v.y) / 2) * 100);
+      el = h('div', { class: 'emote-bubble', style: `left:${x}%;top:${y}%` }, h('b', {}, this.nameOf(from)), emoteText(id));
+    }
+    this.ui.append(el);
+    audio.play('paper', { vol: 0.45 });
+    setTimeout(() => el.classList.add('out'), 2700);
+    setTimeout(() => el.remove(), 3200);
+  }
+
+  /** Online: connection state, other players dropping out and coming back, the table closing. */
+  private watchSession(s: OnlineSession): void {
+    const chip = h('div', { class: 'net-chip out' }, 'The connection wavers… reconnecting');
+    this.ui.append(chip);
+    this.offSession = s.on({
+      state: (st) => chip.classList.toggle('out', st !== 'reconnecting'),
+      presence: (id, connected) => {
+        if (id === this.me || this.phase === 'over') return;
+        const n = this.nameOf(id);
+        toast(this.nav.layer, connected ? `${n} is back` : `${n} lost their connection`, connected ? undefined : 'Their seat is kept for a while.');
+      },
+      error: (m) => toast(this.nav.layer, m),
+      closed: (m) => {
+        if (this.disposed || this.restarting) return;
+        if (m) toast(this.nav.layer, 'You left the table', m);
+        this.leave();
+      },
+    });
   }
 
   private onContext = (e: Event) => {
@@ -186,6 +290,11 @@ export class MatchScreen implements Screen {
     this.processing = true;
     while (this.queue.length && !this.disposed) {
       const ev = this.queue.shift()!;
+      // Rebuilding after a reload: show the match so far at once, silently.
+      const instant = this.replayLeft > 0;
+      if (instant) this.replayLeft--;
+      tweens.instant = instant;
+      audio.suppressed = instant;
       tweens.scale = this.queue.length > 8 ? 2.6 : this.queue.length > 3 ? 1.6 : 1;
       try {
         await this.handle(ev);
@@ -195,6 +304,8 @@ export class MatchScreen implements Screen {
       this.applySync(ev.sync);
     }
     tweens.scale = 1;
+    tweens.instant = false;
+    audio.suppressed = false;
     this.processing = false;
     this.refreshAffordances();
   }
@@ -326,7 +437,7 @@ export class MatchScreen implements Screen {
     const p: Pickable = {
       object: cm.face,
       priority: -1,
-      enabled: () => !this.aiming && this.hand.cards.includes(cm),
+      enabled: () => !this.aiming && !this.hideUi && this.hand.cards.includes(cm),
       onHover: (on) => {
         if (on) {
           this.hand.hovered = cm;
@@ -419,6 +530,7 @@ export class MatchScreen implements Screen {
   }
 
   banner(text: string, color?: string): void {
+    if (tweens.instant) return;
     const el = h('div', { class: 'banner-title', style: color ? `color:${color};text-shadow:0 0 30px ${color}99,0 4px 0 #1a0a04` : '' }, text);
     this.ui.append(el);
     setTimeout(() => el.remove(), 2600);
@@ -426,6 +538,7 @@ export class MatchScreen implements Screen {
 
   /** Small floating caption over a 3D point (who did what). */
   caption(at: THREE.Vector3, text: string, color = '#f6ead0'): void {
+    if (tweens.instant) return;
     const v = at.clone().project(this.app.gfx.camera);
     if (v.z > 1) return;
     const el = h('div', { class: 'caption', style: `left:${((v.x + 1) / 2) * 100}%;top:${((1 - v.y) / 2) * 100}%;color:${color}` }, text);
@@ -1508,14 +1621,21 @@ export class MatchScreen implements Screen {
     tick();
     setPos(0);
     this.hint(this.tut ? 'No one will know where you hide the Hooded Hand. Put it on top.' : 'No one will know where you hide it.');
-    this.hintEl.classList.add('top');
+    this.hintEl.classList.add('below');
     this.hidePreview();
+    // Nothing to play while hiding: put the hand away so it does not cover the Hand.
+    this.hand.hovered = null;
+    this.hand.lowered = 1;
+    // The pointer lives on the slider at the far left; keep the view steady instead of swinging after it.
+    this.app.rig.lookScale = 0.25;
   }
 
   private closeHideUi(): void {
     this.hideUi?.remove();
     this.hideUi = null;
-    this.hintEl.classList.remove('top');
+    this.hintEl.classList.remove('below');
+    this.hand.lowered = 0;
+    this.app.rig.lookScale = 1;
   }
 
   private async onHidden(player: PlayerId, position?: number): Promise<void> {
@@ -1635,7 +1755,7 @@ export class MatchScreen implements Screen {
       h('div', { class: 'seen' }, 'Last seen near the Hooded Hand tavern'),
       h('div', { class: 'stamp' }, mine ? 'You' : 'Slain')
     );
-    this.ui.append(poster);
+    if (!tweens.instant) this.ui.append(poster);
     audio.play('paper');
     audio.play('thud', { vol: 0.4, at: 0.05 });
     const left = this.sync?.alive.length ?? 0;
@@ -1664,20 +1784,42 @@ export class MatchScreen implements Screen {
   private onOver(winner: PlayerId | null, winners: PlayerId[], stats: Record<PlayerId, PlayerStats>): void {
     this.phase = 'over';
     this.result = { winner, winners, stats };
+    // Online, rebuilt after a reload: the night already ended while we were away. No ledger twice; back to the table.
+    if (this.opts.online && tweens.instant) {
+      this.backToTable();
+      return;
+    }
     void showResults(this);
   }
 
+  /** Get up from the table (online: give up the seat). */
   leave(): void {
-    if (this.disposed) return;
+    const online = this.opts.online;
+    if (online && online.state !== 'closed') online.leave();
+    this.exit();
+  }
+
+  /** Online: back to this table's waiting room for another round. */
+  backToTable(): void {
+    const online = this.opts.online;
+    if (!online || online.state === 'closed') return this.leave();
+    online.again();
+    this.exit(online);
+  }
+
+  private exit(lobby?: OnlineSession): void {
+    if (this.disposed || this.leaving) return;
+    this.leaving = true;
     void (async () => {
       this.nav.picker.enabled = false;
       await tweens.to(0.6, (k) => (this.app.gfx.grade.u('uFade').value = Math.max(this.app.gfx.grade.u('uFade').value, k)));
+      if (this.restarting) return;
       this.nav.app.setScreen(null);
       this.nav.picker.enabled = true;
       this.app.rig.offset.set(0, 0, 0);
       this.app.rig.targetOffset.set(0, 0, 0);
       this.app.rig.snap(this.app.tavern.stations.play);
-      this.nav.toPlay();
+      this.nav.toPlay(lobby ? { lobby } : undefined);
       audio.startMusic();
       void tweens.to(0.9, (k) => (this.app.gfx.grade.u('uFade').value = 1 - k));
     })();
@@ -1802,6 +1944,9 @@ export class MatchScreen implements Screen {
   dispose(): void {
     this.disposed = true;
     this.t.dispose();
+    this.offSession?.();
+    tweens.instant = false;
+    audio.suppressed = false;
     for (const u of this.picks.values()) u();
     for (const u of this.staticPicks) u();
     this.aimPicks.forEach((u) => u());
@@ -1810,11 +1955,10 @@ export class MatchScreen implements Screen {
     this.hand.dispose();
     this.table.dispose();
     this.fx.group.parent?.remove(this.fx.group);
-    const strays: THREE.Object3D[] = [];
-    this.app.gfx.scene.children.forEach((c) => {
-      if (c.children.length >= 2 && (c.children[0] as THREE.Mesh).geometry?.type === 'PlaneGeometry' && c !== this.table.group) strays.push(c);
-    });
-    for (const s of strays) this.app.gfx.scene.remove(s);
+    // Remove every card and effect this match left in the scene (but never the tavern itself, which an old
+    // shape-based heuristic used to catch, leaving the menus in the dark). The camera stays for later matches.
+    const scene = this.app.gfx.scene;
+    for (const c of [...scene.children]) if (!this.sceneBefore.has(c) && c !== this.app.gfx.camera) scene.remove(c);
     this.doomMesh?.dispose();
     this.scryMeshes.forEach((c) => c.dispose());
     this.claims.forEach((c) => c.mesh.dispose());

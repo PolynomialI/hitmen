@@ -1,6 +1,8 @@
 import { createLocalMatch, HUMAN_ID, type LocalMatchOptions } from '../../shared/match';
 import type { Host } from '../../shared/host';
-import type { Action, GameEvent, GameMode, PlayerId, PlayResult } from '../../shared/types';
+import type { Action, GameEvent, PlayerId, PlayResult } from '../../shared/types';
+import type { EmoteId } from '../../shared/emotes';
+import type { OnlineSession } from './online';
 
 /**
  * How the match screen talks to the authoritative game. Bot games run the host locally;
@@ -8,8 +10,16 @@ import type { Action, GameEvent, GameMode, PlayerId, PlayResult } from '../../sh
  */
 export interface Transport {
   readonly me: PlayerId;
-  onEvent(fn: (ev: GameEvent) => void): void;
+  /**
+   * Receive game events in order. `replay` marks events of a match being rebuilt after a reload (show them at once).
+   * Online, the handler may return false to leave an event queued (a new round starting while the results show).
+   */
+  onEvent(fn: (ev: GameEvent, replay: boolean) => boolean | void): void;
   send(a: Action): Promise<PlayResult>;
+  /** Phrases called across the table by others (players or regulars). */
+  onEmote(fn: (from: PlayerId, id: EmoteId) => void): void;
+  /** Call a phrase across the table (the screen shows your own). */
+  emote(id: EmoteId): void;
   start(): void;
   dispose(): void;
 }
@@ -31,13 +41,20 @@ export class LocalTransport implements Transport {
     return performance.now() - this.t0;
   }
 
-  onEvent(fn: (ev: GameEvent) => void): void {
-    this.fn = fn;
+  onEvent(fn: (ev: GameEvent, replay: boolean) => boolean | void): void {
+    this.fn = (ev) => void fn(ev, false);
   }
 
   send(a: Action): Promise<PlayResult> {
     return Promise.resolve(this.host.act(this.me, a, this.now()));
   }
+
+  onEmote(fn: (from: PlayerId, id: EmoteId) => void): void {
+    this.host.onEmote = fn;
+  }
+
+  /** Nobody but bots to hear it. */
+  emote(): void {}
 
   start(): void {
     this.host.start(this.now());
@@ -51,47 +68,43 @@ export class LocalTransport implements Transport {
   }
 }
 
-/** Online transport (server runs the Host). Not exposed in the UI yet. */
+/** Online table: the server runs the Host; events and actions go through the table's OnlineSession. */
 export class WsTransport implements Transport {
-  me: PlayerId = '';
-  private ws: WebSocket;
-  private fn: ((ev: GameEvent) => void) | null = null;
-  private pending = new Map<number, (r: PlayResult) => void>();
-  private seq = 0;
-  private queue: GameEvent[] = [];
+  private sink: ((ev: GameEvent, replay: boolean) => boolean) | null = null;
 
-  constructor(url: string, room: string, name: string) {
-    this.ws = new WebSocket(url);
-    this.ws.addEventListener('open', () => this.ws.send(JSON.stringify({ t: 'join', room, name })));
-    this.ws.addEventListener('message', (m) => {
-      const msg = JSON.parse(String(m.data));
-      if (msg.t === 'welcome') this.me = msg.you;
-      else if (msg.t === 'event') {
-        if (this.fn) this.fn(msg.ev);
-        else this.queue.push(msg.ev);
-      } else if (msg.t === 'result') {
-        this.pending.get(msg.id)?.(msg.result);
-        this.pending.delete(msg.id);
-      }
-    });
+  constructor(readonly session: OnlineSession) {}
+
+  get me(): PlayerId {
+    return this.session.me;
   }
 
-  onEvent(fn: (ev: GameEvent) => void): void {
-    this.fn = fn;
-    for (const e of this.queue.splice(0)) fn(e);
+  onEvent(fn: (ev: GameEvent, replay: boolean) => boolean | void): void {
+    this.sink = (ev, replay) => fn(ev, replay) !== false;
+    this.session.attach(this.sink);
   }
 
   send(a: Action): Promise<PlayResult> {
-    const id = ++this.seq;
-    this.ws.send(JSON.stringify({ t: 'action', id, action: a }));
-    return new Promise((res) => this.pending.set(id, res));
+    return this.session.action(a);
   }
 
-  start(): void {
-    this.ws.readyState === WebSocket.OPEN ? this.ws.send(JSON.stringify({ t: 'ready' })) : this.ws.addEventListener('open', () => this.ws.send(JSON.stringify({ t: 'ready' })));
+  private offEmote: (() => void) | null = null;
+
+  onEmote(fn: (from: PlayerId, id: EmoteId) => void): void {
+    this.offEmote?.();
+    this.offEmote = this.session.on({ emote: fn });
   }
+
+  emote(id: EmoteId): void {
+    this.session.emote(id);
+  }
+
+  /** The server starts the match. */
+  start(): void {}
 
   dispose(): void {
-    this.ws.close();
+    if (this.sink) this.session.detach(this.sink);
+    this.sink = null;
+    this.offEmote?.();
+    this.offEmote = null;
   }
 }

@@ -52,6 +52,35 @@ const DECK: Record<GameMode, DeckKind> = {
   ranked: 'ranked',
 };
 
+/** The tavern regulars in a seed-determined order. */
+function shuffledRivals(seed: number): Rival[] {
+  const pool = [...RIVALS];
+  let s = seed >>> 0;
+  for (let i = pool.length - 1; i > 0; i--) {
+    s = (s * 1664525 + 1013904223) >>> 0;
+    const j = s % (i + 1);
+    [pool[i], pool[j]] = [pool[j], pool[i]];
+  }
+  return pool;
+}
+
+/** Bots wear a random-looking (seeded) set of cosmetics. */
+function botLook(seed: number, i: number): SeatInfo['look'] {
+  const pickL = <T,>(arr: T[], salt: number) => arr[((seed >>> 0) + i * 7 + salt * 13) % arr.length];
+  return {
+    impact: pickL(['dust', 'embers', 'smoke', 'frost', 'gold', 'ravens', 'holy'], 1),
+    charm: pickL(['none', 'die', 'horseshoe', 'goblet', 'skull', 'crystal', 'raven', 'dragon', 'none'], 2),
+    seat: pickL(['oak', 'oak', 'stool', 'velvet', 'iron', 'bone', 'throne'], 3),
+  };
+}
+
+function configFor(mode: Exclude<GameMode, 'tutorial'>, seed: number, players: number): GameConfig {
+  const timers = { ...DEFAULT_TIMERS };
+  return mode === 'scrimmage'
+    ? { mode, deck: DECK[mode], seed, ...timers, turnMs: 60_000, rescueMs: 12_000, handSize: 5 }
+    : { mode, deck: DECK[mode], seed, ...timers, handSize: players >= 5 ? 4 : 5 };
+}
+
 /** Build a local match against bots for any mode. */
 export function createLocalMatch(opts: LocalMatchOptions): { host: Host; seats: SeatInfo[] } {
   const seed = opts.seed ?? (Math.random() * 2 ** 31) | 0;
@@ -65,37 +94,66 @@ export function createLocalMatch(opts: LocalMatchOptions): { host: Host; seats: 
   } else {
     let n = opts.spectate ? Math.max(2, Math.min(6, opts.rivals ?? 4)) : mode === 'ranked' ? 1 : Math.max(1, Math.min(5, opts.rivals ?? 1));
     if (mode === 'teams') n = n >= 5 ? 5 : 3;
-    const pool = [...RIVALS];
-    // Shuffle rivals deterministically by seed.
-    let s = seed >>> 0;
-    for (let i = pool.length - 1; i > 0; i--) {
-      s = (s * 1664525 + 1013904223) >>> 0;
-      const j = s % (i + 1);
-      [pool[i], pool[j]] = [pool[j], pool[i]];
-    }
+    const pool = shuffledRivals(seed);
     if (mode === 'ranked' && opts.rivalIndex != null) pool.unshift(RIVALS[opts.rivalIndex]);
     for (let i = 0; i < n; i++) {
       const r = pool[i];
       const id = 'b' + (i + 1);
-      const pickL = <T,>(arr: T[], salt: number) => arr[((seed >>> 0) + i * 7 + salt * 13) % arr.length];
-      const look = {
-        impact: pickL(['dust', 'embers', 'smoke', 'frost', 'gold', 'ravens', 'holy'], 1),
-        charm: pickL(['none', 'die', 'horseshoe', 'goblet', 'skull', 'crystal', 'raven', 'dragon', 'none'], 2),
-        seat: pickL(['oak', 'oak', 'stool', 'velvet', 'iron', 'bone', 'throne'], 3),
-      };
-      seats.push({ id, name: r.name, isBot: true, seat: seats.length, epithet: r.epithet, cloak: r.cloak, look });
+      seats.push({ id, name: r.name, isBot: true, seat: seats.length, epithet: r.epithet, cloak: r.cloak, look: botLook(seed, i) });
       const skill = mode === 'scrimmage' ? r.skill * 0.6 : mode === 'ranked' ? Math.min(1, r.skill + 0.1) : r.skill;
       bots.push(new Bot(id, (seed ^ (i * 0x9e3779b9)) >>> 0, skill));
     }
     if (mode === 'teams') seats.forEach((st, i) => (st.team = i % 2));
   }
-  const timers = { ...DEFAULT_TIMERS };
   const cfg: GameConfig =
     mode === 'tutorial'
       ? { mode, deck: 'tutorial', seed, turnMs: null, reactionMs: 2400, rescueMs: 60_000, hideMs: 60_000, scryMs: 60_000, giveMs: 60_000, handSize: 4 }
-      : mode === 'scrimmage'
-        ? { mode, deck: DECK[mode], seed, ...timers, turnMs: 60_000, rescueMs: 12_000, handSize: 5 }
-        : { mode, deck: DECK[mode], seed, ...timers, handSize: seats.length >= 5 ? 4 : 5 };
+      : configFor(mode, seed, seats.length);
   const setup = mode === 'tutorial' ? tutorialSetup(HUMAN_ID, 'b1') : {};
   return { host: new Host(cfg, seats, setup, bots), seats };
+}
+
+export interface TableHuman {
+  id: string;
+  name: string;
+  look?: SeatInfo['look'];
+  /** Teams mode: the side the player picked (0 or 1). */
+  team?: number;
+}
+
+const HUMAN_EPITHETS = ['Known for playing with fire', 'Came in from the rain', 'Never sits with their back to the door', 'Tips the bard, never the barkeep', 'Swears the dice are cursed', 'Paid for the last round. Once.'];
+const HUMAN_CLOAKS = ['#5a1a1a', '#2b3b2a', '#3b2a4a', '#4a3322', '#1f2633', '#3a1f1f'];
+
+/**
+ * An online table (server side): these players plus tavern regulars (bots) up to `size` seats.
+ * Teams sit alternately around the table, each player on the side they picked.
+ */
+export function createTableMatch(o: { mode: 'original' | 'teams' | 'winter'; size: number; humans: TableHuman[]; seed: number }): { host: Host; seats: SeatInfo[] } {
+  const pool = shuffledRivals(o.seed);
+  const bots: Bot[] = [];
+  const human = (x: TableHuman, i: number): SeatInfo => ({ id: x.id, name: x.name, isBot: false, seat: 0, epithet: HUMAN_EPITHETS[i % HUMAN_EPITHETS.length], cloak: HUMAN_CLOAKS[i % HUMAN_CLOAKS.length], look: x.look });
+  const rival = (): SeatInfo => {
+    const i = bots.length;
+    const r = pool[i];
+    const id = 'b' + (i + 1);
+    bots.push(new Bot(id, (o.seed ^ (i * 0x9e3779b9)) >>> 0, r.skill));
+    return { id, name: r.name, isBot: true, seat: 0, epithet: r.epithet, cloak: r.cloak, look: botLook(o.seed, i) };
+  };
+  const humans = o.humans.slice(0, o.size);
+  let seats: SeatInfo[];
+  if (o.mode === 'teams') {
+    const half = o.size / 2;
+    const sides: SeatInfo[][] = [[], []];
+    humans.forEach((x, i) => sides[x.team === 1 ? 1 : 0].push(human(x, i)));
+    // Never more than half the table on one side.
+    for (const [a, b] of [[0, 1], [1, 0]]) while (sides[a].length > half) sides[b].push(sides[a].pop()!);
+    for (const side of sides) while (side.length < half) side.push(rival());
+    seats = [];
+    for (let i = 0; i < half; i++) for (const t of [0, 1]) seats.push({ ...sides[t][i], team: t });
+  } else {
+    seats = humans.map(human);
+    while (seats.length < o.size) seats.push(rival());
+  }
+  seats.forEach((st, i) => (st.seat = i));
+  return { host: new Host(configFor(o.mode, o.seed, seats.length), seats, {}, bots), seats };
 }

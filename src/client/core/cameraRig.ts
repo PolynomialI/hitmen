@@ -11,7 +11,7 @@ export class CameraRig {
   private pos = new THREE.Vector3();
   private target = new THREE.Vector3();
   private baseFov = 48;
-  private look: [number, number] = [0.1, 0.05];
+  private look: [number, number, number?] = [0.1, 0.05];
   /** Pointer in -1..1 (x right, y up). */
   pointer = new THREE.Vector2();
   private yaw = 0;
@@ -75,7 +75,8 @@ export class CameraRig {
     const ex = Math.sign(px) * Math.pow(Math.abs(px), 1.35);
     const ey = Math.sign(py) * Math.pow(Math.abs(py), 1.35);
     this.yaw = damp(this.yaw, -ex * this.look[0] * this.lookScale, 3.2, dt);
-    this.pitch = damp(this.pitch, ey * this.look[1] * this.lookScale, 3.2, dt);
+    const pitchRange = ey < 0 ? (this.look[2] ?? this.look[1]) : this.look[1];
+    this.pitch = damp(this.pitch, ey * pitchRange * this.lookScale, 3.2, dt);
     const swayX = Math.sin(this.time * 0.5) * 0.004 * this.sway;
     const swayY = Math.sin(this.time * 0.7 + 1) * 0.003 * this.sway;
 
