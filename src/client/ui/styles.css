@@ -60,7 +60,7 @@ body {
   inset: 0;
   pointer-events: none;
 }
-.layer > * {
+.layer > *:not(.layer) {
   pointer-events: auto;
 }
 
@@ -879,7 +879,7 @@ button:focus-visible {
 }
 .hide-ui .knob .num {
   position: absolute;
-  right: 72px;
+  left: 76px;
   top: -18px;
   font-family: var(--f-title);
   font-weight: 800;
