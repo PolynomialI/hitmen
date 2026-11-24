@@ -303,7 +303,7 @@ export class TableView {
     this.me = me;
     this.myTeam = seats.find((s) => s.id === me)?.team;
     const myIdx = seats.findIndex((s) => s.id === me);
-    const order = [...seats.slice(myIdx + 1), ...seats.slice(0, myIdx)];
+    const order = myIdx < 0 ? [...seats] : [...seats.slice(myIdx + 1), ...seats.slice(0, myIdx)];
     const angles = rivalAngles(order.length);
     // Hide the tavern's single display chair; we place our own.
     const oldChair = this.tv.group.children.find((o) => o.position.distanceTo(this.tv.opponentSeat) < 0.01);

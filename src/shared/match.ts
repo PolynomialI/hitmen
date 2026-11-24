@@ -39,6 +39,8 @@ export interface LocalMatchOptions {
   look?: SeatInfo['look'];
   /** Ranked: pick this rival. */
   rivalIndex?: number;
+  /** No human seat: a table of bots to watch. */
+  spectate?: boolean;
 }
 
 const DECK: Record<GameMode, DeckKind> = {
@@ -55,13 +57,13 @@ export function createLocalMatch(opts: LocalMatchOptions): { host: Host; seats: 
   const seed = opts.seed ?? (Math.random() * 2 ** 31) | 0;
   const mode = opts.mode;
   const me: SeatInfo = { id: HUMAN_ID, name: opts.playerName || 'You', isBot: false, seat: 0, epithet: 'Known for playing with fire', cloak: '#5a1a1a', look: opts.look };
-  const seats: SeatInfo[] = [me];
+  const seats: SeatInfo[] = opts.spectate ? [] : [me];
   const bots: Bot[] = [];
   if (mode === 'tutorial') {
     seats.push({ id: 'b1', name: 'Brother Aldric', isBot: true, seat: 1, epithet: 'Known for teaching the hard way', cloak: '#3a2a1f' });
     bots.push(new TutorialBot('b1', HUMAN_ID));
   } else {
-    let n = mode === 'ranked' ? 1 : Math.max(1, Math.min(5, opts.rivals ?? 1));
+    let n = opts.spectate ? Math.max(2, Math.min(6, opts.rivals ?? 4)) : mode === 'ranked' ? 1 : Math.max(1, Math.min(5, opts.rivals ?? 1));
     if (mode === 'teams') n = n >= 5 ? 5 : 3;
     const pool = [...RIVALS];
     // Shuffle rivals deterministically by seed.
@@ -75,7 +77,7 @@ export function createLocalMatch(opts: LocalMatchOptions): { host: Host; seats: 
     for (let i = 0; i < n; i++) {
       const r = pool[i];
       const id = 'b' + (i + 1);
-      seats.push({ id, name: r.name, isBot: true, seat: i + 1, epithet: r.epithet, cloak: r.cloak });
+      seats.push({ id, name: r.name, isBot: true, seat: seats.length, epithet: r.epithet, cloak: r.cloak });
       const skill = mode === 'scrimmage' ? r.skill * 0.6 : mode === 'ranked' ? Math.min(1, r.skill + 0.1) : r.skill;
       bots.push(new Bot(id, (seed ^ (i * 0x9e3779b9)) >>> 0, skill));
     }

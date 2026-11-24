@@ -912,6 +912,101 @@ export class Tavern {
 
   // ------------------------------------------------------------------ runtime
 
+  private festive: THREE.Group | null = null;
+  private snow: THREE.Points | null = null;
+
+  /** Winter Feast dressing: pine garlands, holly, baubles, a wreath and snow at the windows. */
+  setFestive(on: boolean): void {
+    if (!on) {
+      if (this.festive) this.group.remove(this.festive);
+      this.festive = null;
+      this.snow = null;
+      return;
+    }
+    if (this.festive) return;
+    const g = new THREE.Group();
+    const pine = new THREE.MeshStandardMaterial({
+      color: '#2a5a2a',
+      roughness: 0.9,
+      map: paint(256, 64, (ctx, w, h) => {
+        ctx.fillStyle = '#183a1a';
+        ctx.fillRect(0, 0, w, h);
+        for (let i = 0; i < 900; i++) {
+          ctx.strokeStyle = `rgba(${40 + Math.random() * 50},${100 + Math.random() * 70},${40 + Math.random() * 40},0.9)`;
+          ctx.lineWidth = 1.5;
+          const x = Math.random() * w;
+          const y = Math.random() * h;
+          ctx.beginPath();
+          ctx.moveTo(x, y);
+          ctx.lineTo(x + (Math.random() - 0.5) * 14, y + (Math.random() - 0.5) * 14);
+          ctx.stroke();
+        }
+      }),
+    });
+    const bauble = [new THREE.MeshStandardMaterial({ color: '#b0201a', metalness: 0.6, roughness: 0.25 }), new THREE.MeshStandardMaterial({ color: '#d8b04a', metalness: 0.9, roughness: 0.2 })];
+    const garland = (pts: THREE.Vector3[], r = 0.06) => {
+      const curve = new THREE.CatmullRomCurve3(pts);
+      const tube = new THREE.Mesh(new THREE.TubeGeometry(curve, 64, r, 8, false), pine);
+      tube.castShadow = true;
+      g.add(tube);
+      for (let i = 1; i < 14; i++) {
+        const p = curve.getPoint(i / 14);
+        const b = new THREE.Mesh(new THREE.SphereGeometry(0.035, 10, 8), bauble[i % 2]);
+        b.position.copy(p).add(new THREE.Vector3(0, -r - 0.02, 0));
+        g.add(b);
+      }
+    };
+    // Along the stage valance and the bar.
+    garland([new THREE.Vector3(6.45, 3.55, -2.5), new THREE.Vector3(6.45, 3.1, -0.9), new THREE.Vector3(6.45, 3.55, 0.6), new THREE.Vector3(6.45, 3.1, 2.1), new THREE.Vector3(6.45, 3.55, 3.7)]);
+    garland([new THREE.Vector3(-6.0, 2.75, -5.6), new THREE.Vector3(-4.3, 2.45, -5.6), new THREE.Vector3(-2.6, 2.75, -5.6), new THREE.Vector3(-0.9, 2.45, -5.6), new THREE.Vector3(0.7, 2.75, -5.6)], 0.05);
+    // Wreath on the tapestry.
+    const wreath = new THREE.Mesh(new THREE.TorusGeometry(0.42, 0.11, 10, 32), pine);
+    wreath.position.set(7.9, 2.35, 0.6);
+    wreath.rotation.y = -Math.PI / 2;
+    g.add(wreath);
+    for (let i = 0; i < 10; i++) {
+      const a = (i / 10) * Math.PI * 2;
+      const b = new THREE.Mesh(new THREE.SphereGeometry(0.04, 10, 8), bauble[i % 2]);
+      b.position.set(7.84, 2.35 + Math.sin(a) * 0.42, 0.6 + Math.cos(a) * 0.42);
+      g.add(b);
+    }
+    // Holly sprigs by the table candles.
+    const holly = new THREE.MeshStandardMaterial({ color: '#1f5a24', roughness: 0.5 });
+    const berry = new THREE.MeshStandardMaterial({ color: '#c41a1a', roughness: 0.3, emissive: '#3a0000' });
+    for (const [dx, dz] of [
+      [0.55, -0.55],
+      [0.55, 0.55],
+      [-0.5, 0.7],
+    ]) {
+      for (let k = 0; k < 3; k++) {
+        const leaf = new THREE.Mesh(new THREE.SphereGeometry(0.04, 8, 6), holly);
+        leaf.scale.set(1.6, 0.25, 0.7);
+        leaf.position.set(this.tableCenter.x + dx + Math.cos(k * 2.1) * 0.05, this.tableTop + 0.01, this.tableCenter.z + dz + Math.sin(k * 2.1) * 0.05);
+        leaf.rotation.y = k * 2.1;
+        g.add(leaf);
+      }
+      const b = new THREE.Mesh(new THREE.SphereGeometry(0.014, 8, 6), berry);
+      b.position.set(this.tableCenter.x + dx, this.tableTop + 0.02, this.tableCenter.z + dz);
+      g.add(b);
+    }
+    // Snow drifting past the east windows.
+    const N = 220;
+    const pos = new Float32Array(N * 3);
+    for (let i = 0; i < N; i++) {
+      const side = i % 2 ? -3.3 : 4.5;
+      pos[i * 3] = 7.9;
+      pos[i * 3 + 1] = 1.6 + Math.random() * 1.8;
+      pos[i * 3 + 2] = side + (Math.random() - 0.5) * 0.9;
+    }
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+    this.snow = new THREE.Points(geo, new THREE.PointsMaterial({ color: new THREE.Color(1.5, 1.6, 1.8), size: 0.018, transparent: true, opacity: 0.85, depthWrite: false }));
+    this.snow.frustumCulled = false;
+    g.add(this.snow);
+    this.festive = g;
+    this.group.add(g);
+  }
+
   /** Scale all practical lights (e.g. dim for drama). */
   setLightLevel(k: number): void {
     for (const f of this.flickers) f.base = (this.baseIntensity.get(f.light) ?? f.base) * k;
@@ -927,6 +1022,16 @@ export class Tavern {
       f.light.intensity = f.base * (1 + n * f.amp);
     }
     this.barkeep.update(t, dt);
+    if (this.snow) {
+      const p = this.snow.geometry.attributes.position as THREE.BufferAttribute;
+      for (let i = 0; i < p.count; i++) {
+        let y = p.getY(i) - dt * (0.18 + (i % 7) * 0.03);
+        if (y < 1.55) y = 3.4;
+        p.setY(i, y);
+        p.setZ(i, p.getZ(i) + Math.sin(t + i) * dt * 0.05);
+      }
+      p.needsUpdate = true;
+    }
     // Barkeep polishes a tankard.
     this.barkeep.setReach(0.35 + Math.sin(t * 2.2) * 0.12, 'L');
   }

@@ -23,6 +23,8 @@ export interface MatchOptions {
   mode: GameMode;
   rivals?: number;
   rivalIndex?: number;
+  /** Watch a table of bots instead of playing. */
+  spectate?: boolean;
 }
 
 type AimKind = { kind: 'play'; card: Card; effect: CardType } | { kind: 'misdirect'; card: Card };
@@ -97,7 +99,7 @@ export class MatchScreen implements Screen {
     this.tut = mode === 'tutorial';
     const app = this.app;
     const tv = app.tavern;
-    const k = mode === 'tutorial' || mode === 'ranked' ? 1 : mode === 'teams' ? ((this.opts.rivals ?? 3) >= 5 ? 5 : 3) : Math.max(1, Math.min(5, this.opts.rivals ?? 1));
+    const k = this.opts.spectate ? Math.max(2, Math.min(5, this.opts.rivals ?? 4)) : mode === 'tutorial' || mode === 'ranked' ? 1 : mode === 'teams' ? ((this.opts.rivals ?? 3) >= 5 ? 5 : 3) : Math.max(1, Math.min(5, this.opts.rivals ?? 1));
     this.tableStation =
       k === 1
         ? tv.stations.table
@@ -114,6 +116,7 @@ export class MatchScreen implements Screen {
     nav.hud.onLeave = () => this.leave();
 
     this.table = new TableView(app);
+    tv.setFestive(mode === 'winter');
     this.hand = new HandView(app.gfx.camera, app.cards);
     this.fx = new Fx(tv.glowTex);
     app.gfx.scene.add(this.fx.group);
@@ -155,7 +158,7 @@ export class MatchScreen implements Screen {
     addEventListener('keydown', this.keyHandler);
     app.gfx.renderer.domElement.addEventListener('contextmenu', this.onContext);
 
-    this.t = new LocalTransport({ mode, playerName: profile.name, rivals: k, rivalIndex: this.opts.rivalIndex, look: profile.equipped });
+    this.t = new LocalTransport({ mode, playerName: profile.name, rivals: k, rivalIndex: this.opts.rivalIndex, look: profile.equipped, spectate: this.opts.spectate });
     this.me = this.t.me;
     this.t.onEvent((ev) => {
       this.queue.push(ev);
@@ -213,6 +216,7 @@ export class MatchScreen implements Screen {
     if (s.wards.includes(this.me)) bits.push('<span class="pill ward">🛡 You are warded</span>');
     if (this.seats.length > 2) bits.push(`<span class="pill dir">${s.dir === 1 ? '↻' : '↺'} Order of play</span>`);
     const myTeam = this.seats.find((x) => x.id === this.me)?.team;
+    if (this.opts.spectate) bits.push('<span class="pill">👁 Spectating</span>');
     if (myTeam != null) bits.push(`<span class="pill team" style="border-color:${TEAM_COLORS[myTeam]}">Team ${myTeam === 0 ? 'Crimson' : 'Azure'}</span>`);
     this.statusEl.innerHTML = bits.join('');
   }
@@ -1799,6 +1803,7 @@ export class MatchScreen implements Screen {
     this.app.gfx.chroma.offset.set(0, 0);
     this.app.tavern.flames.uniforms.uTint.value.setRGB(1, 1, 1);
     this.app.tavern.setLightLevel(1);
+    this.app.tavern.setFestive(false);
     [...this.app.tavern.tableCandleFlames, ...this.app.tavern.chandelierFlames].forEach((f) => this.app.tavern.flames.setLit(f, 1));
     this.app.rig.fovKick = 0;
     this.app.rig.sway = 1;

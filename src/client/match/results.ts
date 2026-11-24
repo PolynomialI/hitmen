@@ -8,6 +8,15 @@ import type { MatchScreen } from './matchScreen';
 /** Victory / defeat ledger with coins, XP, level-ups, ranked rating and challenge progress. */
 export async function showResults(s: MatchScreen): Promise<void> {
   const r = s.result!;
+  if (s.opts.spectate) {
+    const back = h('button', { class: 'btn-text' }, 'Back to the board');
+    back.addEventListener('click', () => s.leave());
+    const again = h('button', { class: 'btn-text' }, 'Watch another');
+    again.addEventListener('click', () => s.nav.startMatch(s.opts));
+    s.ui.append(h('div', { class: 'scrim' }, h('div', { class: 'panel results' }, h('h2', {}, `${s.nameOf(r.winner ?? undefined)} wins the night`), h('p', { class: 'lede' }, 'The Hooded Hand claimed the rest.'), h('div', { class: 'row' }, back, again))));
+    audio.play('win');
+    return;
+  }
   const mode = s.opts.mode;
   const me = s.me;
   const won = r.winners.includes(me);

@@ -15,13 +15,14 @@ export interface Transport {
 }
 
 export class LocalTransport implements Transport {
-  readonly me = HUMAN_ID;
+  readonly me: string;
   readonly host: Host;
   private timer: number | null = null;
   private fn: ((ev: GameEvent) => void) | null = null;
   private t0 = performance.now();
 
   constructor(opts: LocalMatchOptions) {
+    this.me = opts.spectate ? 'spectator' : HUMAN_ID;
     this.host = createLocalMatch(opts).host;
     this.host.listen(this.me, (ev) => this.fn?.(ev));
   }
