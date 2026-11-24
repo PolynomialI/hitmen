@@ -49,7 +49,7 @@ export class Tavern {
   readonly fire = new HearthFire(1.15, 0.9);
   readonly glowTex = glowSprite(128);
 
-  readonly stations: Record<'menu' | 'play' | 'table' | 'intro', Station>;
+  readonly stations: Record<'menu' | 'play' | 'table' | 'intro' | 'shop' | 'inventory', Station>;
   readonly lights: {
     hearth: THREE.PointLight;
     bar: THREE.PointLight;
@@ -139,6 +139,7 @@ export class Tavern {
     if (oppChair) keep.push(oppChair);
     const stats = batchStatic(this.group, keep);
     console.info(`[tavern] batched ${stats.before} static meshes into ${stats.after}`);
+    this.buildMerchant();
 
     // ---------------------------------------------------------------- stations
     this.stations = {
@@ -146,6 +147,8 @@ export class Tavern {
       menu: { pos: new THREE.Vector3(-2.64, 1.62, -1.92), target: new THREE.Vector3(-2.62, 1.3, -4.6), look: [0.16, 0.08], fov: 50 },
       play: { pos: new THREE.Vector3(-4.25, 1.7, 0.55), target: new THREE.Vector3(-7.9, 1.66, 0.55), look: [0.14, 0.07], fov: 48 },
       table: { pos: new THREE.Vector3(2.9, 1.42, 0.6), target: new THREE.Vector3(6.4, 1.3, 0.6), look: [0.42, 0.16], fov: 52 },
+      shop: { pos: new THREE.Vector3(-4.3, 1.55, 2.5), target: new THREE.Vector3(-4.95, 1.0, 5.6), look: [0.12, 0.06], fov: 50 },
+      inventory: { pos: new THREE.Vector3(-3.9, 1.5, 3.3), target: new THREE.Vector3(-7.6, 1.0, 3.45), look: [0.12, 0.06], fov: 50 },
     };
   }
 
@@ -353,7 +356,7 @@ export class Tavern {
       }
     };
     furn(-1.2, 3.2);
-    furn(-4.4, 3.8);
+    furn(-0.4, 1.0, 0.5);
     furn(1.6, 4.6, 0.5);
 
     // Barrels and crates in corners.
@@ -912,6 +915,181 @@ export class Tavern {
 
   // ------------------------------------------------------------------ runtime
 
+  readonly merchant!: Figure;
+  /** Inventory display: a little table dressed in your equipped look. */
+  readonly display = {
+    group: new THREE.Group(),
+    felt: null as THREE.Mesh | null,
+    card: null as THREE.Mesh | null,
+    charm: new THREE.Group(),
+    seat: new THREE.Group(),
+    banner: null as THREE.Mesh | null,
+  };
+  /** Banners hung beside the stage in the den (your colours). */
+  readonly stageBanners: THREE.Mesh[] = [];
+
+  private buildMerchant(): void {
+    const m = this.mats;
+    const g = new THREE.Group();
+    // Stall against the front wall.
+    const stallX = -3.95;
+    const stallZ = 5.35;
+    const counter = plank(2.6, 0.95, 0.6, m.woodDark, 1.4);
+    counter.position.set(stallX, 0.475, stallZ - 0.3);
+    g.add(counter);
+    const top = plank(2.8, 0.06, 0.7, m.wood, 1);
+    top.position.set(stallX, 0.98, stallZ - 0.3);
+    g.add(top);
+    for (const x of [-1.35, 1.35]) {
+      const post = plank(0.1, 2.6, 0.1, m.timber, 1);
+      post.position.set(stallX + x, 1.3, stallZ - 0.62);
+      g.add(post);
+    }
+    // Striped canopy.
+    const stripes = paint(512, 128, (ctx, w, h) => {
+      for (let i = 0; i < 8; i++) {
+        ctx.fillStyle = i % 2 ? '#e8d8b0' : '#8a1f1f';
+        ctx.fillRect((i * w) / 8, 0, w / 8, h);
+      }
+      ctx.fillStyle = 'rgba(0,0,0,0.25)';
+      ctx.fillRect(0, h - 18, w, 18);
+    });
+    const canopy = new THREE.Mesh(new THREE.PlaneGeometry(2.9, 1.0, 16, 4), new THREE.MeshStandardMaterial({ map: stripes, roughness: 0.9, side: THREE.DoubleSide }));
+    const cp = canopy.geometry.attributes.position as THREE.BufferAttribute;
+    for (let i = 0; i < cp.count; i++) cp.setZ(i, Math.sin((cp.getX(i) / 2.9 + 0.5) * Math.PI * 8) * 0.03);
+    canopy.geometry.computeVertexNormals();
+    canopy.position.set(stallX, 2.45, stallZ - 0.85);
+    canopy.rotation.x = -0.55;
+    g.add(canopy);
+    const valance = drape(2.9, 0.22, canopy.material, 14, 0.02);
+    valance.position.set(stallX, 2.1, stallZ - 1.25);
+    g.add(valance);
+    // Wares on shelves behind: little decks in every sleeve colour, bottles, boxes.
+    const shelf = plank(2.6, 0.05, 0.3, m.wood, 1);
+    shelf.position.set(stallX, 1.55, stallZ + 0.45);
+    g.add(shelf);
+    const shelf2 = shelf.clone();
+    shelf2.position.y = 1.95;
+    g.add(shelf2);
+    const deckCols = ['#18284a', '#1f4a24', '#d8ccb0', '#4a1a5a', '#1a0a06', '#9ac0d8', '#1a1206', '#5a1016'];
+    deckCols.forEach((c, i) => {
+      const d = box(0.07, 0.03, 0.1, new THREE.MeshStandardMaterial({ color: c, roughness: 0.6 }));
+      d.position.set(stallX - 1.1 + i * 0.3, 1.59 + (i % 2) * 0.01, stallZ + 0.42);
+      d.rotation.y = (i - 4) * 0.2;
+      g.add(d);
+    });
+    for (let i = 0; i < 9; i++) {
+      const b = bottle(m, i % 3, 0.18 + (i % 3) * 0.04);
+      b.position.set(stallX - 1.2 + i * 0.3, 1.975, stallZ + 0.42);
+      g.add(b);
+    }
+    const ch = chest(m);
+    ch.position.set(stallX + 0.95, 0.98, stallZ - 0.35);
+    ch.rotation.y = 0.4;
+    ch.scale.setScalar(0.8);
+    g.add(ch);
+    const cs = coinStack(m, 10);
+    cs.position.set(stallX - 0.9, 0.98, stallZ - 0.45);
+    g.add(cs);
+    const p = purse(m);
+    p.position.set(stallX - 0.7, 0.98, stallZ - 0.3);
+    g.add(p);
+    // Coat rack of cloaks to the right of the stall.
+    const rack = new THREE.Group();
+    const pole = cyl(0.03, 0.04, 2.1, m.woodDark, 8);
+    pole.position.y = 1.05;
+    rack.add(pole);
+    const cloakCols = ['#5a1a1a', '#1f3a2a', '#3b2a4a', '#2a3a5a', '#6a5420'];
+    cloakCols.forEach((c, i) => {
+      const a = (i / cloakCols.length) * Math.PI * 2;
+      const cloak = new THREE.Mesh(
+        new THREE.LatheGeometry(
+          [
+            [0.0, 0],
+            [0.2, 0.02],
+            [0.17, 0.6],
+            [0.1, 1.0],
+            [0.03, 1.08],
+          ].map(([x, y]) => new THREE.Vector2(x, y)),
+          14,
+          0,
+          Math.PI * 1.4
+        ),
+        new THREE.MeshStandardMaterial({ color: c, roughness: 0.95, side: THREE.DoubleSide })
+      );
+      cloak.position.set(Math.cos(a) * 0.16, 0.95, Math.sin(a) * 0.16);
+      cloak.rotation.y = -a;
+      cloak.castShadow = true;
+      rack.add(cloak);
+    });
+    rack.position.set(-1.9, 0, 5.4);
+    g.add(rack);
+    // Lantern.
+    lantern(m, this.flames, g, new THREE.Vector3(stallX, 2.0, stallZ - 0.9), 0.3);
+    // The peddler.
+    const mer = new Figure({ cloak: '#2a3a1a', eyes: '#9aff6a', seated: false, scale: 0.98 });
+    mer.root.position.set(stallX - 0.2, 0, stallZ + 0.1);
+    mer.root.rotation.y = Math.PI;
+    mer.setReach(0.4, 'L');
+    mer.setReach(0.2, 'R');
+    g.add(mer.root);
+    (this as { merchant: Figure }).merchant = mer;
+    const merLight = new THREE.PointLight('#ffb062', 11, 6, 1.6);
+    merLight.position.set(stallX, 1.9, stallZ - 1.4);
+    g.add(merLight);
+
+    // ---- inventory display: small round table + chair + banner on the west wall.
+    const D = this.display;
+    const dx = -6.55;
+    const dz = 4.7;
+    D.group.position.set(dx, 0, dz);
+    const tbl = cyl(0.55, 0.52, 0.06, m.wood, 32);
+    tbl.position.y = 0.78;
+    D.group.add(tbl);
+    const ped = cyl(0.08, 0.14, 0.75, m.woodDark, 12);
+    ped.position.y = 0.38;
+    D.group.add(ped);
+    D.felt = new THREE.Mesh(new THREE.CircleGeometry(0.48, 48), new THREE.MeshStandardMaterial({ color: '#ffffff', roughness: 0.95 }));
+    D.felt.rotation.x = -Math.PI / 2;
+    D.felt.position.y = 0.812;
+    D.felt.receiveShadow = true;
+    D.group.add(D.felt);
+    D.card = new THREE.Mesh(new THREE.PlaneGeometry(0.16, 0.224), new THREE.MeshStandardMaterial({ roughness: 0.5, alphaTest: 0.5 }));
+    D.card.position.set(0.05, 0.93, -0.05);
+    D.card.rotation.set(0, Math.PI / 2 - 0.35, 0);
+    D.card.rotateX(-0.3);
+    D.card.castShadow = true;
+    D.group.add(D.card);
+    D.charm.position.set(0.12, 0.815, 0.28);
+    D.group.add(D.charm);
+    D.seat.position.set(-0.7, 0, 0.35);
+    D.seat.rotation.y = Math.PI / 2 + 0.5;
+    D.group.add(D.seat);
+    D.banner = new THREE.Mesh(new THREE.PlaneGeometry(0.62, 1.24, 8, 12), new THREE.MeshStandardMaterial({ roughness: 0.9, transparent: true, alphaTest: 0.4, side: THREE.DoubleSide }));
+    D.banner.position.set(-1.38, 2.1, -1.15);
+    D.banner.rotation.y = Math.PI / 2;
+    D.group.add(D.banner);
+    const rod = cyl(0.015, 0.015, 0.8, m.brass, 8);
+    rod.rotation.x = Math.PI / 2;
+    rod.position.set(-1.36, 2.75, -1.15);
+    D.group.add(rod);
+    const dispLight = new THREE.SpotLight('#ffd09a', 14, 4, 0.6, 0.6, 1.4);
+    dispLight.position.set(-0.4, 2.6, -0.6);
+    dispLight.target.position.set(0, 0.8, 0);
+    D.group.add(dispLight, dispLight.target);
+    g.add(D.group);
+
+    // ---- stage banners in the den (show your colours).
+    for (const z of [-0.95, 2.15]) {
+      const b = new THREE.Mesh(new THREE.PlaneGeometry(0.5, 1.0, 6, 10), new THREE.MeshStandardMaterial({ roughness: 0.9, transparent: true, alphaTest: 0.4, side: THREE.DoubleSide }));
+      b.position.set(6.48, 2.25, z);
+      b.rotation.y = -Math.PI / 2;
+      g.add(b);
+      this.stageBanners.push(b);
+    }
+    this.group.add(g);
+  }
+
   private festive: THREE.Group | null = null;
   private snow: THREE.Points | null = null;
 
@@ -1022,6 +1200,22 @@ export class Tavern {
       f.light.intensity = f.base * (1 + n * f.amp);
     }
     this.barkeep.update(t, dt);
+    this.merchant?.update(t, dt);
+    if (this.merchant) this.merchant.setReach(0.4 + Math.sin(t * 1.3) * 0.08, 'L');
+    const spin = this.display.charm.userData.spin as THREE.Object3D | undefined;
+    if (spin) spin.rotation.y += dt * 0.8;
+    for (const b of [...this.stageBanners, this.display.banner]) {
+      if (!b) continue;
+      const pos = b.geometry.attributes.position as THREE.BufferAttribute;
+      if (!b.userData.base) b.userData.base = Float32Array.from(pos.array as Float32Array);
+      const base = b.userData.base as Float32Array;
+      for (let i = 0; i < pos.count; i++) {
+        const y = base[i * 3 + 1];
+        const k = (0.5 - y / 1.2) * 0.8;
+        pos.setZ(i, Math.sin(t * 1.6 + base[i * 3] * 4 + y * 3) * 0.02 * Math.max(0, k + 0.3));
+      }
+      pos.needsUpdate = true;
+    }
     if (this.snow) {
       const p = this.snow.geometry.attributes.position as THREE.BufferAttribute;
       for (let i = 0; i < p.count; i++) {

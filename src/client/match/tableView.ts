@@ -7,7 +7,7 @@ import { damp, ease, tweens } from '../core/tween';
 import { paint } from '../gfx/textures';
 import { Figure } from '../world/figure';
 import { FONT3D } from '../world/fonts3d';
-import { chair as makeChair } from '../world/props';
+import { buildCharm, buildSeat } from '../cosmetics/art';
 import { makeText, type Tavern } from '../world/tavern';
 import { CARD_H, CARD_W, CardMesh } from './cardMesh';
 
@@ -313,10 +313,17 @@ export class TableView {
       const angle = angles[angles.length - 1 - i];
       const out = new THREE.Vector3(Math.cos(angle), 0, Math.sin(angle));
       const pos = this.center.clone().setY(0).addScaledVector(out, SEAT_R);
-      const chair = makeChair(this.tv.mats);
+      const chair = buildSeat(info.look?.seat ?? 'oak', this.tv.mats);
       chair.position.copy(pos).addScaledVector(out, 0.02);
       chair.lookAt(this.center.clone().setY(0));
       this.group.add(chair);
+      if (info.look?.charm && info.look.charm !== 'none') {
+        const ch = buildCharm(info.look.charm, this.tv.mats);
+        const cp = this.center.clone().addScaledVector(out, 0.86).add(new THREE.Vector3(-out.z, 0, out.x).multiplyScalar(0.28));
+        ch.position.set(cp.x, this.tv.tableTop + 0.002, cp.z);
+        ch.lookAt(this.center.x, ch.position.y, this.center.z);
+        this.group.add(ch);
+      }
       const f = new Figure({ cloak: info.cloak, eyes: info.team != null ? TEAM_COLORS[info.team] : '#ffb347', seated: true });
       f.root.position.copy(pos).add(new THREE.Vector3(0, 0.47, 0));
       f.root.lookAt(this.center.clone().setY(0.47));
@@ -379,6 +386,18 @@ export class TableView {
       });
     });
   }
+
+  /** Your own charm, at your place at the table. */
+  setMyCharm(model: string | undefined): void {
+    if (!model || model === 'none') return;
+    const ch = buildCharm(model, this.tv.mats);
+    ch.scale.setScalar(1.3);
+    ch.position.set(this.center.x - 0.72, this.tv.tableTop + 0.002, this.center.z - 0.62);
+    ch.rotation.y = Math.PI / 2 + 0.4;
+    this.group.add(ch);
+    this.myCharm = ch;
+  }
+  myCharm: THREE.Group | null = null;
 
   seat(id: PlayerId): SeatView | undefined {
     return this.seats.get(id);
@@ -605,6 +624,8 @@ export class TableView {
     this.orderRing.scale.x = this.orderDir;
     (this.orderRing.material as THREE.MeshBasicMaterial).opacity = 0.14 + this.orderFlash * 0.6;
     if (this.chains) this.chains.rotation.y += dt * 0.15;
+    const sp = this.myCharm?.userData.spin as THREE.Object3D | undefined;
+    if (sp) sp.rotation.y += dt * 0.8;
     this.signLit = damp(this.signLit, this.signTarget, 5, dt);
     const flick = 0.92 + Math.sin(t * 17) * 0.04 + Math.sin(t * 7.3) * 0.04;
     this.tv.sign.text.color = new THREE.Color(1, 0.82, 0.48).multiplyScalar(0.25 + this.signLit * 2.6 * flick);

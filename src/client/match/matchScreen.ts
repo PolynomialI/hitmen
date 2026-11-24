@@ -9,6 +9,7 @@ import { LocalTransport, type Transport } from '../net/transport';
 import type { Nav } from '../screens/menus';
 import { h } from '../ui/dom';
 import { profile } from '../ui/profile';
+import { lookFromProfile } from '../cosmetics/apply';
 import type { Station } from '../world/tavern';
 import { CardMesh } from './cardMesh';
 import { Fx } from './fx';
@@ -158,7 +159,7 @@ export class MatchScreen implements Screen {
     addEventListener('keydown', this.keyHandler);
     app.gfx.renderer.domElement.addEventListener('contextmenu', this.onContext);
 
-    this.t = new LocalTransport({ mode, playerName: profile.name, rivals: k, rivalIndex: this.opts.rivalIndex, look: profile.equipped, spectate: this.opts.spectate });
+    this.t = new LocalTransport({ mode, playerName: profile.name, rivals: k, rivalIndex: this.opts.rivalIndex, look: lookFromProfile(), spectate: this.opts.spectate });
     this.me = this.t.me;
     this.t.onEvent((ev) => {
       this.queue.push(ev);
@@ -693,6 +694,7 @@ export class MatchScreen implements Screen {
   private async onStart(seats: SeatInfo[]): Promise<void> {
     this.seats = seats;
     this.table.setSeats(seats, this.me);
+    this.table.setMyCharm(seats.find((x) => x.id === this.me)?.look?.charm);
     const app = this.app;
     void app.rig.glide(this.tableStation, 2.2, 0.1);
     // Introduce everyone around the table.

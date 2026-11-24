@@ -77,7 +77,13 @@ export function createLocalMatch(opts: LocalMatchOptions): { host: Host; seats: 
     for (let i = 0; i < n; i++) {
       const r = pool[i];
       const id = 'b' + (i + 1);
-      seats.push({ id, name: r.name, isBot: true, seat: seats.length, epithet: r.epithet, cloak: r.cloak });
+      const pickL = <T,>(arr: T[], salt: number) => arr[((seed >>> 0) + i * 7 + salt * 13) % arr.length];
+      const look = {
+        impact: pickL(['dust', 'embers', 'smoke', 'frost', 'gold', 'ravens', 'holy'], 1),
+        charm: pickL(['none', 'die', 'horseshoe', 'goblet', 'skull', 'crystal', 'raven', 'dragon', 'none'], 2),
+        seat: pickL(['oak', 'oak', 'stool', 'velvet', 'iron', 'bone', 'throne'], 3),
+      };
+      seats.push({ id, name: r.name, isBot: true, seat: seats.length, epithet: r.epithet, cloak: r.cloak, look });
       const skill = mode === 'scrimmage' ? r.skill * 0.6 : mode === 'ranked' ? Math.min(1, r.skill + 0.1) : r.skill;
       bots.push(new Bot(id, (seed ^ (i * 0x9e3779b9)) >>> 0, skill));
     }

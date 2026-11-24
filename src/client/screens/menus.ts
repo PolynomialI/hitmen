@@ -22,6 +22,9 @@ export interface Nav {
   layer: HTMLElement;
   toMenu(from?: 'title' | 'play'): void;
   toPlay(): void;
+  toShop(): void;
+  toInventory(): void;
+  openChallenges(): void;
   startMatch(mode: GameMode | import('../match/matchScreen').MatchOptions): void;
 }
 
@@ -134,13 +137,10 @@ export class MainMenu implements Screen {
 
   private choose(it: MenuItem): void {
     audio.play('click');
-    if (it.key === 'play') {
-      this.nav.toPlay();
-      return;
-    }
-    const sub = it.key === 'shop' ? 'The merchant is still unpacking his wares.' : it.key === 'inventory' ? 'Your chest will open in a later update.' : 'The notice board is being rewritten.';
-    toast(this.nav.layer, it.label + ' — coming soon', sub);
-    void tweens.to(0.5, (k) => it.text.position.setX(it.base.x + Math.sin(k * Math.PI * 6) * 0.01 * (1 - k)), { ease: ease.linear });
+    if (it.key === 'play') return this.nav.toPlay();
+    if (it.key === 'shop') return this.nav.toShop();
+    if (it.key === 'inventory') return this.nav.toInventory();
+    this.nav.openChallenges();
   }
 
   update(t: number, dt: number): void {

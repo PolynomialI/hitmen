@@ -5,6 +5,9 @@ import { Picker } from './core/picker';
 import { ease, tweens } from './core/tween';
 import { MatchScreen, type MatchOptions } from './match/matchScreen';
 import { MainMenu, PlayMenu, TitleScreen, type Nav } from './screens/menus';
+import { InventoryScreen, openChallenges, ShopScreen } from './screens/shop';
+import { applyCosmetics } from './cosmetics/apply';
+import { refreshChallenges } from './ui/progression';
 import { h } from './ui/dom';
 import { Hud } from './ui/hud';
 import { profile } from './ui/profile';
@@ -35,6 +38,8 @@ document.body.append(loading);
     console.error(e);
     return;
   }
+  refreshChallenges();
+  await applyCosmetics(app);
   const layer = h('div', { class: 'layer' });
   uiRoot.append(layer);
   const hud = new Hud(uiRoot);
@@ -52,6 +57,15 @@ document.body.append(loading);
     },
     toPlay() {
       app.setScreen(new PlayMenu(nav));
+    },
+    toShop() {
+      app.setScreen(new ShopScreen(nav));
+    },
+    toInventory() {
+      app.setScreen(new InventoryScreen(nav));
+    },
+    openChallenges() {
+      openChallenges(nav);
     },
     startMatch(mode: GameMode | MatchOptions) {
       void (async () => {
@@ -77,7 +91,10 @@ document.body.append(loading);
     app.setScreen(new TitleScreen(nav));
     await tweens.to(1.6, (k) => (app.gfx.grade.u('uFade').value = 1 - k), { ease: ease.outCubic });
   }
-  if (params.get('station') === 'play') nav.toPlay();
+  const st = params.get('station');
+  if (st === 'play') nav.toPlay();
+  if (st === 'shop') nav.toShop();
+  if (st === 'inventory') nav.toInventory();
   document.body.dataset.ready = '1';
   void profile;
 })();
