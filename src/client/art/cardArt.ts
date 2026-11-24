@@ -1,5 +1,8 @@
 import { CARD_DEFS, type CardType } from '../../shared/cards';
 import { crestHooded, EMBLEMS, INK, IVORY } from './emblems';
+import { EMBLEMS2 } from './emblems2';
+
+const ALL_EMBLEMS: Record<string, () => string> = { ...EMBLEMS, ...EMBLEMS2 };
 
 export const CARD_W = 500;
 export const CARD_H = 700;
@@ -54,6 +57,9 @@ function defs(color: string, shade: string): string {
     </radialGradient>
     <radialGradient id="doorlight" cx="50%" cy="60%" r="70%">
       <stop offset="0" stop-color="#fff6c4"/><stop offset="0.6" stop-color="#ffc861"/><stop offset="1" stop-color="#d4801f"/>
+    </radialGradient>
+    <radialGradient id="mirrorgrad" cx="38%" cy="30%" r="80%">
+      <stop offset="0" stop-color="#ffffff"/><stop offset="0.5" stop-color="#cfe6f2"/><stop offset="1" stop-color="#6f9fb8"/>
     </radialGradient>
     <linearGradient id="ribbon" x1="0" y1="0" x2="0" y2="1">
       <stop offset="0" stop-color="#f7ecd2"/><stop offset="0.55" stop-color="#e6d3ab"/><stop offset="1" stop-color="#c9b083"/>
@@ -150,7 +156,7 @@ export function cardFaceSVG(type: CardType): string {
     <rect x="30" y="30" width="440" height="640" rx="18" fill="none" stroke="url(#gold)" stroke-width="5"/>
     <rect x="40" y="40" width="420" height="620" rx="12" fill="none" stroke="url(#gold)" stroke-width="1.6" opacity="0.8"/>
     ${cornerFlourish()}
-    <g filter="url(#drop)">${EMBLEMS[type]()}</g>
+    <g filter="url(#drop)">${ALL_EMBLEMS[type]()}</g>
     ${ribbon()}
     ${badgeSvg}
   </svg>`;

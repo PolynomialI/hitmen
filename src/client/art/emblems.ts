@@ -6,20 +6,20 @@ export const IVORY = '#f6eedb';
 export const IVORY_SH = '#d8c7a2';
 export const GOLD = 'url(#gold)';
 
-const OL = `stroke="${INK}" stroke-width="9" stroke-linejoin="round" stroke-linecap="round"`;
-const DL = `stroke="${INK}" stroke-width="5" stroke-linejoin="round" stroke-linecap="round" fill="none"`;
-const THIN = `stroke="${INK}" stroke-width="3.5" stroke-linecap="round" fill="none"`;
+export const OL = `stroke="${INK}" stroke-width="9" stroke-linejoin="round" stroke-linecap="round"`;
+export const DL = `stroke="${INK}" stroke-width="5" stroke-linejoin="round" stroke-linecap="round" fill="none"`;
+export const THIN = `stroke="${INK}" stroke-width="3.5" stroke-linecap="round" fill="none"`;
 
-const f = (n: number) => n.toFixed(1);
-const rad = (d: number) => (d * Math.PI) / 180;
+export const f = (n: number) => n.toFixed(1);
+export const rad = (d: number) => (d * Math.PI) / 180;
 
-function sparkle(x: number, y: number, s: number, fill = IVORY, op = 0.9): string {
+export function sparkle(x: number, y: number, s: number, fill = IVORY, op = 0.9): string {
   const p = `M ${f(x)},${f(y - s)} C ${f(x + s * 0.12)},${f(y - s * 0.12)} ${f(x + s * 0.12)},${f(y - s * 0.12)} ${f(x + s)},${f(y)} C ${f(x + s * 0.12)},${f(y + s * 0.12)} ${f(x + s * 0.12)},${f(y + s * 0.12)} ${f(x)},${f(y + s)} C ${f(x - s * 0.12)},${f(y + s * 0.12)} ${f(x - s * 0.12)},${f(y + s * 0.12)} ${f(x - s)},${f(y)} C ${f(x - s * 0.12)},${f(y - s * 0.12)} ${f(x - s * 0.12)},${f(y - s * 0.12)} ${f(x)},${f(y - s)} Z`;
   return `<path d="${p}" fill="${fill}" opacity="${op}"/>`;
 }
 
 /** A leaf/feather shape from (x,y) pointing at angle a (deg) with length L and half-width w. */
-function feather(x: number, y: number, a: number, L: number, w: number, extra = ''): string {
+export function feather(x: number, y: number, a: number, L: number, w: number, extra = ''): string {
   const ca = Math.cos(rad(a));
   const sa = Math.sin(rad(a));
   const px = -sa;
@@ -39,7 +39,7 @@ function feather(x: number, y: number, a: number, L: number, w: number, extra = 
   return `<path d="${d}" fill="${IVORY}" ${OL} stroke-width="6" ${extra}/><path d="${rachis}" ${THIN} opacity="0.55"/>`;
 }
 
-function dagger(tx: number, ty: number, rot: number, scale = 1, withFist = false): string {
+export function dagger(tx: number, ty: number, rot: number, scale = 1, withFist = false): string {
   return `<g transform="translate(${tx},${ty}) rotate(${rot}) scale(${scale})">
     <path d="M -14,0 L -12,-128 L 0,-170 L 12,-128 L 14,0 Z" fill="${IVORY}" ${OL}/>
     <path d="M 0,-10 L 0,-140" ${THIN} opacity="0.6"/>
@@ -59,7 +59,7 @@ function dagger(tx: number, ty: number, rot: number, scale = 1, withFist = false
   </g>`;
 }
 
-function sword(tx: number, ty: number, rot: number, len = 215): string {
+export function sword(tx: number, ty: number, rot: number, len = 215): string {
   return `<g transform="translate(${tx},${ty}) rotate(${rot})">
     <path d="M -12,0 L -10,${-len + 30} L 0,${-len} L 10,${-len + 30} L 12,0 Z" fill="${IVORY}" ${OL}/>
     <path d="M 0,-14 L 0,${-len + 34}" ${THIN} opacity="0.55"/>
