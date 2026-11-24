@@ -289,6 +289,15 @@ export class MatchScreen implements Screen {
     return sv.figure.root.position.clone().add(V(0, 0.75, 0));
   }
 
+  /** Body language: every other rival turns to look at a point (or back to the table). */
+  private allLook(at: THREE.Vector3 | null, except?: PlayerId, lean = 0): void {
+    for (const sv of this.table.seats.values()) {
+      if (!sv.alive || sv.info.id === except) continue;
+      sv.figure.lookToward(at);
+      sv.figure.lean = lean;
+    }
+  }
+
   /** Pull a card out of a rival's hand (or make one at their hand) into the scene. */
   private takeFromSeat(id: PlayerId, card: Card | null): CardMesh {
     const sv = this.table.seat(id)!;
@@ -1142,6 +1151,9 @@ export class MatchScreen implements Screen {
     this.app.rig.shake(0.035);
     const sv = this.table.seat(player);
     sv?.figure.setReach(0.1, 'L');
+    sv?.figure.flinch();
+    this.allLook(this.isMe(player) ? this.app.gfx.camera.position.clone() : this.seatHead(player), player);
+    setTimeout(() => this.allLook(null), 1600);
     if (this.isMe(player)) {
       this.banner(`Bounty! ${turns} turns`, '#ff8a3a');
       this.setBadge(turns);
@@ -1279,6 +1291,8 @@ export class MatchScreen implements Screen {
       const cm = this.newCard(null, from);
       audio.play('draw', { vol: 0.7 });
       sv.figure.setReach(0.85, 'L');
+      sv.figure.lean = 0.8;
+      setTimeout(() => (sv.figure.lean = 0), 700);
       if (isHand) {
         const p = this.table.pilePos.clone().add(V(0.02, 0.2, 0));
         const dummy = new THREE.Object3D();
@@ -1317,6 +1331,7 @@ export class MatchScreen implements Screen {
       app.gfx.chroma.offset.set(0.0012 * k, 0.0008 * k);
     });
     tv.flames.uniforms.uTint.value.setRGB(1.4, 0.55, 0.45);
+    this.allLook(this.isMe(player) ? this.app.gfx.camera.position.clone() : this.seatHead(player), player, 0.6);
     if (this.isMe(player)) {
       const q0 = cm.root.quaternion.clone();
       await tweens.to(0.45, (k) => {
@@ -1375,6 +1390,8 @@ export class MatchScreen implements Screen {
       await this.fly(angel.root, () => ({ p, q: doom.root.quaternion.clone(), s: 1.25 }), 0.45, { arc: 0.1 });
     }
     audio.play('angel');
+    this.allLook(null, undefined, -0.5);
+    setTimeout(() => this.allLook(null, undefined, 0), 1500);
     const at = angel.root.position.clone();
     const fl = this.fx.flash(at, new THREE.Color(3, 2.7, 2), 1.4);
     const ring = this.fx.ring(at, new THREE.Color(3, 2.5, 1.4), app.gfx.camera.quaternion.clone());
@@ -1527,6 +1544,7 @@ export class MatchScreen implements Screen {
       tv.setLightLevel(0.9 + k * 0.1);
     });
     tv.flames.uniforms.uTint.value.setRGB(1, 1, 1);
+    this.allLook(null);
     audio.startMusic();
     this.phase = 'turn';
     this.tutorial('hidden', { player });
@@ -1593,6 +1611,8 @@ export class MatchScreen implements Screen {
       audio.play('thud');
       app.rig.shake(0.06);
       f.root.visible = false;
+      this.allLook(sv.pos.clone().add(V(0, 0.8, 0)), player, 0.3);
+      setTimeout(() => this.allLook(null), 2600);
       sv.alive = false;
       sv.name.visible = false;
       sv.badge.visible = false;

@@ -69,6 +69,11 @@ export class Figure {
   lookYaw = 0;
   lookPitch = 0;
   breathe = 1;
+  /** Lean toward the table (+) or recoil (-). Smoothed. */
+  lean = 0;
+  private leanK = 0;
+  private flinchT = 0;
+  private yawK = 0;
 
   constructor(o: FigureOpts) {
     const s = o.scale ?? 1;
@@ -224,11 +229,32 @@ export class Figure {
     (arm.userData.elbow as THREE.Group).rotation.x = -1.35 + k * 0.85;
   }
 
+  /** Turn the head toward a world point (clamped), or back to rest with null. */
+  lookToward(p: THREE.Vector3 | null): void {
+    if (!p) {
+      this.lookYaw = 0;
+      return;
+    }
+    const local = this.root.worldToLocal(p.clone());
+    this.lookYaw = Math.max(-1.1, Math.min(1.1, Math.atan2(local.x, local.z)));
+  }
+
+  /** A sharp startled jerk backwards. */
+  flinch(): void {
+    this.flinchT = 1;
+  }
+
   update(t: number, dt: number): void {
     const s = this.seed;
+    this.leanK += (this.lean - this.leanK) * (1 - Math.exp(-5 * dt));
+    this.flinchT = Math.max(0, this.flinchT - dt * 2.2);
+    const fl = Math.sin(this.flinchT * Math.PI) * this.flinchT;
+    this.body.position.z = this.leanK * 0.07 - fl * 0.12;
+    this.body.rotation.x = this.leanK * 0.12 - fl * 0.25;
+    this.yawK += (this.lookYaw - this.yawK) * (1 - Math.exp(-4 * dt));
     const br = Math.sin(t * 1.3 + s) * 0.012 * this.breathe;
     this.body.scale.set(1 + br * 0.5, 1 + br, 1 + br * 0.5);
-    this.head.rotation.y = Math.sin(t * 0.37 + s) * 0.12 + this.lookYaw;
+    this.head.rotation.y = Math.sin(t * 0.37 + s) * 0.12 * (1 - Math.min(1, Math.abs(this.yawK))) + this.yawK;
     this.head.rotation.x = Math.sin(t * 0.29 + s * 2) * 0.05 + this.lookPitch;
     this.head.rotation.z = Math.sin(t * 0.23 + s) * 0.04;
     // Blink.
