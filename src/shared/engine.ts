@@ -605,6 +605,8 @@ export class Engine {
     this.deck.splice(pos, 0, d.card);
     this.doom = null;
     this.emit({ e: 'hidden', player: d.player, secret: this.sec([[d.player, { position: pos }]]) });
+    // Surviving the Hooded Hand ends all of your turns, however many you still owed.
+    this.turnsLeft = 1;
     this.endTurnUnit();
   }
 

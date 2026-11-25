@@ -347,10 +347,11 @@ export class TableView {
       const mate = this.myTeam != null && info.team === this.myTeam;
       const nameColor = info.team != null ? TEAM_COLORS[info.team] : '#f3e6c4';
       const name = makeText(info.name, { size: 0.07, color: nameColor, glow: 1.1, font: FONT3D.gothic, outline: 0.005 });
-      // Just above the hood tip (hood top is ~1.14 above the figure root), drawn over everything so it is never hidden.
-      name.position.copy(f.root.position).add(new THREE.Vector3(0, 1.2, 0));
-      for (const mt of ([] as THREE.Material[]).concat(name.material)) mt.depthTest = false;
-      name.renderOrder = 27;
+      // Just above the top of this figure (hood, hat or accessory). Depth-tested, so cards held up in front of the
+      // camera (a drawn Hooded Hand, scried cards) cover it.
+      f.root.updateMatrixWorld(true);
+      const top = new THREE.Box3().setFromObject(f.root).max.y;
+      name.position.copy(f.root.position).setY(Math.max(top + 0.07, f.root.position.y + 1.2));
       this.group.add(name);
       const badge = new THREE.Sprite(new THREE.SpriteMaterial({ transparent: true, depthWrite: false }));
       badge.scale.setScalar(0.0001);

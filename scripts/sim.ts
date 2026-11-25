@@ -117,4 +117,48 @@ for (const mode of ['original', 'scrimmage', 'teams', 'winter', 'ranked'] as Gam
   console.log('tutorial log:', log.filter((l) => !l.startsWith('deal') && !l.startsWith('window')).join(' > '));
   assert(host.engine.winner === HUMAN_ID, 'student should win the tutorial');
 }
+// ---- Rules: attacks stack; surviving the Hooded Hand ends all owed turns.
+{
+  const seats: SeatInfo[] = ['A', 'B', 'C'].map((id, i) => ({ id, name: id, isBot: false, seat: i, epithet: '', cloak: '#000' }));
+  const host = new Host(
+    { mode: 'original', deck: 'original', seed: 7, ...DEFAULT_TIMERS, turnMs: null, handSize: 5 },
+    seats,
+    { first: 'A', hands: { A: ['bounty', 'bounty'], B: ['bounty'], C: ['angel'] }, deck: ['slip', 'hand', 'slip', 'slip', 'slip', 'slip', 'slip', 'slip'] }
+  );
+  const turns: string[] = [];
+  host.listen('A', (e) => e.e === 'turn' && turns.push(`${e.player}${e.turnsLeft}`));
+  let now = 0;
+  host.start(now);
+  const settle = (ok: () => boolean, label: string) => {
+    for (let i = 0; i < 4000; i++) {
+      if (ok() && !host.engine.view('A', now).busy) return;
+      now += 50;
+      host.tick(now);
+    }
+    throw new Error('rules test stuck: ' + label + ' ' + host.engine.phase);
+  };
+  const E = host.engine;
+  const act = (pid: string, a: any) => {
+    const r = host.act(pid, a, now);
+    assert(r.ok, `${pid} ${a.t} failed: ${r.err}`);
+  };
+  const cardOf = (pid: string, t: string) => E.player(pid)!.hand.find((c) => c.type === t)!.id;
+  const turnOf = (pid: string, n: number) => () => E.phase === 'turn' && E.current.id === pid && E.turnsLeft === n;
+  settle(turnOf('A', 1), 'A starts');
+  act('A', { t: 'play', cardId: cardOf('A', 'bounty'), targetId: 'B' });
+  settle(turnOf('B', 2), 'bounty gives B 2 turns');
+  act('B', { t: 'play', cardId: cardOf('B', 'bounty'), targetId: 'C' });
+  settle(turnOf('C', 4), 'stacked bounty gives C 2 + 2 = 4 turns');
+  act('C', { t: 'draw' });
+  settle(turnOf('C', 3), 'C takes one of four turns');
+  act('C', { t: 'draw' });
+  settle(() => E.phase === 'rescue', 'C draws the Hand');
+  act('C', { t: 'rescue', cardId: cardOf('C', 'angel') });
+  settle(() => E.phase === 'hide', 'C hides the Hand');
+  act('C', { t: 'hide', position: 3 });
+  settle(turnOf('A', 1), 'surviving the Hand ends all of C\'s owed turns: A plays next');
+  act('A', { t: 'play', cardId: cardOf('A', 'bounty'), targetId: 'C' });
+  settle(turnOf('C', 2), 'a fresh bounty after the reset is 2 turns again');
+  console.log('rules: attacks stack, the Hand resets owed turns:', turns.join(' '));
+}
 console.log('ALL OK');
