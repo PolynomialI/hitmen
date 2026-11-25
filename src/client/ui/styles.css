@@ -307,8 +307,8 @@ button:focus-visible {
   border-color: var(--gold);
 }
 .icon-btn svg {
-  width: 20px;
-  height: 20px;
+  width: 24px;
+  height: 24px;
 }
 
 /* ------------------------------------------------------------ toast */
@@ -580,15 +580,11 @@ button:focus-visible {
 .play-bar {
   position: absolute;
   left: 50%;
-  bottom: 18px;
+  bottom: 14px;
   transform: translateX(-50%);
   display: flex;
-  gap: 6px;
-  padding: 10px 14px;
-  border-radius: 10px;
-  background: linear-gradient(180deg, rgba(58, 36, 22, 0.92), rgba(30, 18, 10, 0.92));
-  border: 1px solid rgba(227, 185, 90, 0.45);
-  box-shadow: 0 14px 30px rgba(0, 0, 0, 0.55), inset 0 1px 0 rgba(255, 230, 170, 0.15);
+  gap: 14px;
+  /* No panel behind the medallions: each one stands on its own over the scene. */
   animation: slideup 0.7s var(--ease);
 }
 @keyframes slideup {
@@ -601,31 +597,50 @@ button:focus-visible {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 4px;
-  width: 112px;
-  padding: 4px 0;
+  gap: 6px;
+  min-width: 92px;
+  white-space: nowrap;
+  padding: 2px 0;
   font-family: var(--f-label);
-  font-size: 13.5px;
-  letter-spacing: 0.04em;
-  color: #ead9b2;
-  border-radius: 8px;
-  transition: background 0.2s, transform 0.2s var(--ease);
+  font-size: 14px;
+  letter-spacing: 0.05em;
+  color: #f6e8c6;
+  text-shadow: 0 1px 2px #000, 0 0 10px rgba(0, 0, 0, 0.95), 0 0 18px rgba(0, 0, 0, 0.8);
+  transition: transform 0.2s var(--ease), filter 0.2s;
 }
 .play-bar .pb:hover {
-  background: rgba(255, 220, 150, 0.08);
-  transform: translateY(-3px);
+  transform: translateY(-4px);
+  filter: brightness(1.12);
 }
 .play-bar .pb .disc {
-  width: 46px;
-  height: 46px;
+  width: 62px;
+  height: 62px;
   border-radius: 50%;
   display: grid;
   place-items: center;
-  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.5), inset 0 -3px 6px rgba(0, 0, 0, 0.35), inset 0 2px 2px rgba(255, 255, 255, 0.25);
+  /* Brass rim, dark groove, then the enamel. */
+  box-shadow:
+    0 0 0 3px #2a1608,
+    0 0 0 5px #c99a45,
+    0 0 0 7px #4a2a10,
+    0 8px 16px rgba(0, 0, 0, 0.7),
+    inset 0 -5px 9px rgba(0, 0, 0, 0.45),
+    inset 0 3px 4px rgba(255, 255, 255, 0.28);
+}
+.play-bar .pb:hover .disc {
+  box-shadow:
+    0 0 0 3px #2a1608,
+    0 0 0 5px #ffd27a,
+    0 0 0 7px #4a2a10,
+    0 0 22px rgba(255, 200, 110, 0.65),
+    0 8px 16px rgba(0, 0, 0, 0.7),
+    inset 0 -5px 9px rgba(0, 0, 0, 0.45),
+    inset 0 3px 4px rgba(255, 255, 255, 0.28);
 }
 .play-bar .pb .disc svg {
-  width: 24px;
-  height: 24px;
+  width: 36px;
+  height: 36px;
+  filter: drop-shadow(0 2px 1px rgba(0, 0, 0, 0.45));
 }
 .play-bar .pb.locked {
   opacity: 0.45;
@@ -661,8 +676,14 @@ button:focus-visible {
   color: var(--muted);
   animation: fadein 0.8s ease;
 }
+.name-plate svg {
+  width: 22px;
+  height: 22px;
+  color: var(--gold-2);
+  flex: none;
+}
 .name-plate input {
-  width: 150px;
+  width: 160px;
   background: rgba(255, 240, 210, 0.08);
   border: 1px solid rgba(227, 185, 90, 0.3);
   border-radius: 6px;
@@ -1880,8 +1901,8 @@ h4 .timer {
 }
 .pb-count {
   position: absolute;
-  top: 0;
-  right: 26px;
+  top: -2px;
+  right: 14px;
   min-width: 20px;
   height: 20px;
   padding: 0 5px;
@@ -2201,10 +2222,11 @@ h4 .timer {
 /* Narrower windows: the bottom bar sits between Back and the profile chip instead of under the chip. */
 @media (max-width: 1400px) {
   .play-bar {
-    left: calc(50% - 115px);
+    left: calc(50% - 110px);
+    gap: 8px;
   }
   .play-bar .pb {
-    width: 96px;
+    min-width: 86px;
   }
 }
 

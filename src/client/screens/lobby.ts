@@ -157,7 +157,6 @@ export function joinModal(nav: Nav, onJoin: (s: OnlineSession) => void, onClose:
       'div',
       { class: 'panel join' },
       h('h2', {}, 'Join a Table'),
-      h('p', { class: 'lede' }, 'Sit down with other patrons of the Hand.'),
       h('h3', {}, 'Open tables'),
       list,
       h('h3', {}, 'Private table'),

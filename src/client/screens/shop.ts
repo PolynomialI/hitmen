@@ -88,7 +88,8 @@ export class ShopScreen implements Screen {
   constructor(private nav: Nav) {
     const { app } = nav;
     void app.rig.glide(app.tavern.stations.shop, 1.9, 0.2);
-    nav.hud.showProfile(true);
+    // The panel shows your purse itself; the corner chip would only overlap it.
+    nav.hud.showProfile(false);
     this.walletEl = wallet();
     this.body = h('div', { class: 'shop-body' });
     const tabs = h('div', { class: 'tabs' });
@@ -108,7 +109,7 @@ export class ShopScreen implements Screen {
       'div',
       { class: 'layer' },
       backBtn(() => nav.toMenu('play')),
-      h('div', { class: 'panel shop' }, h('div', { class: 'shop-head' }, h('div', {}, h('h2', {}, "The Peddler's Cart"), h('p', { class: 'lede' }, 'Everything a patron of the Hand could want. Paid in coin, rubies or nerve.')), this.walletEl), tabs, this.body)
+      h('div', { class: 'panel shop' }, h('div', { class: 'shop-head' }, h('div', {}, h('h2', {}, "The Peddler's Cart")), this.walletEl), tabs, this.body)
     );
     nav.layer.append(this.ui);
     this.render();
@@ -342,7 +343,8 @@ export class InventoryScreen implements Screen {
   constructor(private nav: Nav) {
     const { app } = nav;
     void app.rig.glide(app.tavern.stations.inventory, 1.9, 0.2);
-    nav.hud.showProfile(true);
+    // The panel shows your purse itself; the corner chip would only overlap it.
+    nav.hud.showProfile(false);
     this.body = h('div', { class: 'inv-body' });
     this.ui = h('div', { class: 'layer' }, backBtn(() => (this.cat ? this.open(null) : nav.toMenu('play'))), h('div', { class: 'panel inventory' }, this.body));
     nav.layer.append(this.ui);
@@ -353,7 +355,7 @@ export class InventoryScreen implements Screen {
     this.cat = cat;
     this.body.replaceChildren();
     if (!cat) {
-      this.body.append(h('div', { class: 'inv-head' }, h('h2', {}, 'Your Chest'), wallet()), h('p', { class: 'lede' }, 'What you wear to the table. Click a pinned item to change it.'));
+      this.body.append(h('div', { class: 'inv-head' }, h('h2', {}, 'Your Chest'), wallet()));
       const board = h('div', { class: 'cork' });
       const cats: Category[] = ['sleeve', 'charm', 'seat', 'impact', 'banner', 'playmat'];
       cats.forEach((c, i) => {

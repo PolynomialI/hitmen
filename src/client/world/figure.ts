@@ -2,41 +2,128 @@ import * as THREE from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { Noise2 } from '../gfx/noise';
 
-let clothNormal: THREE.Texture | null = null;
-function clothNormalMap(): THREE.Texture {
-  if (clothNormal) return clothNormal;
-  const size = 256;
+interface ClothMaps {
+  map: THREE.Texture;
+  normalMap: THREE.Texture;
+  roughnessMap: THREE.Texture;
+}
+let cloth: ClothMaps | null = null;
+
+/**
+ * Shared wool for every cloak (grayscale, tinted by each cloak's colour): a fine twill weave, fibres, deep vertical
+ * folds, wear and stains, and an embroidered band along the hems (the bottom edge of each lathe: robe, capelet,
+ * hood). Albedo, normal and roughness maps from one height field; tiles around the circumference.
+ */
+function clothMaps(): ClothMaps {
+  if (cloth) return cloth;
+  const S = 512;
   const n = new Noise2(77);
-  const c = document.createElement('canvas');
-  c.width = c.height = size;
-  const ctx = c.getContext('2d')!;
-  const img = ctx.createImageData(size, size);
-  const h = new Float32Array(size * size);
-  for (let y = 0; y < size; y++)
-    for (let x = 0; x < size; x++) {
-      const weave = Math.sin(x * 1.6) * Math.sin(y * 1.6) * 0.25;
-      const folds = n.fbm(x / 64, y / 18, 3, 4, 14);
-      h[y * size + x] = weave * 0.2 + folds;
+  const nf = new Noise2(131);
+  const ns = new Noise2(911);
+  const height = new Float32Array(S * S);
+  const alb = new Float32Array(S * S);
+  const rough = new Float32Array(S * S);
+  const TAU = Math.PI * 2;
+  for (let y = 0; y < S; y++) {
+    const v = 1 - y / S; // texture v (0 = bottom edge of the garment)
+    for (let x = 0; x < S; x++) {
+      const i = y * S + x;
+      const twill = 0.5 + 0.5 * Math.sin((x + y) * (TAU / 8));
+      const fiber = nf.fbm(x / 2, y / 8, 2, S / 2, S / 8) - 0.5;
+      const folds = n.fbm(x / 32, y / 128, 4, S / 32, S / 128);
+      const stain = Math.max(0, ns.fbm(x / 64, y / 64, 3, S / 64, S / 64) - 0.6) * 3;
+      // Dust and wear gather toward the hem.
+      const wear = Math.max(0, 0.25 - v) * 1.6 * (0.6 + nf.value(x / 6, y / 6, S / 6, S / 6) * 0.8);
+      // Embroidered band just above the hem: lozenges of raised, brighter thread.
+      let emb = 0;
+      if (v > 0.018 && v < 0.07) {
+        const bx = ((x % 32) - 16) / 16;
+        const by = (v - 0.044) / 0.026;
+        const d = Math.abs(bx) + Math.abs(by);
+        emb = d < 0.62 && d > 0.38 ? 1 : Math.abs(by) > 0.86 ? 0.8 : 0.25;
+      }
+      height[i] = folds * 1.7 + twill * 0.18 + fiber * 0.22 + emb * 0.25;
+      alb[i] = 0.78 + (twill - 0.5) * 0.07 + fiber * 0.09 + (folds - 0.5) * 0.3 - stain * 0.16 + wear * 0.18 + emb * 0.32;
+      rough[i] = 0.9 - stain * 0.25 - emb * 0.3 + fiber * 0.06;
     }
-  for (let y = 0; y < size; y++)
-    for (let x = 0; x < size; x++) {
-      const dx = h[y * size + ((x + 1) % size)] - h[y * size + ((x - 1 + size) % size)];
-      const dy = h[((y + 1) % size) * size + x] - h[((y - 1 + size) % size) * size + x];
-      const nx = -dx * 3;
-      const ny = -dy * 3;
-      const l = Math.hypot(nx, ny, 1);
-      const i = (y * size + x) * 4;
-      img.data[i] = (nx / l * 0.5 + 0.5) * 255;
-      img.data[i + 1] = (ny / l * 0.5 + 0.5) * 255;
+  }
+  const toTex = (fill: (img: ImageData) => void, srgb: boolean) => {
+    const c = document.createElement('canvas');
+    c.width = c.height = S;
+    const ctx = c.getContext('2d')!;
+    const img = ctx.createImageData(S, S);
+    fill(img);
+    ctx.putImageData(img, 0, 0);
+    const t = new THREE.CanvasTexture(c);
+    t.wrapS = t.wrapT = THREE.RepeatWrapping;
+    t.repeat.set(3, 1);
+    t.anisotropy = 4;
+    if (srgb) t.colorSpace = THREE.SRGBColorSpace;
+    return t;
+  };
+  const map = toTex((img) => {
+    for (let i = 0; i < S * S; i++) {
+      const g = Math.max(0, Math.min(1, alb[i])) * 255;
+      img.data[i * 4] = g;
+      img.data[i * 4 + 1] = g * 0.985;
+      img.data[i * 4 + 2] = g * 0.96;
+      img.data[i * 4 + 3] = 255;
+    }
+  }, true);
+  const normalMap = toTex((img) => {
+    for (let y = 0; y < S; y++)
+      for (let x = 0; x < S; x++) {
+        const dx = height[y * S + ((x + 1) % S)] - height[y * S + ((x - 1 + S) % S)];
+        const dy = height[((y + 1) % S) * S + x] - height[((y - 1 + S) % S) * S + x];
+        const nx = -dx * 2.2;
+        const ny = -dy * 2.2;
+        const l = Math.hypot(nx, ny, 1);
+        const i = (y * S + x) * 4;
+        img.data[i] = (nx / l * 0.5 + 0.5) * 255;
+        img.data[i + 1] = (ny / l * 0.5 + 0.5) * 255;
+        img.data[i + 2] = (1 / l * 0.5 + 0.5) * 255;
+        img.data[i + 3] = 255;
+      }
+  }, false);
+  const roughnessMap = toTex((img) => {
+    for (let i = 0; i < S * S; i++) {
+      const r = Math.max(0, Math.min(1, rough[i])) * 255;
+      img.data[i * 4] = img.data[i * 4 + 1] = img.data[i * 4 + 2] = r;
+      img.data[i * 4 + 3] = 255;
+    }
+  }, false);
+  cloth = { map, normalMap, roughnessMap };
+  return cloth;
+}
+
+let leatherN: THREE.Texture | null = null;
+/** Pebbled leather grain for gloves and belts. */
+function leatherNormal(): THREE.Texture {
+  if (leatherN) return leatherN;
+  const S = 128;
+  const n = new Noise2(5);
+  const h = new Float32Array(S * S);
+  for (let y = 0; y < S; y++) for (let x = 0; x < S; x++) h[y * S + x] = n.fbm(x / 6, y / 6, 3, S / 6, S / 6);
+  const c = document.createElement('canvas');
+  c.width = c.height = S;
+  const ctx = c.getContext('2d')!;
+  const img = ctx.createImageData(S, S);
+  for (let y = 0; y < S; y++)
+    for (let x = 0; x < S; x++) {
+      const dx = h[y * S + ((x + 1) % S)] - h[y * S + ((x - 1 + S) % S)];
+      const dy = h[((y + 1) % S) * S + x] - h[((y - 1 + S) % S) * S + x];
+      const l = Math.hypot(dx * 4, dy * 4, 1);
+      const i = (y * S + x) * 4;
+      img.data[i] = (-dx * 4 / l * 0.5 + 0.5) * 255;
+      img.data[i + 1] = (-dy * 4 / l * 0.5 + 0.5) * 255;
       img.data[i + 2] = (1 / l * 0.5 + 0.5) * 255;
       img.data[i + 3] = 255;
     }
   ctx.putImageData(img, 0, 0);
-  const t = new THREE.CanvasTexture(c);
-  t.wrapS = t.wrapT = THREE.RepeatWrapping;
-  t.repeat.set(3, 3);
-  clothNormal = t;
-  return t;
+  leatherN = new THREE.CanvasTexture(c);
+  leatherN.wrapS = leatherN.wrapT = THREE.RepeatWrapping;
+  leatherN.repeat.set(2, 2);
+  return leatherN;
 }
 
 export type Accessory =
@@ -163,18 +250,22 @@ export class Figure {
   constructor(o: FigureOpts) {
     const s = o.scale ?? 1;
     const cloak = new THREE.Color(o.cloak);
+    const cm = clothMaps();
     this.cloakMat = new THREE.MeshStandardMaterial({
-      color: cloak.clone().offsetHSL(0, 0.06, 0.02),
-      roughness: 0.86,
-      normalMap: clothNormalMap(),
-      normalScale: new THREE.Vector2(0.45, 0.45),
+      // The wool map averages ~0.8: lift the base colour so cloaks keep their brightness.
+      color: cloak.clone().offsetHSL(0, 0.06, 0.02).multiplyScalar(1.22),
+      map: cm.map,
+      roughness: 1,
+      roughnessMap: cm.roughnessMap,
+      normalMap: cm.normalMap,
+      normalScale: new THREE.Vector2(0.75, 0.75),
       side: THREE.DoubleSide,
     });
-    const inner = new THREE.MeshStandardMaterial({ color: cloak.clone().multiplyScalar(0.3), roughness: 1, side: THREE.DoubleSide });
+    const inner = new THREE.MeshStandardMaterial({ color: cloak.clone().multiplyScalar(0.32), map: cm.map, normalMap: cm.normalMap, normalScale: new THREE.Vector2(0.4, 0.4), roughness: 1, side: THREE.DoubleSide });
     const trimC = new THREE.Color(o.trim ?? '#b88a3a');
     const trim = new THREE.MeshStandardMaterial({ color: trimC, roughness: 0.45, metalness: 0.55 });
-    const leather = new THREE.MeshStandardMaterial({ color: '#3a2416', roughness: 0.55 });
-    const glove = new THREE.MeshStandardMaterial({ color: '#241812', roughness: 0.5 });
+    const leather = new THREE.MeshStandardMaterial({ color: '#3a2416', roughness: 0.55, normalMap: leatherNormal(), normalScale: new THREE.Vector2(0.6, 0.6) });
+    const glove = new THREE.MeshStandardMaterial({ color: '#2a1c14', roughness: 0.48, normalMap: leatherNormal(), normalScale: new THREE.Vector2(0.7, 0.7) });
     const gold = new THREE.MeshStandardMaterial({ color: '#e0b04a', metalness: 1, roughness: 0.28, emissive: '#3a2200', emissiveIntensity: 0.4 });
     this.eyeColor = new THREE.Color(o.eyes ?? '#ffb347');
     this.eyesMat = new THREE.MeshBasicMaterial({ color: this.eyeColor.clone().multiplyScalar(6) });

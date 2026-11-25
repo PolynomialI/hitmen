@@ -100,8 +100,9 @@ export class MainMenu implements Screen {
     const defs: Array<[MenuItem['key'], string, THREE.Vector3, THREE.Object3D, number]> = [
       ['shop', 'Shop', new THREE.Vector3(-3.44, 1.47, -3.28), tv.menuProps.shop, 0.15],
       ['play', 'Play', new THREE.Vector3(-2.6, 1.42, -3.22), tv.menuProps.play, 0.19],
-      ['inventory', 'Inventory', new THREE.Vector3(-1.84, 1.66, -3.36), tv.menuProps.inventory, 0.13],
-      ['challenges', 'Challenges', new THREE.Vector3(-3.95, 2.27, -5.3), tv.menuProps.challenges, 0.14],
+      ['inventory', 'Inventory', new THREE.Vector3(-1.84, 1.66, -3.36), tv.menuProps.inventory, 0.15],
+      // Twice as far away (on the dartboard), so larger to read the same size as Shop and Inventory.
+      ['challenges', 'Challenges', new THREE.Vector3(-3.95, 2.27, -5.3), tv.menuProps.challenges, 0.25],
     ];
     for (const [key, label, pos, prop, size] of defs) {
       const text = makeText(label, { size, color: '#f3e6c4', glow: 1.05, font: FONT3D.gothicBlack, letterSpacing: 0.02, outline: 0.006, outlineColor: '#1a0a04' });
@@ -215,52 +216,63 @@ function ticketTexture(title: string, sub: string, seats: string, color: string,
       ctx.fillStyle = `rgba(90,50,15,${Math.random() * 0.08})`;
       ctx.fillRect(Math.random() * w, Math.random() * hh, 2, 2);
     }
-    // Colour band and perforation.
+    // Colour band down the stub edge, one perforation, and a wax seal with the seat count on the stub.
     ctx.fillStyle = color;
     ctx.fillRect(0, 0, 18, hh);
-    ctx.fillRect(w - 18, 0, 18, hh);
+    ctx.fillRect(w - 10, 0, 10, hh);
     ctx.setLineDash([8, 8]);
     ctx.strokeStyle = 'rgba(60,30,10,0.55)';
     ctx.lineWidth = 3;
     ctx.beginPath();
-    ctx.moveTo(110, 20);
-    ctx.lineTo(110, hh - 20);
-    ctx.moveTo(w - 110, 20);
-    ctx.lineTo(w - 110, hh - 20);
+    ctx.moveTo(130, 18);
+    ctx.lineTo(130, hh - 18);
     ctx.stroke();
     ctx.setLineDash([]);
-    ctx.strokeStyle = 'rgba(60,30,10,0.6)';
-    ctx.strokeRect(28, 16, w - 56, hh - 32);
-    ctx.restore();
-    // Seats, vertical.
-    ctx.fillStyle = 'rgba(60,30,10,0.75)';
-    ctx.font = '600 34px "Grenze Gotisch"';
-    ctx.textAlign = 'center';
-    for (const x of [68, w - 68]) {
-      ctx.save();
-      ctx.translate(x, hh / 2);
-      ctx.rotate(-Math.PI / 2);
-      ctx.fillText(seats, 0, 12);
-      ctx.restore();
+    const sx = 72;
+    const sy = hh / 2;
+    const seal = ctx.createRadialGradient(sx - 12, sy - 14, 6, sx, sy, 54);
+    seal.addColorStop(0, '#d8553e');
+    seal.addColorStop(0.7, '#8a1f14');
+    seal.addColorStop(1, '#5a0e08');
+    ctx.fillStyle = seal;
+    ctx.beginPath();
+    for (let i = 0; i < 28; i++) {
+      const a = (i / 28) * Math.PI * 2;
+      const rr = 52 + (i % 2 ? 0 : 3) + Math.sin(i * 7.3) * 1.5;
+      ctx.lineTo(sx + Math.cos(a) * rr, sy + Math.sin(a) * rr);
     }
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(255,220,180,0.35)';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.arc(sx, sy, 38, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.fillStyle = '#ffe9c8';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.font = `800 ${seats.length > 2 ? 40 : 54}px "Grenze Gotisch"`;
+    ctx.fillText(seats, sx, sy + 2);
+    // Title and one line of description, large enough to read from across the room.
+    const cx = (130 + w) / 2;
     ctx.fillStyle = color;
-    ctx.font = '800 76px "Grenze Gotisch"';
-    ctx.fillText(title, w / 2, 140);
-    ctx.fillStyle = 'rgba(50,25,8,0.85)';
-    ctx.font = 'italic 30px "Alegreya"';
-    ctx.fillText(sub, w / 2, 196);
-    ctx.font = '22px "IM Fell English SC"';
-    ctx.fillStyle = 'rgba(50,25,8,0.6)';
-    ctx.fillText(locked ? 'not yet open' : 'click to sit down', locked ? w / 2 - 60 : w / 2, 246);
+    ctx.font = '800 96px "Grenze Gotisch"';
+    ctx.textBaseline = 'alphabetic';
+    let size = 96;
+    while (ctx.measureText(title).width > w - 170 && size > 60) ctx.font = `800 ${(size -= 4)}px "Grenze Gotisch"`;
+    ctx.fillText(title, cx, 150);
+    ctx.fillStyle = 'rgba(50,25,8,0.88)';
+    ctx.font = 'italic 36px "Alegreya"';
+    ctx.fillText(sub, cx, 212);
     if (locked) {
       ctx.save();
-      ctx.translate(w - 170, hh - 70);
+      ctx.translate(w - 150, hh - 64);
       ctx.rotate(-0.16);
       ctx.strokeStyle = 'rgba(140,20,12,0.85)';
       ctx.lineWidth = 5;
       ctx.strokeRect(-70, -30, 140, 54);
       ctx.fillStyle = 'rgba(140,20,12,0.85)';
       ctx.font = '800 40px "Grenze Gotisch"';
+      ctx.textAlign = 'center';
       ctx.fillText('SOON', 0, 10);
       ctx.restore();
     }
@@ -335,7 +347,7 @@ export class PlayMenu implements Screen {
       b.addEventListener('pointerenter', () => audio.play('hover'));
       return b;
     };
-    const nameInput = h('input', { value: profile.name, maxlength: '16', 'aria-label': 'Your name' }) as HTMLInputElement;
+    const nameInput = h('input', { value: profile.name, maxlength: '16', 'aria-label': 'Your name', placeholder: 'Your name' }) as HTMLInputElement;
     nameInput.addEventListener('change', () => {
       const name = cleanName(nameInput.value);
       nameInput.value = name;
@@ -351,7 +363,7 @@ export class PlayMenu implements Screen {
       'div',
       { class: 'layer' },
       back,
-      h('div', { class: 'name-plate' }, 'Your name', nameInput),
+      h('label', { class: 'name-plate', title: 'Your name' }, icon('quill'), nameInput),
       h(
         'div',
         { class: 'play-bar' },
@@ -418,11 +430,11 @@ export class PlayMenu implements Screen {
     const rk = rankOf(profile.ranked.rating);
     const b = h(
       'button',
-      { class: 'renown' },
+      { class: 'renown', title: 'Play ranked' },
       h('div', { class: 'medal', html: rankMedal(rk.index) }),
       h('b', {}, `${profile.ranked.rating} Renown`),
       h('span', {}, rk.name),
-      h('em', {}, 'Go to Ranked')
+
     );
     b.addEventListener('click', () => {
       audio.play('paper');
@@ -524,7 +536,7 @@ export class PlayMenu implements Screen {
       }
       this.nav.startMatch({ mode: sel, rivals: seats - 1 });
     });
-    this.panel = h('div', { class: 'scrim' }, h('div', { class: 'panel' }, h('h2', {}, 'Create a Table'), h('p', { class: 'lede' }, 'Choose how the night will go.'), list, sizeRow, whoRow, h('div', { class: 'row' }, close, choose)));
+    this.panel = h('div', { class: 'scrim' }, h('div', { class: 'panel' }, h('h2', {}, 'Create a Table'), list, sizeRow, whoRow, h('div', { class: 'row' }, close, choose)));
     this.panel.addEventListener('click', (e) => e.target === this.panel && this.closePanel());
     this.nav.layer.append(this.panel);
   }
@@ -579,8 +591,7 @@ export class PlayMenu implements Screen {
           { class: 'codex-card' },
           h('img', { src: urls[t], alt: d.name, draggable: 'false' }),
           h('b', {}, d.name),
-          h('p', {}, d.text),
-          h('em', {}, (d.instant ? 'Spark: play at any time. ' : '') + (d.targeted ? 'Target: choose a mark. ' : '') + d.flavour)
+          h('p', {}, d.text)
         )
       );
     }
@@ -592,7 +603,7 @@ export class PlayMenu implements Screen {
     this.panel = h(
       'div',
       { class: 'scrim' },
-      h('div', { class: 'panel codex' }, h('h2', {}, 'The Codex'), h('p', { class: 'lede' }, 'Every card the dealer might put in your hand.'), grid, h('div', { class: 'row' }, h('span'), close))
+      h('div', { class: 'panel codex' }, h('h2', {}, 'The Codex'), grid, h('div', { class: 'row' }, h('span'), close))
     );
     this.panel.addEventListener('click', (e) => e.target === this.panel && this.closePanel());
     this.nav.layer.append(this.panel);

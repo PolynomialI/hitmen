@@ -84,7 +84,7 @@ export class Tavern {
   readonly stage: StageRefs;
 
   constructor(cardBack: THREE.Texture, quality: Quality = 'medium') {
-    this.mats = buildMaterials();
+    this.mats = buildMaterials(quality);
     const g = this.group;
     g.add(this.flames.mesh);
 

@@ -379,28 +379,29 @@ export function impactIconSVG(style: Record<string, string>, mut: Mutation): str
   const c = style.color;
   const dots = Array.from({ length: 22 }, (_, i) => {
     const a = (i / 22) * Math.PI * 2 + Math.random() * 0.3;
-    const r = 24 + Math.random() * 36;
-    const s = 2 + Math.random() * 5;
+    // Burst outward from behind the card, filling the medallion.
+    const r = 40 + Math.random() * 28;
+    const s = 3 + Math.random() * 5;
     return style.fx === 'ravens'
       ? `<path transform="translate(${(80 + Math.cos(a) * r).toFixed(0)},${(84 + Math.sin(a) * r * 0.8).toFixed(0)}) rotate(${(a * 57).toFixed(0)})" d="M 0,-9 C 4,-4 4,4 0,9 C -4,4 -4,-4 0,-9 Z" fill="#1a1a1a" stroke="#555" stroke-width="1"/>`
       : `<circle cx="${(80 + Math.cos(a) * r).toFixed(0)}" cy="${(84 + Math.sin(a) * r * 0.8).toFixed(0)}" r="${s.toFixed(1)}" fill="${c}" opacity="${(0.5 + Math.random() * 0.5).toFixed(2)}"/>`;
   }).join('');
   const ring = mut === 'prismatic' ? '#ff7ae0' : mut === 'gilded' ? '#f0c860' : mut === 'mosaic' ? '#60b0e0' : c;
-  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 160 160"><defs><radialGradient id="g"><stop offset="0" stop-color="${c}" stop-opacity=".9"/><stop offset="1" stop-color="${c}" stop-opacity="0"/></radialGradient></defs><circle cx="80" cy="84" r="70" fill="url(#g)" opacity=".35"/><rect x="52" y="64" width="56" height="40" rx="5" fill="#e8d8b4" stroke="#1b110b" stroke-width="3" transform="rotate(-8 80 84)"/>${dots}<circle cx="80" cy="84" r="74" fill="none" stroke="${ring}" stroke-width="3" opacity=".7"/></svg>`;
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 160 160"><defs><radialGradient id="g"><stop offset="0" stop-color="${c}" stop-opacity=".9"/><stop offset="1" stop-color="${c}" stop-opacity="0"/></radialGradient></defs><circle cx="80" cy="84" r="70" fill="url(#g)" opacity=".35"/>${dots}<rect x="56" y="46" width="48" height="70" rx="7" fill="#f1e4c4" stroke="#1b110b" stroke-width="3.5" transform="rotate(-10 80 81)"/><rect x="62" y="53" width="36" height="56" rx="4" fill="none" stroke="${c}" stroke-width="3" opacity=".85" transform="rotate(-10 80 81)"/><circle cx="80" cy="84" r="74" fill="none" stroke="${ring}" stroke-width="3" opacity=".7"/></svg>`;
 }
 
 export function charmIconSVG(model: string): string {
   const I = '#f6eedb';
   const K = '#1b110b';
   const body: Record<string, string> = {
-    none: `<rect x="40" y="96" width="80" height="10" rx="4" fill="#6a4a2a"/>`,
+    none: `<path d="M 58,104 C 50,72 62,42 80,42 C 98,42 110,72 102,104 Z" fill="none" stroke="#8a6a4a" stroke-width="4" stroke-dasharray="7 6" opacity=".7"/><rect x="40" y="106" width="80" height="16" rx="4" fill="#6a4a2a" stroke="${K}" stroke-width="3"/>`,
     die: `<rect x="48" y="48" width="64" height="64" rx="12" fill="${I}" stroke="${K}" stroke-width="4"/><circle cx="64" cy="64" r="6" fill="${K}"/><circle cx="96" cy="96" r="6" fill="${K}"/><circle cx="80" cy="80" r="6" fill="${K}"/>`,
     horseshoe: `<path d="M 50,40 C 40,100 50,124 80,124 C 110,124 120,100 110,40" fill="none" stroke="#9a948c" stroke-width="16" stroke-linecap="round"/><path d="M 50,40 C 40,100 50,124 80,124 C 110,124 120,100 110,40" fill="none" stroke="${K}" stroke-width="2" stroke-dasharray="4 10"/>`,
     goblet: `<path d="M 50,36 L 110,36 C 110,70 96,86 80,88 C 64,86 50,70 50,36 Z" fill="#e0b04a" stroke="${K}" stroke-width="4"/><rect x="76" y="88" width="8" height="24" fill="#e0b04a" stroke="${K}" stroke-width="3"/><ellipse cx="80" cy="118" rx="26" ry="8" fill="#e0b04a" stroke="${K}" stroke-width="4"/>`,
     skull: `<path d="M 50,84 C 44,48 116,48 110,84 C 110,96 100,100 100,110 L 60,110 C 60,100 50,96 50,84 Z" fill="${I}" stroke="${K}" stroke-width="4"/><circle cx="66" cy="82" r="9" fill="${K}"/><circle cx="94" cy="82" r="9" fill="${K}"/><rect x="72" y="32" width="16" height="22" fill="#efe3c4" stroke="${K}" stroke-width="3"/><path d="M 80,14 C 86,22 86,28 80,32 C 74,28 74,22 80,14 Z" fill="#ffb347"/>`,
     crystal: `<path d="M 80,22 L 108,70 L 92,120 L 68,120 L 52,70 Z" fill="#b48ae0" stroke="${K}" stroke-width="4"/><path d="M 80,22 L 80,120 M 52,70 L 108,70" stroke="#fff" stroke-width="2" opacity=".6"/><rect x="56" y="120" width="48" height="12" rx="4" fill="#6a4a2a" stroke="${K}" stroke-width="3"/>`,
-    raven: `<g transform="translate(80,82) scale(0.9)">${crest('raven', '#1a1a1a')}</g><rect x="56" y="118" width="48" height="12" rx="4" fill="#6a4a2a" stroke="${K}" stroke-width="3"/>`,
-    dragon: `<g transform="translate(80,80) scale(0.9)">${crest('dragon', '#c8963a')}</g><circle cx="110" cy="56" r="6" fill="#ddd" opacity=".5"/><circle cx="118" cy="44" r="8" fill="#ddd" opacity=".35"/>`,
+    raven: `<g transform="translate(80,78) scale(1.18)">${crest('raven', '#1a1a1a')}</g><rect x="56" y="118" width="48" height="12" rx="4" fill="#6a4a2a" stroke="${K}" stroke-width="3"/>`,
+    dragon: `<g transform="translate(80,80) scale(1.18)">${crest('dragon', '#c8963a')}</g><circle cx="110" cy="56" r="6" fill="#ddd" opacity=".5"/><circle cx="118" cy="44" r="8" fill="#ddd" opacity=".35"/>`,
   };
   return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 160 160">${body[model] ?? body.none}</svg>`;
 }

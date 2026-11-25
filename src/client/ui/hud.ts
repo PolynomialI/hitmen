@@ -23,7 +23,7 @@ export class Hud {
       'div',
       { class: 'hud-profile hidden' },
       this.levelEl,
-      h('div', { class: 'who' }, this.nameEl, h('span', {}, 'Patron of the Hand')),
+      h('div', { class: 'who' }, this.nameEl),
       h('div', { class: 'coins' }, h('i', { class: 'coin-ico' }), this.coinsEl),
       h('div', { class: 'coins' }, h('i', { class: 'ruby-ico' }), this.rubiesEl)
     );

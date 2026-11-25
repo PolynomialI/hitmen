@@ -147,32 +147,124 @@ export function woodPlanks(size = 1024, opts: { planks?: number; seed?: number; 
   };
 }
 
-/** Generic furniture wood with grain along U. */
+/**
+ * Furniture wood (bar, boards, chests, frames) with grain along U: rings and figure, open pores dotted along the
+ * grain, worn polish (smoother, slightly lighter patches), fine scratches across the grain, and matching normal and
+ * roughness maps so the polish catches the candlelight unevenly.
+ */
 export function woodGrain(size = 512, tint: [number, number, number] = [110, 70, 40], seed = 5): TexSet {
   const n = new Noise2(seed);
+  const np = new Noise2(seed + 101);
   const w = size;
   const h = size;
+  const k = size / 512;
   const [c, ctx] = canvas(w, h);
   const img = ctx.createImageData(w, h);
   const height = new Float32Array(w * h);
+  const rough = new Float32Array(w * h);
+  // A few long, faint scratches across the grain.
+  const scratches = Array.from({ length: 26 }, (_, i) => ({ x0: rnd(seed + i * 3.3) * w, y0: rnd(seed + i * 7.1) * h, a: (rnd(seed + i * 1.9) - 0.5) * 1.2 + Math.PI / 2, len: (40 + rnd(i * 5.5) * 160) * k }));
+  const scratchAt = new Float32Array(w * h);
+  for (const sc of scratches) {
+    for (let t = 0; t < sc.len; t++) {
+      const x = Math.round(sc.x0 + Math.cos(sc.a) * t);
+      const y = Math.round(sc.y0 + Math.sin(sc.a) * t);
+      scratchAt[(((y % h) + h) % h) * w + (((x % w) + w) % w)] = 1;
+    }
+  }
   for (let y = 0; y < h; y++) {
     for (let x = 0; x < w; x++) {
       const gx = x / w;
       const gy = y / h;
-      const grain = n.fbm(gx * 2, gy * 24, 4, 2, 24);
+      const grain = n.fbm(gx * 2, gy * 24, 5, 2, 24);
       const rings = Math.sin((grain * 7 + gy * 5) * Math.PI * 2) * 0.5 + 0.5;
       const fine = n.value(gx * 300, gy * 16, 300, 16);
-      const v = 0.62 + (grain - 0.5) * 0.55 + rings * 0.07 + (fine - 0.5) * 0.05;
+      // Pores: short dark dashes strung along the grain.
+      const pore = Math.max(0, np.value(gx * 160, gy * 90, 160, 90) - 0.78) * 4.5;
+      // Worn polish: broad soft patches.
+      const wear = n.fbm(gx * 3 + 7, gy * 3, 3, 3, 3);
+      const scr = scratchAt[y * w + x];
+      let v = 0.62 + (grain - 0.5) * 0.6 + rings * 0.08 + (fine - 0.5) * 0.06 - pore * 0.22 + (wear - 0.5) * 0.12 + scr * 0.05;
+      v = Math.max(0.15, v);
       const i = (y * w + x) * 4;
-      img.data[i] = tint[0] * v;
-      img.data[i + 1] = tint[1] * v;
-      img.data[i + 2] = tint[2] * v;
+      img.data[i] = Math.min(255, tint[0] * v * 1.05);
+      img.data[i + 1] = Math.min(255, tint[1] * v);
+      img.data[i + 2] = Math.min(255, tint[2] * v * 0.95);
       img.data[i + 3] = 255;
-      height[y * w + x] = rings * 0.5 + fine * 0.5;
+      height[y * w + x] = rings * 0.45 + fine * 0.35 - pore * 0.5 - scr * 0.3;
+      rough[y * w + x] = 0.42 + (1 - wear) * 0.3 + pore * 0.25 + scr * 0.2 + (fine - 0.5) * 0.06;
     }
   }
   ctx.putImageData(img, 0, 0);
-  return { map: tex(c), normalMap: tex(normalFromHeight(height, w, h, 1.0), false) };
+  return { map: tex(c), normalMap: tex(normalFromHeight(height, w, h, 1.6), false), roughnessMap: tex(grayCanvas(rough, w, h), false) };
+}
+
+/** Hammered metal (brass, gold): fine dents for the normal map, patina and fingerprint smudges for roughness. */
+export function hammeredMetal(size = 256, seed = 61): TexSet {
+  const n = new Noise2(seed);
+  const [c, ctx] = canvas(size);
+  const img = ctx.createImageData(size, size);
+  const height = new Float32Array(size * size);
+  const rough = new Float32Array(size * size);
+  for (let y = 0; y < size; y++)
+    for (let x = 0; x < size; x++) {
+      const dents = n.fbm(x / 10, y / 10, 2, size / 10, size / 10);
+      const smudge = n.fbm(x / 48 + 4, y / 48, 3, size / 48, size / 48);
+      const patina = Math.max(0, n.fbm(x / 30 + 9, y / 30, 3, size / 30, size / 30) - 0.6) * 2.5;
+      const v = 0.92 + (smudge - 0.5) * 0.12 - patina * 0.35;
+      const i = (y * size + x) * 4;
+      img.data[i] = 255 * v;
+      img.data[i + 1] = 255 * (v - patina * 0.05);
+      img.data[i + 2] = 255 * (v - patina * 0.12);
+      img.data[i + 3] = 255;
+      height[y * size + x] = dents;
+      rough[y * size + x] = 0.22 + smudge * 0.25 + patina * 0.35;
+    }
+  ctx.putImageData(img, 0, 0);
+  return { map: tex(c), normalMap: tex(normalFromHeight(height, size, size, 2.2), false), roughnessMap: tex(grayCanvas(rough, size, size), false) };
+}
+
+/** Soft goods: leather grain (scale ~6) or crushed velvet pile (scale ~24). Grayscale map, tinted by the material. */
+export function softGoods(size = 256, scale = 6, seed = 71): TexSet {
+  const n = new Noise2(seed);
+  const [c, ctx] = canvas(size);
+  const img = ctx.createImageData(size, size);
+  const height = new Float32Array(size * size);
+  for (let y = 0; y < size; y++)
+    for (let x = 0; x < size; x++) {
+      const a = n.fbm(x / scale, y / scale, 3, size / scale, size / scale);
+      const b = n.fbm(x / (scale * 6) + 2, y / (scale * 6), 3, size / (scale * 6), size / (scale * 6));
+      const v = 0.82 + (a - 0.5) * 0.18 + (b - 0.5) * 0.22;
+      const i = (y * size + x) * 4;
+      img.data[i] = img.data[i + 1] = img.data[i + 2] = 255 * Math.min(1, v);
+      img.data[i + 3] = 255;
+      height[y * size + x] = a * 0.7 + b * 0.3;
+    }
+  ctx.putImageData(img, 0, 0);
+  return { map: tex(c), normalMap: tex(normalFromHeight(height, size, size, 2.5), false) };
+}
+
+/** Parchment: laid fibres, foxing spots and a darker deckled edge tone. */
+export function parchmentTex(size = 512, seed = 83): TexSet {
+  const n = new Noise2(seed);
+  const [c, ctx] = canvas(size);
+  const img = ctx.createImageData(size, size);
+  const height = new Float32Array(size * size);
+  for (let y = 0; y < size; y++)
+    for (let x = 0; x < size; x++) {
+      const fib = n.value(x / 1.5, y / 9, size / 1.5, size / 9);
+      const cloud = n.fbm(x / 70, y / 70, 4, size / 70, size / 70);
+      const fox = Math.max(0, n.fbm(x / 22 + 6, y / 22, 3, size / 22, size / 22) - 0.66) * 3;
+      const v = 0.9 + (cloud - 0.5) * 0.2 + (fib - 0.5) * 0.06 - fox * 0.3;
+      const i = (y * size + x) * 4;
+      img.data[i] = 255 * v;
+      img.data[i + 1] = 245 * v - fox * 18;
+      img.data[i + 2] = 220 * v - fox * 40;
+      img.data[i + 3] = 255;
+      height[y * size + x] = fib * 0.4 + cloud * 0.6;
+    }
+  ctx.putImageData(img, 0, 0);
+  return { map: tex(c), normalMap: tex(normalFromHeight(height, size, size, 1.2), false) };
 }
 
 // ------------------------------------------------------------------ stone & plaster
@@ -248,24 +340,34 @@ export function stoneWall(size = 1024, seed = 9): TexSet {
 
 export function plaster(size = 512, seed = 21): TexSet {
   const n = new Noise2(seed);
+  const nc = new Noise2(seed + 7);
   const [c, ctx] = canvas(size);
   const img = ctx.createImageData(size, size);
   const height = new Float32Array(size * size);
+  const rough = new Float32Array(size * size);
   for (let y = 0; y < size; y++) {
+    const gy = y / size;
     for (let x = 0; x < size; x++) {
       const a = n.fbm(x / 64, y / 64, 5, size / 64, size / 64);
+      const trowel = n.fbm(x / 22 + 3, y / 9, 3, size / 22, size / 9);
       const stain = n.fbm(x / 160 + 5, y / 160, 3, size / 160, size / 160);
-      const v = 0.78 + (a - 0.5) * 0.18 - Math.max(0, stain - 0.55) * 0.6;
+      // Hairline cracks: thin ridges of a warped noise field.
+      const cr = Math.abs(nc.fbm(x / 90, y / 90, 4, size / 90, size / 90) - 0.5);
+      const crack = cr < 0.007 ? 1 - cr / 0.007 : 0;
+      // Soot creeps down from the top of each tile (the ceiling side).
+      const soot = Math.pow(1 - gy, 3) * 0.25 * (0.6 + a * 0.8);
+      const v = 0.8 + (a - 0.5) * 0.18 + (trowel - 0.5) * 0.08 - Math.max(0, stain - 0.55) * 0.6 - crack * 0.12 - soot;
       const i = (y * size + x) * 4;
       img.data[i] = 214 * v;
       img.data[i + 1] = 196 * v;
       img.data[i + 2] = 162 * v;
       img.data[i + 3] = 255;
-      height[y * size + x] = a;
+      height[y * size + x] = a * 0.7 + trowel * 0.3 - crack * 0.4;
+      rough[y * size + x] = 0.85 + (a - 0.5) * 0.1 - Math.max(0, stain - 0.55) * 0.3;
     }
   }
   ctx.putImageData(img, 0, 0);
-  return { map: tex(c), normalMap: tex(normalFromHeight(height, size, size, 4), false) };
+  return { map: tex(c), normalMap: tex(normalFromHeight(height, size, size, 4), false), roughnessMap: tex(grayCanvas(rough, size, size), false) };
 }
 
 // ------------------------------------------------------------------ felt
