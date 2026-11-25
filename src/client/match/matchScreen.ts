@@ -704,6 +704,8 @@ export class MatchScreen implements Screen {
     this.hidePreview();
     this.table.setMarkers(options, self);
     this.app.rig.sway = 0.3;
+    // Hold the view still while aiming: look-around used to slide the arrows out from under the pointer.
+    this.app.rig.lookScale = 0;
     if (kind.kind === 'play') void this.app.rig.glide(this.aimStation, 0.75, 0.05);
     const what = kind.kind === 'misdirect' ? 'Choose who takes the blame.' : kind.effect === 'aegis' ? 'Choose who to ward.' : 'Choose your mark.';
     this.hint(what);
@@ -728,6 +730,7 @@ export class MatchScreen implements Screen {
     this.table.selfMarkerHover = 0;
     this.hand.lowered = 0;
     this.app.rig.sway = 1;
+    this.app.rig.lookScale = 1;
     if (wasPlay) void this.app.rig.glide(this.tableStation, 0.7, 0.05);
   }
 

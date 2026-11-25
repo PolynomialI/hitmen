@@ -232,6 +232,9 @@ export class TableView {
     const m = new THREE.Mesh(new THREE.ShapeGeometry(tri), new THREE.MeshBasicMaterial({ color: new THREE.Color(3, 3, 3), transparent: true, opacity: 0, depthWrite: false }));
     m.rotation.x = -Math.PI / 2;
     m.renderOrder = 25;
+    // A generous invisible hit disc: the triangle alone is a small target.
+    const hit = new THREE.Mesh(new THREE.CircleGeometry(0.14, 20), new THREE.MeshBasicMaterial({ visible: false }));
+    m.add(hit);
     return m;
   }
 
