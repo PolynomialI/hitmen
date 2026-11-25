@@ -90,6 +90,10 @@ export interface FigureOpts {
   accessory?: Accessory;
 }
 
+/** Right-arm angles (the left arm mirrors y and z): cards held up at the chest, and a reach onto the table. */
+const HOLD_POSE = { ax: -0.2, ay: -0.65, az: 0.35, ex: -2.15 };
+const REACH_POSE = { ax: -1.05, ay: -0.3, az: -0.15, ex: -0.4 };
+
 /** Merge a group's direct mesh children that share a material (keeps draw calls down per figure). */
 function mergeChildren(g: THREE.Object3D, keep: Set<THREE.Object3D> = new Set()): void {
   const by = new Map<THREE.Material, THREE.Mesh[]>();
@@ -609,11 +613,27 @@ export class Figure {
     }
   }
 
-  /** Reach the right arm forward (0..1) — used when playing/drawing a card. */
+  /**
+   * Seated players hold their cards up in front of the chest; their reaches (drawing, playing) blend out from that
+   * pose and back to it at 0. Other figures (barkeep, peddler) keep the plain reach.
+   */
+  holding = false;
+
+  /** Reach an arm forward (0..1) — used when playing/drawing a card. */
   setReach(k: number, side: 'R' | 'L' = 'R'): void {
     const arm = side === 'R' ? this.armR : this.armL;
+    const elbow = arm.userData.elbow as THREE.Group;
+    if (this.holding) {
+      // Angles solved so the hands sit at the bottom of the held card row (hold) or on the table (reach).
+      const s = side === 'R' ? 1 : -1;
+      const H = HOLD_POSE;
+      const R = REACH_POSE;
+      arm.rotation.set(H.ax + (R.ax - H.ax) * k, s * (H.ay + (R.ay - H.ay) * k), s * (H.az + (R.az - H.az) * k));
+      elbow.rotation.x = H.ex + (R.ex - H.ex) * k;
+      return;
+    }
     arm.rotation.x = -0.35 - k * 0.75;
-    (arm.userData.elbow as THREE.Group).rotation.x = -1.35 + k * 0.85;
+    elbow.rotation.x = -1.35 + k * 0.85;
   }
 
   /** Turn the head toward a world point (clamped), or back to rest with null. */

@@ -18,7 +18,7 @@ import { CardMesh } from './cardMesh';
 import { Fx } from './fx';
 import { HandView } from './handView';
 import { showResults } from './results';
-import { Q_FACE_PLAYER, Q_FLAT_DOWN, Q_FLAT_UP, TableView, TEAM_COLORS } from './tableView';
+import { DECK_S, Q_FACE_PLAYER, Q_FLAT_DOWN, Q_FLAT_UP, TableView, TEAM_COLORS } from './tableView';
 
 type XForm = { p: THREE.Vector3; q: THREE.Quaternion; s: number };
 const V = (x: number, y: number, z: number) => new THREE.Vector3(x, y, z);
@@ -121,8 +121,17 @@ export class MatchScreen implements Screen {
         ? tv.stations.table
         : k === 2
           ? { pos: V(2.05, 1.7, 0.6), target: V(6.2, 0.85, 0.6), look: [0.45, 0.16, 0.035], fov: 60 }
-          : { pos: V(2.0, 1.85, 0.6), target: V(6.2, 0.75, 0.6), look: [0.5, 0.16, 0.035], fov: 62 };
-    this.aimStation = k === 1 ? { pos: V(3.4, 2.05, 0.6), target: V(5.25, 0.82, 0.6), look: [0.06, 0.04], fov: 52 } : { pos: V(3.05, 2.65, 0.6), target: V(4.75, 0.5, 0.6), look: [0.06, 0.04], fov: 60 };
+          : k === 3
+            ? { pos: V(1.85, 1.95, 0.6), target: V(6.2, 0.72, 0.6), look: [0.5, 0.16, 0.035], fov: 62 }
+            : // 5-6 seats: the nearest rivals sit beside you, so look from higher and further back.
+              { pos: V(1.7, 2.1, 0.6), target: V(6.2, 0.7, 0.6), look: [0.5, 0.16, 0.035], fov: 64 };
+    this.aimStation =
+      k === 1
+        ? { pos: V(3.4, 2.05, 0.6), target: V(5.25, 0.82, 0.6), look: [0.06, 0.04], fov: 52 }
+        : k === 2
+          ? { pos: V(3.05, 2.65, 0.6), target: V(4.75, 0.5, 0.6), look: [0.06, 0.04], fov: 60 }
+          : // Equally spaced seats reach round beside you: look down on the whole table.
+            { pos: V(2.75, 3.0, 0.6), target: V(4.55, 0.45, 0.6), look: [0.06, 0.04], fov: 62 };
     // Opening shot: high above the table, then settle into the seat.
     app.rig.snap({ pos: V(3.4, 3.2, 2.6), target: V(4.6, 0.8, 0.4), look: [0.05, 0.03], fov: 55 });
     app.rig.lookScale = 1;
@@ -391,7 +400,7 @@ export class MatchScreen implements Screen {
   }
 
   private deckX(): XForm {
-    return { p: this.table.deckTopWorld(), q: Q_FLAT_DOWN.clone(), s: 1 };
+    return { p: this.table.deckTopWorld(), q: this.table.deckQuat(), s: DECK_S };
   }
 
   private seatHead(id: PlayerId): THREE.Vector3 {
@@ -875,8 +884,7 @@ export class MatchScreen implements Screen {
     this.turnLen = ms ?? 0;
     this.turnEnd = ms ? performance.now() + ms + 900 : 0;
     this.table.setSign(mine);
-    this.table.setTurn(player);
-    if (changed) this.table.flipHourglass();
+    this.table.setTurn(player, turnsLeft);
     this.setBadge(mine ? turnsLeft : 0);
     this.table.clearBadges();
     if (!mine) this.table.setBadge(player, turnsLeft);
@@ -907,7 +915,7 @@ export class MatchScreen implements Screen {
       await this.fly(cm.root, () => this.camX(0.0, 0.05, 0.62, 0.95), 0.36, { arc: 0.1, ease: ease.outCubic });
       this.showPreview(card, 900);
       await tweens.wait(0.22);
-      this.table.seat(player)?.figure.setReach(0.55, 'R');
+      this.table.seat(player)?.figure.setReach(0, 'R');
       cm.setVariant('table');
       await this.fly(cm.root, () => ({ p: slot.p, q: slot.q, s: 1 }), 0.32, { arc: 0.08 });
       audio.play('place');
@@ -1084,7 +1092,7 @@ export class MatchScreen implements Screen {
       if (Math.random() < 0.6) this.fx.burst({ at: cm.root.position.clone(), count: 3, color: '#ff5a1a', intensity: 3.5, speed: 0.3, up: 1.5, life: 0.6, size: 0.03, gravity: 0.5 });
     });
     cm.tint(0.25, 0.12, 0.08);
-    await this.fly(cm.root, () => ({ p: into, q: Q_FLAT_DOWN.clone(), s: 1 }), 0.45, { arc: 0.1, ease: ease.inQuad });
+    await this.fly(cm.root, () => ({ p: into, q: this.table.deckQuat(), s: DECK_S }), 0.45, { arc: 0.1, ease: ease.inQuad });
     audio.play('place');
     this.caption(into.clone().add(V(0, 0.2, 0)), 'Burned back into the deck', '#ff9a5a');
     cm.dispose();
@@ -1276,7 +1284,7 @@ export class MatchScreen implements Screen {
     }
     this.tutorial('owed', { player });
     await tweens.wait(0.9);
-    sv?.figure.setReach(0.55, 'L');
+    sv?.figure.setReach(0, 'L');
     void by;
   }
 
@@ -1385,7 +1393,7 @@ export class MatchScreen implements Screen {
   }
 
   private async onDraw(player: PlayerId, card: Card | undefined, bottom: boolean): Promise<void> {
-    const from = bottom ? { p: this.table.deckPos.clone().add(V(0, 0.002, 0)), q: Q_FLAT_DOWN.clone(), s: 1 } : this.deckX();
+    const from = bottom ? { p: this.table.deckPos.clone().add(V(0, 0.002, 0)), q: this.table.deckQuat(), s: DECK_S } : this.deckX();
     const isHand = card?.type === 'hand';
     if (this.isMe(player)) {
       const cm = this.newCard(card ?? null, from, 'hand');
@@ -1414,7 +1422,7 @@ export class MatchScreen implements Screen {
         await this.fly(cm.root, () => ({ p, q: dummy.quaternion.clone(), s: 1.25 }), 0.65, { arc: 0.1 });
         cm.setCard(card!);
         this.doomMesh = cm;
-        sv.figure.setReach(0.55, 'L');
+        sv.figure.setReach(0, 'L');
         return;
       }
       if (card && sv.mate) cm.setCard(card);
@@ -1422,7 +1430,7 @@ export class MatchScreen implements Screen {
       await this.fly(cm.root, () => this.table.handSlot(player, n - 1, n), 0.6, { arc: 0.1 });
       sv.hand.push(cm);
       void this.table.layoutSeat(player, 0.2);
-      sv.figure.setReach(0.55, 'L');
+      sv.figure.setReach(0, 'L');
     }
   }
 
@@ -1654,7 +1662,7 @@ export class MatchScreen implements Screen {
       doom.setVariant('table');
       await this.fly(doom.root, () => ({ p: top.clone().add(V(-0.18, 0.06, 0)), q: Q_FLAT_DOWN.clone(), s: 1 }), 0.5, { arc: 0.12 });
       audio.play('swish');
-      await this.fly(doom.root, () => ({ p: into, q: Q_FLAT_DOWN.clone(), s: 1 }), 0.35, { ease: ease.inQuad });
+      await this.fly(doom.root, () => ({ p: into, q: this.table.deckQuat(), s: DECK_S }), 0.35, { ease: ease.inQuad });
       audio.play('place');
       doom.dispose();
     }
@@ -1906,8 +1914,7 @@ export class MatchScreen implements Screen {
     this.fx.update(dt);
     const now = performance.now();
     if (this.windowEnd > now) this.table.setRing((this.windowEnd - now) / this.windowLen, 1);
-    if (this.turnEnd && this.turnLen) this.table.hgFrac = clamp((this.turnEnd - now) / this.turnLen, 0, 1);
-    else this.table.hgFrac = damp(this.table.hgFrac, 1, 2, dt);
+    this.table.clock.frac = this.turnEnd && this.turnLen ? clamp((this.turnEnd - now) / this.turnLen, 0, 1) : -1;
     if (this.rescueEnd > now && this.phase === 'rescue') {
       const left = Math.ceil((this.rescueEnd - now) / 1000);
       if (this.countdownEl.textContent !== String(left)) {

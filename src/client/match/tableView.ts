@@ -10,6 +10,7 @@ import { FONT3D } from '../world/fonts3d';
 import { buildCharm, buildSeat } from '../cosmetics/art';
 import { makeText, type Tavern } from '../world/tavern';
 import { CARD_H, CARD_R, CARD_THICK, CARD_W, CardMesh, roundedWallGeometry } from './cardMesh';
+import { TurnClock } from './turnClock';
 
 export const Q_FLAT_UP = new THREE.Quaternion().setFromEuler(new THREE.Euler(-Math.PI / 2, -Math.PI / 2, 0, 'YXZ'));
 export const Q_FLAT_DOWN = new THREE.Quaternion().setFromEuler(new THREE.Euler(Math.PI / 2, -Math.PI / 2, 0, 'YXZ'));
@@ -25,20 +26,28 @@ const SEAT_R = 1.34;
 const TEAM_COLORS = ['#e0503a', '#3a8ae0'];
 
 /** Angles (radians, 0 = across the table from the player) for k rivals. */
+/** Everyone sits equally spaced around the table: you at angle π, the k rivals at π - i·2π/(k+1). Ascending. */
 function rivalAngles(k: number): number[] {
-  switch (k) {
-    case 1:
-      return [0];
-    case 2:
-      return [-0.62, 0.62];
-    case 3:
-      return [-1.12, 0, 1.12];
-    case 4:
-      return [-1.45, -0.5, 0.5, 1.45];
-    default:
-      return [-1.7, -0.86, 0, 0.86, 1.7];
+  const step = (Math.PI * 2) / (k + 1);
+  const out: number[] = [];
+  for (let i = 1; i <= k; i++) {
+    let a = Math.PI - i * step;
+    if (a <= -Math.PI) a += Math.PI * 2;
+    out.push(a);
   }
+  return out.sort((a, b) => a - b);
 }
+
+/** Held cards: upright, side by side, at the holder's chest over the table edge. */
+const HELD_S = 1.15;
+const HELD_Y = 1.05;
+const HELD_FWD = 0.38;
+const HELD_ROW = 0.66;
+/** The deck is a little larger than a single card and turned slightly to the right. */
+export const DECK_S = 1.18;
+const DECK_YAW = -0.32;
+const MY_CLOCK_ANGLE = Math.PI - 0.55;
+const Q_DECK_YAW = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), DECK_YAW);
 
 export interface SeatView {
   info: SeatInfo;
@@ -84,10 +93,9 @@ export class TableView {
   deckCount = 0;
   private label: Text;
   readonly pile: CardMesh[] = [];
-  private hg = new THREE.Group();
-  private sandTop!: THREE.Mesh;
-  private sandBot!: THREE.Mesh;
-  hgFrac = 1;
+  /** Stands in front of whoever's turn it is; doubles as the turn timer. */
+  readonly clock: TurnClock;
+  private clockPlaced = false;
   readonly seats = new Map<PlayerId, SeatView>();
   /** Seat marker for "yourself" (Aegis) near the player's edge. */
   readonly selfMarker: THREE.Mesh;
@@ -113,8 +121,9 @@ export class TableView {
     const T = this.tv.tableCenter;
     this.center = T.clone();
     const top = this.tv.tableTop + 0.0015;
-    this.deckPos = new THREE.Vector3(T.x - 0.12, top, T.z - 0.42);
-    this.pilePos = new THREE.Vector3(T.x + 0.12, top, T.z + 0.08);
+    // Deck and pile near the middle: the turn clock travels round them.
+    this.deckPos = new THREE.Vector3(T.x - 0.1, top, T.z - 0.24);
+    this.pilePos = new THREE.Vector3(T.x + 0.12, top, T.z + 0.17);
 
     // Deck: a rounded slab whose sides show one ivory layer per card.
     const edge = paint(8, 16, (ctx, w, h) => {
@@ -131,27 +140,33 @@ export class TableView {
     deckGeo.rotateX(-Math.PI / 2);
     this.deckBox = new THREE.Mesh(deckGeo, new THREE.MeshStandardMaterial({ map: edge, roughness: 0.7 }));
     this.deckBox.castShadow = this.deckBox.receiveShadow = true;
+    this.deckBox.quaternion.copy(Q_DECK_YAW);
     this.group.add(this.deckBox);
     this.deckTop = new CardMesh(this.tex, null);
-    this.deckTop.root.quaternion.copy(Q_FLAT_DOWN);
+    this.deckTop.root.quaternion.copy(this.deckQuat());
+    this.deckTop.root.scale.setScalar(DECK_S);
     this.group.add(this.deckTop.root);
     this.deckHit = new THREE.Mesh(new THREE.BoxGeometry(CARD_H * 1.3, 0.12, CARD_W * 1.4), new THREE.MeshBasicMaterial({ visible: false }));
     this.deckHit.position.copy(this.deckPos).add(new THREE.Vector3(0, 0.04, 0));
+    this.deckHit.quaternion.copy(Q_DECK_YAW);
+    this.deckHit.scale.setScalar(DECK_S);
     this.group.add(this.deckHit);
     this.deckGlow = new THREE.Mesh(
       new THREE.PlaneGeometry(CARD_H * 2.2, CARD_W * 2.4),
       new THREE.MeshBasicMaterial({ map: this.tv.glowTex, color: new THREE.Color(1.6, 1.0, 0.4), transparent: true, opacity: 0, blending: THREE.AdditiveBlending, depthWrite: false })
     );
-    this.deckGlow.rotation.x = -Math.PI / 2;
+    this.deckGlow.quaternion.copy(Q_DECK_YAW).multiply(new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1, 0, 0), -Math.PI / 2));
+    this.deckGlow.scale.setScalar(DECK_S);
     this.deckGlow.position.copy(this.deckPos).add(new THREE.Vector3(0, 0.002, 0));
     this.group.add(this.deckGlow);
 
     this.label = makeText('', { font: FONT3D.fell, size: 0.038, color: '#f3e6c4', glow: 0.9, letterSpacing: 0.04 });
-    this.label.quaternion.copy(Q_FLAT_UP);
-    this.label.position.copy(this.deckPos).add(new THREE.Vector3(-0.19, 0.001, 0));
+    this.label.quaternion.copy(Q_DECK_YAW).multiply(Q_FLAT_UP);
+    this.label.position.copy(this.deckPos).add(new THREE.Vector3(-0.2 * DECK_S, 0.001, 0).applyQuaternion(Q_DECK_YAW));
     this.group.add(this.label);
 
-    this.buildHourglass();
+    this.clock = new TurnClock(this.center, this.tv.tableTop, this.tv.mats);
+    this.group.add(this.clock.root);
 
     this.selfMarker = this.makeMarker();
     this.selfMarker.position.set(T.x - 0.78, top + 0.002, T.z);
@@ -220,67 +235,28 @@ export class TableView {
     return m;
   }
 
-  private buildHourglass(): void {
-    const m = this.tv.mats;
-    const hg = this.hg;
-    const glassMat = new THREE.MeshStandardMaterial({ color: '#cfe0ff', transparent: true, opacity: 0.22, roughness: 0.05, metalness: 0.1, depthWrite: false });
-    const bulb = new THREE.LatheGeometry(
-      [
-        [0.002, 0],
-        [0.03, 0.006],
-        [0.036, 0.03],
-        [0.024, 0.058],
-        [0.005, 0.072],
-      ].map(([x, y]) => new THREE.Vector2(x, y)),
-      18
-    );
-    const lower = new THREE.Mesh(bulb, glassMat);
-    lower.position.y = 0.012;
-    const upper = new THREE.Mesh(bulb, glassMat);
-    upper.rotation.x = Math.PI;
-    upper.position.y = 0.012 + 0.144;
-    hg.add(lower, upper);
-    const sandMat = new THREE.MeshStandardMaterial({ color: '#e0b070', roughness: 0.9, emissive: '#3a2000', emissiveIntensity: 0.3 });
-    this.sandBot = new THREE.Mesh(new THREE.ConeGeometry(0.03, 0.04, 16), sandMat);
-    this.sandBot.position.y = 0.012 + 0.02;
-    this.sandTop = new THREE.Mesh(new THREE.ConeGeometry(0.03, 0.045, 16), sandMat);
-    this.sandTop.rotation.x = Math.PI;
-    this.sandTop.position.y = 0.012 + 0.1;
-    hg.add(this.sandBot, this.sandTop);
-    for (const y of [0.006, 0.162]) {
-      const cap = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 0.012, 20), m.woodDark);
-      cap.position.y = y;
-      cap.castShadow = true;
-      hg.add(cap);
-    }
-    for (let i = 0; i < 3; i++) {
-      const a = (i / 3) * Math.PI * 2;
-      const post = new THREE.Mesh(new THREE.CylinderGeometry(0.004, 0.004, 0.156, 6), m.brass);
-      post.position.set(Math.cos(a) * 0.042, 0.084, Math.sin(a) * 0.042);
-      hg.add(post);
-    }
-    const T = this.tv.tableCenter;
-    hg.position.set(T.x - 0.55, this.tv.tableTop, T.z + 0.6);
-    this.group.add(hg);
-  }
-
   // ------------------------------------------------------------------ deck & pile
 
   setDeckCount(n: number): void {
     this.deckCount = n;
     const h = deckHeight(n);
-    this.deckBox.scale.y = h;
+    this.deckBox.scale.set(DECK_S, h, DECK_S);
     this.deckEdgeTex.repeat.set(1, Math.max(1, n - 1));
     this.deckBox.position.copy(this.deckPos).add(new THREE.Vector3(0, h / 2, 0));
     this.deckBox.visible = n > 1;
     this.deckTop.root.visible = n > 0;
-    this.deckTop.root.position.copy(this.deckPos).add(new THREE.Vector3(0, h + CARD_THICK / 2 + 0.0002, 0));
+    this.deckTop.root.position.copy(this.deckPos).add(new THREE.Vector3(0, h + (CARD_THICK * DECK_S) / 2 + 0.0002, 0));
     this.label.text = n === 1 ? '1 card left' : `${n} cards left`;
     this.label.sync();
   }
 
   deckTopWorld(): THREE.Vector3 {
-    return this.deckPos.clone().add(new THREE.Vector3(0, deckHeight(this.deckCount) + CARD_THICK + 0.002, 0));
+    return this.deckPos.clone().add(new THREE.Vector3(0, deckHeight(this.deckCount) + CARD_THICK * DECK_S + 0.002, 0));
+  }
+
+  /** Orientation of a card lying face down on the deck. */
+  deckQuat(): THREE.Quaternion {
+    return Q_DECK_YAW.clone().multiply(Q_FLAT_DOWN);
   }
 
   pileSlot(): { p: THREE.Vector3; q: THREE.Quaternion } {
@@ -323,8 +299,8 @@ export class TableView {
     const oldChair = this.tv.group.children.find((o) => o.position.distanceTo(this.tv.opponentSeat) < 0.01);
     if (oldChair) oldChair.visible = false;
     order.forEach((info, i) => {
-      // Turn order goes clockwise from the player's left, so seat 1 sits at the far left angle.
-      const angle = angles[angles.length - 1 - i];
+      // Turn order goes clockwise seen from above: the next player sits on your left (the smallest angle).
+      const angle = angles[i];
       const out = new THREE.Vector3(Math.cos(angle), 0, Math.sin(angle));
       const pos = this.center.clone().setY(0).addScaledVector(out, SEAT_R);
       const chair = buildSeat(info.look?.seat ?? 'oak', this.tv.mats);
@@ -341,8 +317,9 @@ export class TableView {
       const f = new Figure({ cloak: info.cloak, eyes: info.team != null ? TEAM_COLORS[info.team] : '#ffb347', seated: true, accessory: accessoryFor(info.name), trim: info.team != null ? TEAM_COLORS[info.team] : undefined });
       f.root.position.copy(pos).add(new THREE.Vector3(0, 0.47, 0));
       f.root.lookAt(this.center.clone().setY(0.47));
-      f.setReach(0.55, 'L');
-      f.setReach(0.55, 'R');
+      f.holding = true;
+      f.setReach(0, 'L');
+      f.setReach(0, 'R');
       this.group.add(f.root);
       const mate = this.myTeam != null && info.team === this.myTeam;
       const nameColor = info.team != null ? TEAM_COLORS[info.team] : '#f3e6c4';
@@ -421,26 +398,23 @@ export class TableView {
     return this.seats.get(id);
   }
 
-  /** Transform for card i of n held by a seat (backs toward the table, or faces to us for teammates). */
+  /**
+   * Transform for card i of n held by a seat: one upright row at the holder's chest, cards side by side and
+   * overlapping (no fan), backs toward the table, or faces to us for teammates. The row tightens as it grows.
+   */
   handSlot(id: PlayerId, i: number, n: number): { p: THREE.Vector3; q: THREE.Quaternion; s: number } {
     const sv = this.seats.get(id)!;
     const d = i - (n - 1) / 2;
     const side = new THREE.Vector3(-sv.out.z, 0, sv.out.x);
-    const base = sv.pos.clone().setY(1.0).addScaledVector(sv.out, -0.36);
-    const spread = n > 6 ? 0.028 : 0.04;
-    const p = base.addScaledVector(side, d * spread).add(new THREE.Vector3(0, -Math.abs(d) * 0.006, 0)).addScaledVector(sv.out, Math.abs(d) * 0.004);
+    const w = CARD_W * HELD_S;
+    const step = n > 1 ? Math.min(w * 0.62, (HELD_ROW - w) / (n - 1)) : 0;
+    // Each card a hair nearer the holder than the one before, so the overlapping slabs never intersect.
+    const p = sv.pos.clone().setY(HELD_Y).addScaledVector(sv.out, -HELD_FWD).addScaledVector(side, d * step).addScaledVector(sv.out, i * 0.0045);
     const dummy = new THREE.Object3D();
     dummy.position.copy(p);
-    if (sv.mate) {
-      // Teammates show you their hand.
-      dummy.lookAt(this.app.gfx.camera.position);
-      dummy.rotateX(-0.1);
-    } else {
-      dummy.lookAt(sv.figure.root.position.clone().add(new THREE.Vector3(0, 0.45, 0)));
-      dummy.rotateX(0.25);
-    }
-    dummy.rotateZ(sv.mate ? -d * 0.08 : d * 0.13);
-    return { p, q: dummy.quaternion.clone(), s: sv.mate ? 0.8 : 0.72 };
+    if (sv.mate) dummy.lookAt(this.app.gfx.camera.position);
+    else dummy.lookAt(p.clone().addScaledVector(sv.out, 1).setY(HELD_Y + 0.18));
+    return { p, q: dummy.quaternion.clone(), s: HELD_S };
   }
 
   layoutSeat(id: PlayerId, dur = 0.35): Promise<void> {
@@ -502,7 +476,19 @@ export class TableView {
     if (sv) sv.wardOn = on;
   }
 
-  setTurn(id: PlayerId | null): void {
+  /** Whose turn it is: name glow, gaze, and the clock travels round to them (showing turns still owed). */
+  setTurn(id: PlayerId | null, turnsLeft = 1): void {
+    if (id) {
+      // On your own turn it stands at your front-right: clear of the pile and of your hand.
+      const target = id === this.me ? MY_CLOCK_ANGLE : this.seats.get(id)?.angle;
+      if (target != null) {
+        if (!this.clockPlaced) {
+          this.clockPlaced = true;
+          this.clock.snapTo(target);
+          this.clock.setTurns(turnsLeft);
+        } else void this.clock.goTo(target, this.orderDir, turnsLeft);
+      }
+    }
     for (const sv of this.seats.values()) {
       const on = sv.info.id === id;
       sv.name.color = new THREE.Color(on ? '#ffd27a' : sv.info.team != null ? TEAM_COLORS[sv.info.team] : '#f3e6c4').multiplyScalar(on ? 1.8 : 1.05);
@@ -598,22 +584,13 @@ export class TableView {
 
   // ------------------------------------------------------------------ timers
 
-  flipHourglass(): void {
-    const g = this.hg;
-    const r0 = g.rotation.z;
-    this.hgFrac = 1;
-    void tweens.to(0.6, (k) => (g.rotation.z = r0 + Math.PI * k), { ease: ease.inOutCubic }).then(() => (g.rotation.z = 0));
-  }
-
   setRing(frac: number, alpha: number): void {
     this.ringMat.uniforms.uP.value = frac;
     this.ringMat.uniforms.uA.value = alpha;
   }
 
   update(t: number, dt: number): void {
-    const f = Math.max(0, Math.min(1, this.hgFrac));
-    this.sandTop.scale.set(Math.max(0.05, Math.sqrt(f)), Math.max(0.02, f), Math.max(0.05, Math.sqrt(f)));
-    this.sandBot.scale.set(Math.max(0.05, Math.sqrt(1 - f)), Math.max(0.02, 1 - f), Math.max(0.05, Math.sqrt(1 - f)));
+    this.clock.update(t, dt);
     this.deckGlowK = damp(this.deckGlowK, this.deckGlowTarget, 6, dt);
     (this.deckGlow.material as THREE.MeshBasicMaterial).opacity = this.deckGlowK * (0.55 + Math.sin(t * 3) * 0.2);
     const cam = this.app.gfx.camera;
