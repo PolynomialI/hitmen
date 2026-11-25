@@ -8,6 +8,13 @@ const { chromium } = require('playwright');
 (async () => {
   const browser = await chromium.launch({ args: ['--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader'] });
   const ctx = await browser.newContext({ viewport: { width: 1280, height: 720 } });
+  // The daily wares rotate by date, so start with enough coins to buy whichever one comes first (once per tab).
+  await ctx.addInitScript(() => {
+    if (!sessionStorage.getItem('seeded')) {
+      sessionStorage.setItem('seeded', '1');
+      localStorage.setItem('hooded-hand-profile-v2', JSON.stringify({ coins: 20000 }));
+    }
+  });
   const page = await ctx.newPage();
   const errors = [];
   require('./offOrigin.cjs')(page, BASE, errors);
