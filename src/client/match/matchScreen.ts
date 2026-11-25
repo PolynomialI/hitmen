@@ -17,6 +17,7 @@ import type { Station } from '../world/tavern';
 import { CardMesh } from './cardMesh';
 import { Fx } from './fx';
 import { HandView } from './handView';
+import { flyCurve, liftOut, settle, streak } from './motion';
 import { showResults } from './results';
 import { DECK_S, Q_FACE_PLAYER, Q_FLAT_DOWN, Q_FLAT_UP, TableView, TEAM_COLORS } from './tableView';
 
@@ -335,7 +336,6 @@ export class MatchScreen implements Screen {
     const bits: string[] = [];
     if (s.lock) bits.push(`<span class="pill lock">⛓ ${CARD_DEFS[s.lock.type].name} shackled · ${s.lock.turns}</span>`);
     if (s.wards.includes(this.me)) bits.push('<span class="pill ward">🛡 You are warded</span>');
-    if (this.seats.length > 2) bits.push(`<span class="pill dir">${s.dir === 1 ? '↻' : '↺'} Order of play</span>`);
     const myTeam = this.seats.find((x) => x.id === this.me)?.team;
     if (this.opts.spectate) bits.push('<span class="pill">👁 Spectating</span>');
     if (myTeam != null) bits.push(`<span class="pill team" style="border-color:${TEAM_COLORS[myTeam]}">Team ${myTeam === 0 ? 'Crimson' : 'Azure'}</span>`);
@@ -423,23 +423,50 @@ export class MatchScreen implements Screen {
     const sv = this.table.seat(id)!;
     let cm = card ? sv.hand.find((c) => c.card?.id === card.id) : undefined;
     if (cm) sv.hand.splice(sv.hand.indexOf(cm), 1);
-    else cm = sv.hand.pop();
+    // We cannot see which card a rival picks: take one from anywhere in the row, as a person would.
+    else if (sv.hand.length) cm = sv.hand.splice(Math.floor(Math.random() * sv.hand.length), 1)[0];
     if (!cm) cm = this.newCard(null, this.table.handSlot(id, 0, 1));
     if (card) cm.setCard(card);
     void this.table.layoutSeat(id, 0.25);
     return cm;
   }
 
-  private async giveToSeat(id: PlayerId, cm: CardMesh, dur = 0.55, faceUp = false): Promise<void> {
+  /** A card joins a seat's row: it arcs in to a spot in the row while the others make room, then settles. */
+  private async giveToSeat(id: PlayerId, cm: CardMesh, dur = 0.55, trail?: THREE.ColorRepresentation): Promise<void> {
     const sv = this.table.seat(id)!;
     const n = sv.hand.length + 1;
-    if (!faceUp && !sv.mate) {
-      // Rivals hold cards with backs toward us; the face no longer matters to us.
-    }
-    await this.fly(cm.root, () => this.table.handSlot(id, n - 1, n), dur, { arc: 0.12 });
+    const at = sv.mate ? n - 1 : Math.floor(Math.random() * n);
+    cm.setVariant('table');
+    await Promise.all([
+      flyCurve(cm.root, () => this.table.handSlot(id, at, n), dur, { lift: 0.22, trail: trail ? { fx: this.fx, color: trail } : undefined }),
+      this.table.layoutSeat(id, Math.min(0.35, dur), at),
+    ]);
     if (!sv.mate) cm.setCard(null);
-    sv.hand.push(cm);
-    void this.table.layoutSeat(id, 0.2);
+    sv.hand.splice(at, 0, cm);
+    void settle(cm.root, 0.008, 0.18);
+  }
+
+  /** The top card peels off the deck: its far edge lifts and it slides a little toward whoever takes it. */
+  private peel(cm: CardMesh, toward: THREE.Vector3, dur = 0.2): Promise<void> {
+    const p0 = cm.root.position.clone();
+    const q0 = cm.root.quaternion.clone();
+    const dir = toward.clone().sub(p0).setY(0).normalize();
+    const axis = new THREE.Vector3(-dir.z, 0, dir.x);
+    const tilt = new THREE.Quaternion();
+    return tweens.to(dur, (k) => {
+      cm.root.position.copy(p0).addScaledVector(dir, 0.05 * k).add(V(0, 0.035 * k, 0));
+      cm.root.quaternion.copy(q0).premultiply(tilt.setFromAxisAngle(axis, -0.45 * Math.sin(k * Math.PI * 0.6)));
+    }, { ease: ease.outCubic });
+  }
+
+  /** Hold still for a heartbeat with a faint tremble (the moment before a reveal). */
+  private tremble(obj: THREE.Object3D, dur: number, amp = 0.0025): Promise<void> {
+    const p0 = obj.position.clone();
+    return tweens
+      .to(dur, (k) => obj.position.copy(p0).add(V((Math.random() - 0.5) * amp * k, (Math.random() - 0.5) * amp * k, 0)), { ease: ease.linear })
+      .then(() => {
+        obj.position.copy(p0);
+      });
   }
 
   private registerHandCard(cm: CardMesh): void {
@@ -905,24 +932,30 @@ export class MatchScreen implements Screen {
     this.claims = [];
     const slot = this.table.pileSlot();
     let cm: CardMesh;
+    const above = { p: slot.p.clone().add(V(0, 0.06, 0)), q: slot.q, s: 1.06 };
+    const slam = () => this.fly(cm.root, () => ({ p: slot.p, q: slot.q, s: 1 }), 0.09, { ease: ease.inQuad }).then(() => {
+      audio.play('place');
+      this.app.rig.shake(0.01);
+    });
     if (this.isMe(player)) {
+      // From your hand: up, over in an arc, and down hard on the pile.
       cm = this.takeFrom(player, card);
       audio.play('swish');
-      await this.fly(cm.root, () => ({ p: slot.p, q: slot.q, s: 1 }), 0.5, { arc: 0.16, spin: 0.6 });
-      audio.play('place');
+      await flyCurve(cm.root, () => above, 0.44, { lift: 0.2, roll: 0.5, trail: { fx: this.fx, color: '#ffd08a' } });
+      await slam();
     } else {
+      // A rival lifts that very card out of their row, reaches over, and it turns face up on its way to the middle.
+      const sv = this.table.seat(player);
       cm = this.takeFrom(player, card);
-      cm.setVariant('hand');
-      this.table.seat(player)?.figure.setReach(0.9, 'R');
-      audio.play('swish');
-      await this.fly(cm.root, () => this.camX(0.0, 0.05, 0.62, 0.95), 0.36, { arc: 0.1, ease: ease.outCubic });
-      this.showPreview(card, 900);
-      await tweens.wait(0.22);
-      this.table.seat(player)?.figure.setReach(0, 'R');
       cm.setVariant('table');
-      await this.fly(cm.root, () => ({ p: slot.p, q: slot.q, s: 1 }), 0.32, { arc: 0.08 });
-      audio.play('place');
-      setTimeout(() => !this.hand.hovered && this.hidePreview(), 400);
+      sv?.figure.setReach(0.75, 'R');
+      audio.play('swish');
+      await liftOut(cm.root, this.table.center, 0.18);
+      this.showPreview(card, 1300);
+      await flyCurve(cm.root, () => above, 0.48, { lift: 0.3, roll: 0.45, trail: { fx: this.fx, color: '#ffd08a' } });
+      sv?.figure.setReach(0, 'R');
+      await slam();
+      setTimeout(() => !this.hand.hovered && this.hidePreview(), 700);
     }
     this.table.pushPile(cm);
     this.pendingMesh = cm;
@@ -1087,17 +1120,36 @@ export class MatchScreen implements Screen {
     if (!cm) return;
     audio.play('ignite', { vol: 1.2 });
     const start = cm.root.position.clone();
-    const into = this.table.deckPos.clone().add(V(-0.06, 0.01, 0));
-    // Burn: the card lifts in flame, then streaks into the deck.
-    await tweens.to(0.6, (k) => {
-      cm.root.position.copy(start).add(V(0, k * 0.18, 0));
-      cm.root.rotation.z += 0.05;
-      if (Math.random() < 0.6) this.fx.burst({ at: cm.root.position.clone(), count: 3, color: '#ff5a1a', intensity: 3.5, speed: 0.3, up: 1.5, life: 0.6, size: 0.03, gravity: 0.5 });
-    });
-    cm.tint(0.25, 0.12, 0.08);
-    await this.fly(cm.root, () => ({ p: into, q: this.table.deckQuat(), s: DECK_S }), 0.45, { arc: 0.1, ease: ease.inQuad });
+    const q0 = cm.root.quaternion.clone();
+    const spin = new THREE.Quaternion();
+    // It catches where it lies: rises in flame, chars from the edges and curls.
+    await tweens.to(0.72, (k) => {
+      cm.root.position.copy(start).add(V(0, ease.outCubic(k) * 0.24, 0));
+      cm.root.quaternion.copy(q0).premultiply(spin.setFromAxisAngle(V(0, 1, 0), k * 1.2));
+      cm.root.scale.set(1 - Math.sin(k * Math.PI * 3) * 0.06 * k, 1, 1 - k * 0.15);
+      const c = 1 - k * 0.8;
+      cm.tint(c, c * (0.75 - k * 0.4), c * (0.6 - k * 0.45), k * 0.6);
+      if (Math.random() < 0.8) {
+        this.fx.burst({ at: cm.root.position.clone(), count: 6, color: Math.random() < 0.5 ? '#ff5a1a' : '#ffc24a', intensity: 3.8, speed: 0.3, up: 1.6, life: 0.6, size: 0.05, gravity: 0.6, spread: V(0.16, 0.02, 0.12) });
+      }
+    }, { ease: ease.linear });
+    // Collapses into a fireball…
+    const ball = this.fx.flash(cm.root.position.clone(), new THREE.Color(3, 1.4, 0.4), 0.05);
+    (ball.material as THREE.SpriteMaterial).opacity = 1;
+    await tweens.to(0.22, (k) => {
+      cm.root.scale.setScalar(Math.max(0.01, 1 - k));
+      ball.scale.setScalar(0.05 + k * 0.22);
+    }, { ease: ease.inCubic });
+    this.fx.burst({ at: cm.root.position.clone(), count: 22, color: '#ff7a2a', intensity: 3, speed: 0.6, up: 0.6, life: 0.7, size: 0.025, gravity: -0.4 });
+    cm.root.visible = false;
+    this.fx.group.remove(ball);
+    // …that streaks into the deck, which flares as it swallows it.
+    await streak(this.fx, this.app.tavern.glowTex, this.fx.group, cm.root.position.clone(), this.table.deckTopWorld(), new THREE.Color('#ff7a2a'), 0.32, 0.12);
     audio.play('place');
-    this.caption(into.clone().add(V(0, 0.2, 0)), 'Burned back into the deck', '#ff9a5a');
+    this.app.rig.shake(0.008);
+    const flare = this.fx.flash(this.table.deckTopWorld(), new THREE.Color(3, 1.3, 0.4), 0.3);
+    void tweens.to(0.5, (k) => ((flare.material as THREE.SpriteMaterial).opacity = 1 - k)).then(() => this.fx.group.remove(flare));
+    this.caption(this.table.deckTopWorld().add(V(0, 0.2, 0)), 'Burned back into the deck', '#ff9a5a');
     cm.dispose();
     this.pendingMesh = null;
   }
@@ -1141,12 +1193,14 @@ export class MatchScreen implements Screen {
     this.scryMeshes = [];
     const visible = !!cards;
     for (let i = 0; i < 3; i++) this.scryMeshes.push(this.newCard(visible ? (cards![i] ?? null) : null, from, visible ? 'hand' : 'table'));
+    // A violet glow wells up from the deck and the top cards peel off one after another.
+    const fl = this.fx.flash(this.table.deckTopWorld(), new THREE.Color(1.8, 0.8, 3), 0.6);
+    void tweens.to(0.9, (k) => ((fl.material as THREE.SpriteMaterial).opacity = Math.sin(k * Math.PI) * 0.8)).then(() => this.fx.group.remove(fl));
+    this.fx.burst({ at: this.table.deckTopWorld(), count: 26, color: '#b37aff', intensity: 3, speed: 0.25, up: 2.2, life: 1.1, size: 0.025, gravity: 0.3, spread: V(0.2, 0.02, 0.15) });
+    const rise = (cm: CardMesh, i: number, to: () => XForm) =>
+      tweens.wait(i * 0.12).then(() => this.peel(cm, this.app.gfx.camera.position, 0.14)).then(() => flyCurve(cm.root, to, 0.5, { lift: 0.16, trail: { fx: this.fx, color: '#c79aff', every: 0.08 } }));
     if (visible) {
-      const jobs = this.scryMeshes.map((cm, i) =>
-        this.fly(cm.root, () => this.camX((i - 1) * 0.165, 0.05 - Math.abs(i - 1) * 0.012, 0.62 + Math.abs(i - 1) * 0.02, 1.05), 0.55, { arc: 0.12, ease: ease.outCubic })
-      );
-      const fl = this.fx.flash(this.table.deckTopWorld(), new THREE.Color(1.8, 0.8, 3), 0.6);
-      void tweens.to(0.7, (k) => ((fl.material as THREE.SpriteMaterial).opacity = Math.sin(k * Math.PI) * 0.8)).then(() => this.fx.group.remove(fl));
+      const jobs = this.scryMeshes.map((cm, i) => rise(cm, i, () => this.camX((i - 1) * 0.165, 0.05 - Math.abs(i - 1) * 0.012, 0.62 + Math.abs(i - 1) * 0.02, 1.05)));
       await Promise.all(jobs);
       this.hand.lowered = 0.6;
       this.scryMeshes.forEach((cm) => {
@@ -1165,11 +1219,11 @@ export class MatchScreen implements Screen {
     } else {
       const sv = this.table.seat(player);
       const jobs = this.scryMeshes.map((cm, i) => {
-        const p = this.table.deckPos.clone().add(V(0.05, 0.22, (i - 1) * 0.12));
+        const p = this.table.deckPos.clone().add(V(0.05, 0.24, (i - 1) * 0.13));
         const dummy = new THREE.Object3D();
         dummy.position.copy(p);
         dummy.lookAt(sv ? sv.figure.root.position.clone().add(V(0, 0.5, 0)) : p.clone().add(V(1, 0, 0)));
-        return this.fly(cm.root, () => ({ p, q: dummy.quaternion.clone(), s: 0.9 }), 0.55, { arc: 0.05 });
+        return rise(cm, i, () => ({ p, q: dummy.quaternion.clone(), s: 0.95 }));
       });
       if (!this.tut) this.hint(`${this.nameOf(player)} peers into the Scrying Orb…`, Math.min(ms, 3000));
       await Promise.all(jobs);
@@ -1180,8 +1234,16 @@ export class MatchScreen implements Screen {
     this.action(null);
     this.hand.lowered = 0;
     if (!this.tut) this.hint(null);
-    const to = this.deckX();
-    await Promise.all(this.scryMeshes.map((cm, i) => this.fly(cm.root, () => to, 0.45, { arc: 0.08 }).then(() => i === 0 && audio.play('place', { vol: 0.5 }))));
+    // They fold back onto the deck in reverse order, top card last.
+    const n = this.scryMeshes.length;
+    await Promise.all(
+      this.scryMeshes.map((cm, i) =>
+        tweens
+          .wait((n - 1 - i) * 0.09)
+          .then(() => flyCurve(cm.root, () => this.deckX(), 0.36, { lift: 0.1, trail: { fx: this.fx, color: '#c79aff', every: 0.1 } }))
+          .then(() => audio.play('place', { vol: 0.35 }))
+      )
+    );
     for (const cm of this.scryMeshes) cm.dispose();
     this.scryMeshes = [];
     this.hidePreview();
@@ -1191,29 +1253,49 @@ export class MatchScreen implements Screen {
 
   private async onShuffle(by: PlayerId): Promise<void> {
     audio.play('shuffle');
+    const sv = this.table.seat(by);
+    sv?.figure.setReach(0.7, 'L');
+    sv?.figure.setReach(0.7, 'R');
     const center = this.table.deckTopWorld();
-    const half = 7;
-    const left: CardMesh[] = [];
-    const right: CardMesh[] = [];
-    for (let i = 0; i < half; i++) {
-      left.push(this.newCard(null, this.deckX()));
-      right.push(this.newCard(null, this.deckX()));
-    }
-    const side = new THREE.Vector3(0, 0, 1);
-    // Riffle: split, arch, and interleave back.
-    await tweens.to(1.15, (k) => {
-      const split = Math.sin(Math.min(1, k * 1.6) * Math.PI * 0.5) * (k < 0.7 ? 1 : 1 - (k - 0.7) / 0.3);
-      [left, right].forEach((arr, s) =>
-        arr.forEach((g, i) => {
-          const dirS = s === 0 ? -1 : 1;
-          const t = clamp((k - 0.35 - i * 0.03) / 0.3, 0, 1);
-          const arch = Math.sin(t * Math.PI) * 0.06;
-          g.root.position.copy(center).addScaledVector(side, dirS * 0.13 * split).add(V(0, i * 0.004 + arch + (s ? 0.002 : 0), 0));
-          g.root.quaternion.copy(Q_FLAT_DOWN).multiply(new THREE.Quaternion().setFromAxisAngle(V(1, 0, 0), dirS * arch * 4));
-        })
-      );
+    const qDeck = this.table.deckQuat();
+    // The deck's long side, so the halves split sideways as hands would hold them.
+    const side = new THREE.Vector3(0, 0, 1).applyQuaternion(this.table.deckQuat().multiply(Q_FLAT_DOWN.clone().invert()));
+    const half = 9;
+    const packs: CardMesh[][] = [[], []];
+    for (let i = 0; i < half; i++) for (const pk of packs) pk.push(this.newCard(null, this.deckX()));
+    const bend = new THREE.Quaternion();
+    const lean = new THREE.Quaternion();
+    const tAxis = new THREE.Vector3(1, 0, 0);
+    // Split into two packets that tilt up at their inner edges, riffle down card by card from alternate sides,
+    // bow into a bridge, and square up with a tap.
+    await tweens.to(1.2, (k) => {
+      const split = k < 0.2 ? ease.outCubic(k / 0.2) : k < 0.72 ? 1 : 1 - ease.inOutCubic((k - 0.72) / 0.18);
+      // The whole riffle happens up in the air, in front of everyone, then comes down onto the deck.
+      const air = 0.13 * (k < 0.16 ? ease.outCubic(k / 0.16) : k > 0.84 ? 1 - ease.inCubic((k - 0.84) / 0.16) : 1);
+      packs.forEach((pk, s) => {
+        const dirS = s === 0 ? -1 : 1;
+        pk.forEach((g, i) => {
+          // Each card falls from its packet onto the growing stack in the middle (interleaved).
+          const order = i * 2 + s;
+          const fall = clamp((k - 0.22 - order * 0.022) / 0.08, 0, 1);
+          const stackY = order * 0.0045;
+          const packY = i * 0.0045;
+          const x = dirS * 0.2 * split * (1 - fall);
+          const y = (1 - fall) * (packY + 0.03 * split) + fall * stackY + Math.sin(fall * Math.PI) * 0.03;
+          // Bridge: the finished stack bows up in the middle, then lies flat.
+          const bridge = k > 0.62 && k < 0.92 ? Math.sin(((k - 0.62) / 0.3) * Math.PI) : 0;
+          g.root.position.copy(center).addScaledVector(side, x).add(V(0, air + y + bridge * 0.03 * Math.sin((order / (half * 2)) * Math.PI), 0));
+          g.root.quaternion.copy(qDeck).multiply(lean.setFromAxisAngle(tAxis, dirS * 0.35 * split * (1 - fall))).multiply(bend.setFromAxisAngle(tAxis, bridge * 0.1 * (order / (half * 2) - 0.5)));
+        });
+      });
+      if (k > 0.9 && k < 0.92) {
+        audio.play('place', { vol: 0.5 });
+        this.fx.burst({ at: center.clone(), count: 10, color: '#ffe0a0', intensity: 2, speed: 0.25, up: 0.3, life: 0.5, size: 0.015, gravity: 0.2, spread: V(0.2, 0.01, 0.12) });
+      }
     }, { ease: ease.linear });
-    [...left, ...right].forEach((g) => g.dispose());
+    packs.flat().forEach((g) => g.dispose());
+    sv?.figure.setReach(0, 'L');
+    sv?.figure.setReach(0, 'R');
     if (!this.tut) this.caption(center.clone().add(V(0, 0.2, 0)), `${this.nameOf(by)} shuffles the deck`, '#ffe0a0');
   }
 
@@ -1256,6 +1338,7 @@ export class MatchScreen implements Screen {
     }
     const cm = this.takeFrom(from, card ?? null);
     audio.play('swish');
+    if (!this.isMe(from)) await liftOut(cm.root, this.isMe(to) ? this.app.gfx.camera.position : this.table.seat(to)!.pos, 0.16);
     if (this.isMe(to)) {
       cm.setVariant('hand');
       await this.fly(cm.root, () => this.camX(0, 0.02, 0.55, 1, true), 0.45, { arc: 0.1 });
@@ -1266,14 +1349,34 @@ export class MatchScreen implements Screen {
       this.addToHand(cm);
     } else {
       if (this.isMe(from)) this.hint(`${this.nameOf(to)} pockets your ${card ? CARD_DEFS[card.type].name : 'card'}.`, 1800);
-      await this.giveToSeat(to, cm, 0.65);
+      await this.giveToSeat(to, cm, 0.65, '#ffd76a');
     }
   }
 
   private async onOwed(player: PlayerId, by: PlayerId, turns: number): Promise<void> {
-    audio.play('bounty');
-    this.app.rig.shake(0.035);
     const sv = this.table.seat(player);
+    // A blazing bolt leaps from the Bounty on the pile to its mark…
+    const from = (this.table.pileTop()?.root.position.clone() ?? this.table.pilePos.clone()).add(V(0, 0.05, 0));
+    const at = this.isMe(player) ? this.camX(0, -0.06, 0.45).p : this.seatHead(player).add(V(0, -0.1, 0));
+    audio.play('whoosh', { vol: 0.8 });
+    await streak(this.fx, this.app.tavern.glowTex, this.fx.group, from, at, new THREE.Color('#ff4a1a'), 0.4, 0.4);
+    // …and strikes: a red flash, a shower of embers, and a ring of fire on the table in front of them.
+    audio.play('bounty');
+    this.app.rig.shake(this.isMe(player) ? 0.05 : 0.035);
+    const hit = this.fx.flash(at, new THREE.Color(3, 0.6, 0.3), 0.35);
+    void tweens.to(0.45, (k) => ((hit.material as THREE.SpriteMaterial).opacity = 1 - k)).then(() => this.fx.group.remove(hit));
+    this.fx.burst({ at, count: 30, color: '#ff5a1a', intensity: 3.2, speed: 0.7, up: 0.4, life: 0.8, size: 0.025, gravity: -0.8 });
+    if (sv) {
+      const ringAt = this.table.center.clone().addScaledVector(sv.out, 0.78).setY(this.app.tavern.tableTop + 0.01);
+      const ring = this.fx.ring(ringAt, new THREE.Color(3, 0.7, 0.3), Q_FLAT_UP.clone());
+      void tweens.to(0.9, (k) => {
+        ring.scale.setScalar(0.08 + k * 0.22);
+        (ring.material as THREE.Material).opacity = 1 - k;
+      }).then(() => this.fx.group.remove(ring));
+    } else {
+      const g = this.app.gfx.grade.u('uDanger');
+      void tweens.to(0.6, (k) => (g.value = Math.max(g.value, Math.sin(k * Math.PI) * 0.35)));
+    }
     sv?.figure.setReach(0.1, 'L');
     sv?.figure.flinch();
     this.allLook(this.isMe(player) ? this.app.gfx.camera.position.clone() : this.seatHead(player), player);
@@ -1286,7 +1389,7 @@ export class MatchScreen implements Screen {
       if (!this.tut) this.hint(`${this.nameOf(player)} must take ${turns} turns.`, 1800);
     }
     this.tutorial('owed', { player });
-    await tweens.wait(0.9);
+    await tweens.wait(0.55);
     sv?.figure.setReach(0, 'L');
     void by;
   }
@@ -1399,15 +1502,23 @@ export class MatchScreen implements Screen {
     const from = bottom ? { p: this.table.deckPos.clone().add(V(0, 0.002, 0)), q: this.table.deckQuat(), s: DECK_S } : this.deckX();
     const isHand = card?.type === 'hand';
     if (this.isMe(player)) {
+      // The pull: the top card peels off, comes up to you face down, hangs for a heartbeat… and turns over.
       const cm = this.newCard(card ?? null, from, 'hand');
       audio.play('draw');
+      await this.peel(cm, this.app.gfx.camera.position, 0.22);
+      await flyCurve(cm.root, () => this.camX(0, 0.03, 0.52, 1.08, true), 0.42, { lift: 0.12, ease: ease.outCubic });
+      this.hand.lowered = 0.25;
+      await this.tremble(cm.root, isHand ? 0.3 : 0.2);
       if (isHand) {
-        await this.fly(cm.root, () => this.camX(0.0, 0.03, 0.5, 1.15, true), 0.6, { arc: 0.12, ease: ease.outCubic });
+        this.hand.lowered = 0;
         this.doomMesh = cm;
         return;
       }
-      await this.fly(cm.root, () => this.camX(0, 0.02, 0.5, 1.05), 0.5, { arc: 0.12, ease: ease.outCubic });
-      await tweens.wait(0.25);
+      audio.play('flip');
+      await this.fly(cm.root, () => this.camX(0, 0.02, 0.5, 1.1), 0.26, { ease: ease.outBack });
+      this.fx.burst({ at: cm.root.position.clone(), count: 10, color: '#fff0c0', intensity: 2.2, speed: 0.12, up: 0.2, life: 0.45, size: 0.012, gravity: 0, spread: V(0.08, 0.1, 0.01) });
+      this.hand.lowered = 0;
+      await tweens.wait(0.16);
       this.addToHand(cm);
       this.tutorial('drew');
     } else {
@@ -1417,6 +1528,7 @@ export class MatchScreen implements Screen {
       sv.figure.setReach(0.85, 'L');
       sv.figure.lean = 0.8;
       setTimeout(() => (sv.figure.lean = 0), 700);
+      await this.peel(cm, sv.pos, 0.22);
       if (isHand) {
         const p = this.table.pilePos.clone().add(V(0.02, 0.2, 0));
         const dummy = new THREE.Object3D();
@@ -1429,11 +1541,9 @@ export class MatchScreen implements Screen {
         return;
       }
       if (card && sv.mate) cm.setCard(card);
-      const n = sv.hand.length + 1;
-      await this.fly(cm.root, () => this.table.handSlot(player, n - 1, n), 0.6, { arc: 0.1 });
-      sv.hand.push(cm);
-      void this.table.layoutSeat(player, 0.2);
+      // Into the row at a spot of their choosing; the others shuffle aside to make room.
       sv.figure.setReach(0, 'L');
+      await this.giveToSeat(player, cm, 0.58);
     }
   }
 

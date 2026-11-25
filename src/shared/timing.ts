@@ -30,7 +30,7 @@ export const DUR = {
   warded: 1300,
   retake: 1100,
   swap: 1800,
-  draw: 1050,
+  draw: 1500,
   doom: 3400,
   rescue: 2600,
   hidePrompt: 300,

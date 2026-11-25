@@ -420,12 +420,13 @@ export class TableView {
     return { p, q: dummy.quaternion.clone(), s: HELD_S };
   }
 
-  layoutSeat(id: PlayerId, dur = 0.35): Promise<void> {
+  /** Re-space a seat's row; `gapAt` leaves room at that index for a card on its way in. */
+  layoutSeat(id: PlayerId, dur = 0.35, gapAt = -1): Promise<void> {
     const sv = this.seats.get(id);
     if (!sv) return Promise.resolve();
-    const n = sv.hand.length;
+    const n = sv.hand.length + (gapAt >= 0 ? 1 : 0);
     const jobs = sv.hand.map((c, i) => {
-      const s = this.handSlot(id, i, n);
+      const s = this.handSlot(id, gapAt >= 0 && i >= gapAt ? i + 1 : i, n);
       const p0 = c.root.position.clone();
       const q0 = c.root.quaternion.clone();
       const s0 = c.root.scale.x;
