@@ -99,7 +99,8 @@ To reset a local profile: devtools → Application → Local Storage → delete 
      under the service name). Join a Table is unlocked when the page talks to the server.
 
   Route B (no GitHub login at all; manual updates): New → Web Service → Public Git Repository →
-  `https://github.com/PolynomialI/hitmen` → Connect; Language Node, Branch main, Build Command
+  `https://github.com/PolynomialI/hitmen` → Connect; Name `the-hooded-hand`, Language Node, Branch main, Region
+  Virginia (US East), Build Command
   `npm ci --include=dev && npm run build`, Start Command `npm start`, Instance Type Free; Advanced → Health Check Path
   `/healthz`, environment variable `NODE_VERSION` = `22`. Updates only go live with Manual Deploy → Deploy latest
   commit.
