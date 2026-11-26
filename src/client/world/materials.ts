@@ -1,3 +1,4 @@
+import type { Quality } from '../core/gfx';
 import * as THREE from 'three';
 import { feltTable, hammeredMetal, ironTex, parchmentTex, plaster, softGoods, stoneWall, woodGrain, woodPlanks, type TexSet } from '../gfx/textures';
 
@@ -44,11 +45,11 @@ export interface Mats {
   woodSet: TexSet;
 }
 
-export function buildMaterials(quality: 'low' | 'medium' | 'high' = 'medium'): Mats {
+export function buildMaterials(quality: Quality = 'medium'): Mats {
   const planks = woodPlanks(1024, { planks: 8 });
   const stone = stoneWall(1024);
   // The look-around menus put furniture wood close to the camera: give it real detail (low tier keeps it lighter).
-  const fine = quality === 'low' ? 512 : 1024;
+  const fine = quality === 'low' || quality === 'lowest' ? 512 : 1024;
   const pl = plaster(512);
   // One neutral wood, tinted per material (a tint in the colour multiplies exactly like a baked-in one in sRGB):
   // a single detailed texture instead of three.

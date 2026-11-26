@@ -183,9 +183,14 @@ export function joinModal(nav: Nav, onJoin: (s: OnlineSession) => void, onClose:
   });
 
   let alive = true;
+  let shown = '';
   const refresh = async () => {
     const rooms = await listRooms();
     if (!alive) return;
+    // Only rebuild when something changed: a row replaced under the pointer would swallow the click.
+    const key = JSON.stringify(rooms.map((r) => [r.code, r.host, r.mode, r.players, r.size]));
+    if (key === shown) return;
+    shown = key;
     list.replaceChildren();
     if (!rooms.length) list.append(h('p', { class: 'empty' }, 'No open tables right now. Create one and others can join.'));
     for (const r of rooms) {

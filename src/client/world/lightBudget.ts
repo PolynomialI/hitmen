@@ -35,8 +35,8 @@ export class LightBudget {
 
   constructor(
     lights: Local[],
-    private readonly pointSlots: number,
-    private readonly spotSlots: number
+    private pointSlots: number,
+    private spotSlots: number
   ) {
     const entry = (light: Local): Entry => ({ light, w: 0, score: 0, saved: 0, weight: 1 + Math.log10(1 + light.intensity) });
     this.points = lights.filter((l): l is THREE.PointLight => (l as THREE.PointLight).isPointLight).map(entry);
@@ -55,6 +55,14 @@ export class LightBudget {
     this.pick(this.points, this.pointSlots, step);
     this.pick(this.spots, this.spotSlots, step);
     this.first = false;
+  }
+
+  /** A different number of live lights (a quality change; the lit shaders are rebuilt once). */
+  setSlots(points: number, spots: number): void {
+    this.pointSlots = points;
+    this.spotSlots = spots;
+    for (const e of [...this.points, ...this.spots]) e.w = 0;
+    this.first = true;
   }
 
   /** Jump straight to the right lights (after a camera cut). */

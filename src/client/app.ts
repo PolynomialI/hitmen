@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { CameraRig } from './core/cameraRig';
-import { Gfx } from './core/gfx';
+import { Gfx, TIERS } from './core/gfx';
+import { settings } from './ui/settings';
 import { tweens } from './core/tween';
 import { buildCardTextures, type CardTexSet } from './cards/cardTextures';
 import { loadFonts } from './fonts';
@@ -39,7 +40,8 @@ export class App {
   async init(progress: (k: number, label: string) => void): Promise<void> {
     progress(0.02, 'Lighting the candles');
     await loadFonts();
-    this.gfx = new Gfx(this.root);
+    this.gfx = new Gfx(this.root, settings);
+    this.gfx.minInterval = settings.cap30 ? 1000 / 30 : 0;
     this.rig = new CameraRig(this.gfx.camera);
     progress(0.08, 'Painting the cards');
     await preload3DFonts();
@@ -51,6 +53,7 @@ export class App {
     this.gfx.shadowFocus = new THREE.Sphere(this.tavern.tableCenter.clone(), 2.8);
     this.gfx.beforeRender = (cam, dt) => this.tavern.beforeRender(cam, dt);
     this.gfx.afterRender = () => this.tavern.afterRender();
+    this.gfx.onQualityChange = (q, full) => full && this.tavern.applyTier(TIERS[q]);
     progress(0.8, 'Warming the hearth');
     await nextFrame();
     // Compile shaders up front to avoid hitches later.
@@ -65,6 +68,10 @@ export class App {
   }
 
   private frame(now: number): void {
+    // A frame-rate cap (settings): skip display refreshes until the interval is up (4 ms of slack so a 60 Hz screen
+    // renders exactly every other refresh at 30).
+    const cap = this.gfx.minInterval;
+    if (cap && now - this.last < cap - 4) return;
     const dt = Math.min(this.dtCap, (now - this.last) / 1000);
     this.last = now;
     this.time += dt;

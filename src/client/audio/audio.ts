@@ -46,6 +46,9 @@ class AudioEngine {
   private bar = 0;
   private drone: { stop: () => void; gain: GainNode } | null = null;
   private muted = false;
+  /** Player volume settings (0..1), applied on top of the mix. */
+  private vol = { master: 1, music: 1, effects: 1, ambience: 1 };
+  private ambLevel = 0.5;
   /** Silences effects without touching the player's mute setting (e.g. while replaying a match's history). */
   suppressed = false;
   /** 0..1 tension (raises drone, adds pulse). */
@@ -61,17 +64,17 @@ class AudioEngine {
     const ctx = new Ctx({ latencyHint: 'interactive' });
     this.ctx = ctx;
     this.master = ctx.createGain();
-    this.master.gain.value = this.muted ? 0 : 0.9;
+    this.master.gain.value = this.muted ? 0 : 0.9 * this.vol.master;
     const comp = ctx.createDynamicsCompressor();
     comp.threshold.value = -16;
     comp.ratio.value = 3;
     this.master.connect(comp).connect(ctx.destination);
     this.musicBus = ctx.createGain();
-    this.musicBus.gain.value = 0.55;
+    this.musicBus.gain.value = 0.55 * this.vol.music;
     this.sfxBus = ctx.createGain();
-    this.sfxBus.gain.value = 0.9;
+    this.sfxBus.gain.value = 0.9 * this.vol.effects;
     this.ambBus = ctx.createGain();
-    this.ambBus.gain.value = 0.5;
+    this.ambBus.gain.value = this.ambLevel * this.vol.ambience;
     this.reverb = ctx.createConvolver();
     this.reverb.buffer = this.impulse(2.4, 2.6);
     this.revSend = ctx.createGain();
@@ -92,7 +95,18 @@ class AudioEngine {
 
   setMuted(m: boolean): void {
     this.muted = m;
-    if (this.ctx) this.master.gain.setTargetAtTime(m ? 0 : 0.9, this.ctx.currentTime, 0.1);
+    if (this.ctx) this.master.gain.setTargetAtTime(m ? 0 : 0.9 * this.vol.master, this.ctx.currentTime, 0.1);
+  }
+
+  /** Player volumes (0..1) for everything, the music, sound effects and the tavern's ambience. */
+  setVolumes(v: Partial<{ master: number; music: number; effects: number; ambience: number }>): void {
+    Object.assign(this.vol, v);
+    if (!this.ctx) return;
+    const t = this.ctx.currentTime;
+    this.master.gain.setTargetAtTime(this.muted ? 0 : 0.9 * this.vol.master, t, 0.05);
+    this.sfxBus.gain.setTargetAtTime(0.9 * this.vol.effects, t, 0.05);
+    this.ambBus.gain.setTargetAtTime(this.ambLevel * this.vol.ambience, t, 0.05);
+    if (this.musicOn) this.musicBus.gain.setTargetAtTime(0.55 * this.vol.music, t, 0.05);
   }
 
   private impulse(sec: number, decay: number): AudioBuffer {
@@ -456,7 +470,7 @@ class AudioEngine {
     if (!this.ctx || this.musicOn) return;
     this.musicOn = true;
     this.musicBus.gain.cancelScheduledValues(this.ctx.currentTime);
-    this.musicBus.gain.setTargetAtTime(0.55, this.ctx.currentTime, 0.4);
+    this.musicBus.gain.setTargetAtTime(0.55 * this.vol.music, this.ctx.currentTime, 0.4);
     if (!this.drone) this.startDrone();
     this.nextBarAt = this.ctx.currentTime + 0.3;
     const schedule = () => {
@@ -509,8 +523,9 @@ class AudioEngine {
   }
 
   ambience(level: number): void {
+    this.ambLevel = level;
     if (!this.ctx) return;
-    this.ambBus.gain.setTargetAtTime(level, this.ctx.currentTime, 0.4);
+    this.ambBus.gain.setTargetAtTime(level * this.vol.ambience, this.ctx.currentTime, 0.4);
   }
 }
 

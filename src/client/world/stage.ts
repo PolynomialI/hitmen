@@ -412,7 +412,7 @@ export function buildStage(m: Mats, flames: FlameField, glowTex: THREE.Texture, 
   vt.wrapS = vt.wrapT = THREE.RepeatWrapping;
   // Sheen is a second lighting model per light per pixel, on curtains that fill the view behind the card table.
   const mkVelvet = (color: string, sheen: string) =>
-    quality !== 'high'
+    quality !== 'high' && quality !== 'ultra'
       ? new THREE.MeshStandardMaterial({ color, map: vt, roughness: 0.78, side: THREE.DoubleSide, emissive: color, emissiveIntensity: 0.18 })
       : new THREE.MeshPhysicalMaterial({ color, map: vt, roughness: 0.8, sheen: 1, sheenRoughness: 0.4, sheenColor: new THREE.Color(sheen), side: THREE.DoubleSide, emissive: color, emissiveIntensity: 0.16 });
   const velvet = mkVelvet('#a0182a', '#ff9a8a');
@@ -1267,7 +1267,7 @@ export function buildStage(m: Mats, flames: FlameField, glowTex: THREE.Texture, 
   lanternSpot(new THREE.Vector3(S.PX - 0.25, S.ARCH_SIDE + 0.62, S.Z1 + 0.26), new THREE.Vector3(9.4, SF, 2.6), 3.6, 0.6);
 
   // Dust drifting in the light.
-  const N = quality === 'low' ? 140 : 320;
+  const N = quality === 'low' || quality === 'lowest' ? 140 : 320;
   const dpos = new Float32Array(N * 3);
   const seeds = new Float32Array(N);
   for (let i = 0; i < N; i++) {

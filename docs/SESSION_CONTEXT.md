@@ -73,6 +73,12 @@ Second chat (continuing from this file):
     allowed on the free plan (removed; the server's shutdown grace is now 25 s to fit Render's 30 s).
 14. > the game is so not optimized. Even on my i5 13600k machine it is super laggy, imagine what it would be like on a
     > chromebook. heavily optmize every single aspect of it, it shouldnt be laggy at all
+15. Shop/inventory feedback (screenshots): remove "Not owned — find it in the shop", the category descriptions
+    ("the back of every card in the deck"…) and any text under banners/seats/playmats/impacts/charms, the rarity line
+    under every item ("Legendary Charm"…), "Rubies come from…", "Spin for a cosmetic…", the "Matches · Wins · Escapes"
+    line; make icons fill their shop cards (too much white space); turn the volume button into a settings button
+    (resolution, quality, volume, anything else), with a higher top quality and a much lower bottom one for
+    Chromebooks.
 
 ## How the requests were interpreted
 
@@ -137,6 +143,10 @@ Second chat:
     only in the spot's cone, room batched per quarter (culling works), merged figures/chairs/clock, background shader
     compile at match start, no shader error checks in production, Chromebooks start on low. Also fixed: the turn
     countdown, captions and hints swallowed clicks meant for the table.
+27. Shop/inventory without explanatory text, trimmed thumbnails filling square tile art; Settings (gear): quality Auto /
+    Ultra / High / Medium / Low / Lowest, resolution, frame-rate readout, 30 FPS cap, sound + 4 volumes; Ultra
+    (supersampling, 2048 soft shadows, more lights) and Lowest (0.45 MP, no bloom/shadows, one lamp: ~2x Low's frame
+    rate on the software GPU).
 
 ## How work was verified
 

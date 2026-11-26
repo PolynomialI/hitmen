@@ -73,7 +73,7 @@ Useful URL parameters (client):
 | `?start=<mode>` | Skip menus, jump straight into a match. Modes: `original`, `tutorial`, `teams`, `winter`, `ranked`, `scrimmage` |
 | `&rivals=N` | With `start`: number of bot rivals (1–5; teams needs 3 or 5) |
 | `?station=play\|shop\|inventory` | Dev: open straight at that station (after the title card) |
-| `?q=low\|medium\|high` | Force a quality tier (otherwise auto-detected and adapted at runtime) |
+| `?q=lowest\|low\|medium\|high\|ultra` | Force a quality tier (overrides Settings; otherwise auto-detected and adapted at runtime) |
 | `?dtcap=0.4` | Test only: allow big frame steps so slow headless renderers finish animations |
 
 To reset a local profile: devtools → Application → Local Storage → delete `hooded-hand-profile-v2`.
@@ -171,7 +171,9 @@ Bots: `src/shared/bot.ts` play every card with human-like delays; they only see 
   daily/weekly challenges (`src/client/ui/progression.ts`) with claim buttons (also on the main menu board).
 - **Shop** — the Peddler's Cart (`src/client/screens/shop.ts`, camera station `shop`): weekly featured bundle, daily
   wares with a refresh countdown, ruby wares, Fate's Wheel (token spin with reel animation and mutation roll), item
-  detail modal with buy / equip.
+  detail modal with buy / equip. Tiles show only the art, the name and the price (rarity is the border colour); the
+  owner asked for no explanatory text. Thumbnails are trimmed to their drawn content (`trimmedSVG` crops an icon's
+  viewBox, `trimmedURL` crops a canvas) so the art fills its tile.
 - **Inventory** — corkboard chest (station `inventory`): category tabs, owned items with mutation frames, hover for a
   live preview on the 3D display table (felt, card back, charm, chair, banner), reforge a mutation with a token.
 - Cosmetics (`src/client/cosmetics/`): `catalog.ts` (~45 items, 6 rarities from common to contraband),
@@ -185,7 +187,7 @@ Bots: `src/shared/bot.ts` play every card with human-like delays; they only see 
 
 ## Emotes
 
-The speech button beside Sound/Leave in a match (or keys 1-6) calls a phrase across the table: *Well played.*,
+The speech button beside Settings/Leave in a match (or keys 1-6) calls a phrase across the table: *Well played.*,
 *Ha! Ha!*, *Mercy, I beg you!*, *Curses!*, *The Hand is coming for you.*, *A toast to the fallen!*
 (`src/shared/emotes.ts`). It shows as a parchment speech bubble over the speaker's head (yours rises above your hand),
 2.5 s cooldown. Tavern regulars react now and then (marked with a Bounty, drawing the Hand, surviving it, a rival
@@ -284,16 +286,23 @@ local profile (see Next steps).
 
 Budget: smooth on a school Chromebook (small integrated GPU, 2-4 core CPU). What keeps it there:
 
-- **Quality tiers** (`Gfx`, `?q=` forces one): `guessQuality` starts Chromebooks with weak GPUs on low, other
-  integrated GPUs on medium, the rest on high. Per tier: a pixel budget (high 2.4 MP, medium 1.4 MP, low 0.85 MP;
-  bigger screens are upscaled, bloom and grain hide it), a device-pixel-ratio cap (1.5 / 1.25 / 1), bloom levels
-  (7 / 5 / 4), shadow filter (PCF soft / PCF / off), shadow redraw every 1st / 2nd / 3rd frame, anisotropy 8 / 4 / 2,
-  live point lights 3 / 3 / 2, velvet sheen on high only. Anti-aliasing is SMAA on high when rendering below 1.4
-  pixels per CSS pixel (4x MSAA on the half-float buffer cost ~40% of a frame).
+- **Quality tiers** (`TIERS` in `core/gfx.ts`; Settings or `?q=` pick one, else Auto): ultra / high / medium /
+  low / lowest. `guessQuality` (Auto) starts software rendering and the weakest Chromebooks on lowest, other
+  Chromebooks on low, other integrated GPUs on medium, the rest on high (ultra is opt-in). Per tier: pixel budget
+  (5.5 / 2.4 / 1.4 / 0.85 / 0.45 MP; bigger screens are upscaled), render-density cap (2 with supersampling / 1.5 /
+  1.25 / 1 / 0.85), bloom levels (8 / 7 / 5 / 4 / off), shadows (soft 2048 / soft / hard / off / off), shadow redraw
+  every 1st / 1st / 2nd / 3rd frame, anisotropy 16 / 8 / 4 / 2 / 1, live point + spot lights 4+2 / 3+1 / 3+1 / 2+1
+  / 1+0, SMAA (high preset / medium / none) below 1.4 render pixels per CSS pixel, velvet sheen on ultra and high.
+  (4x MSAA on the half-float buffer used to cost ~40% of a frame.)
 - **Adaptive quality** (`Gfx.adapt`): judged on frame intervals against the display's refresh period (10th
-  percentile of the last 90 frames). Slow: drop high to medium first, then resolution, then low. Keeping up: creep
-  resolution back up; a step up that proves too slow is rolled back and not retried. Shadows and the shadow filter are
-  never switched at runtime (that recompiles every shader).
+  percentile of the last 90 frames; a 30 FPS cap sets the floor). Slow: drop a tier's cheap extras first (ultra/high
+  → next tier), then resolution, then lower tiers. Keeping up: creep resolution back up; a step up that proves too
+  slow is rolled back and not retried. A tier or resolution the player fixed in Settings is left alone. Auto tier
+  changes never switch shadows or light counts (that rebuilds every shader); a tier picked in Settings does
+  (`applyQuality(true)`, `Tavern.applyTier`): one short hitch.
+- **Settings** (gear, top left; `screens/settings.ts`, saved in localStorage `hooded-hand-settings-v1`,
+  `ui/settings.ts`): quality (Auto + 5 tiers), resolution (Auto, 100/85/70/50% of native), show frame rate (fps, tier
+  and render size), limit to 30 FPS, sound on/off, master / music / effects / ambience volume. All apply at once.
 - **Light budget** (`world/lightBudget.ts`): every lit shader pays for every live light on every pixel. A fixed
   number of point and spot lights is live, chosen by what the camera looks at, with fades when they swap. Counts never
   change, so swaps never recompile shaders. Lights must exist when the Tavern constructor builds the budget.

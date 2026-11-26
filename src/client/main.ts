@@ -6,6 +6,8 @@ import { ease, tweens } from './core/tween';
 import { MatchScreen, type MatchOptions } from './match/matchScreen';
 import { MainMenu, PlayMenu, TitleScreen, type Nav } from './screens/menus';
 import { InventoryScreen, openChallenges, ShopScreen } from './screens/shop';
+import { openSettings, QUALITY_NAME } from './screens/settings';
+import { onSettings, settings } from './ui/settings';
 import { applyCosmetics, lookFromProfile } from './cosmetics/apply';
 import { refreshChallenges } from './ui/progression';
 import { h } from './ui/dom';
@@ -46,7 +48,22 @@ document.body.append(loading);
   const layer = h('div', { class: 'layer' });
   uiRoot.append(layer);
   const hud = new Hud(uiRoot);
-  hud.onToggleSound = (m) => audio.setMuted(m);
+  hud.onSettings = () => openSettings(layer, app);
+  audio.setVolumes(settings);
+  // Frame-rate readout (Settings → Show frame rate): frames drawn per second, the tier in use and the render size.
+  const showFps = () => (hud.fpsEl.style.display = settings.showFps ? '' : 'none');
+  showFps();
+  onSettings(showFps);
+  let frames = 0;
+  let since = performance.now();
+  app.onUpdate(() => {
+    frames++;
+    const now = performance.now();
+    if (now - since < 500) return;
+    if (settings.showFps) hud.fpsEl.textContent = `${Math.round((frames * 1000) / (now - since))} fps · ${QUALITY_NAME[app.gfx.quality]} · ${app.gfx.renderSize}`;
+    frames = 0;
+    since = now;
+  });
   const picker = new Picker(app.gfx.camera, app.gfx.renderer.domElement);
   app.onUpdate(() => picker.update());
 

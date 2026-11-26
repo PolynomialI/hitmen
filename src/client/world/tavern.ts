@@ -5,7 +5,7 @@ import { FlameField, HearthFire } from '../gfx/flames';
 import { glowSprite, paint } from '../gfx/textures';
 import { batchStatic } from './batch';
 import { buildStage, STAGE, type StageRefs } from './stage';
-import type { Quality } from '../core/gfx';
+import { TIERS, type Quality, type Tier } from '../core/gfx';
 import { Figure } from './figure';
 import { FONT3D } from './fonts3d';
 import { LightBudget } from './lightBudget';
@@ -123,7 +123,7 @@ export class Tavern {
     tableSpot.position.set(4.3, 2.75, 0.6);
     tableSpot.target.position.copy(this.tableCenter);
     tableSpot.castShadow = true;
-    tableSpot.shadow.mapSize.set(1024, 1024);
+    tableSpot.shadow.mapSize.setScalar(TIERS[quality].shadowSize);
     tableSpot.shadow.bias = -0.0008;
     tableSpot.shadow.normalBias = 0.02;
     tableSpot.shadow.camera.near = 0.5;
@@ -154,7 +154,7 @@ export class Tavern {
       const l = o as THREE.Light & { isPointLight?: boolean; isSpotLight?: boolean };
       if ((l.isPointLight || l.isSpotLight) && !l.castShadow) locals.push(l as THREE.PointLight | THREE.SpotLight);
     });
-    this.lightBudget = new LightBudget(locals, quality === 'low' ? 2 : 3, 1);
+    this.lightBudget = new LightBudget(locals, TIERS[quality].points, TIERS[quality].spots);
     // Only the table spot casts shadows: surfaces outside its cone gain nothing from sampling the shadow map, and
     // it is a per-pixel cost (a soft filter of many taps) on every one of them.
     g.updateMatrixWorld(true);
@@ -1238,6 +1238,17 @@ export class Tavern {
 
   afterRender(): void {
     this.lightBudget.restore();
+  }
+
+  /** The player picked another quality tier: live lights and shadow detail follow. */
+  applyTier(t: Tier): void {
+    this.lightBudget.setSlots(t.points, t.spots);
+    const sh = this.lights.tableSpot.shadow;
+    if (sh.mapSize.x !== t.shadowSize) {
+      sh.mapSize.setScalar(t.shadowSize);
+      sh.map?.dispose();
+      sh.map = null;
+    }
   }
 
   /** Scale all practical lights (e.g. dim for drama). */

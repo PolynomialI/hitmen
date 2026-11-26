@@ -14,6 +14,47 @@ import type { Nav } from './menus';
 
 const thumbCache = new Map<string, Promise<string>>();
 
+/** Bounds of the visible pixels of a canvas (alpha above a faint glow), or null if it is empty. */
+function visibleBounds(c: HTMLCanvasElement): { x: number; y: number; w: number; h: number } | null {
+  const { width: w, height: h } = c;
+  const d = c.getContext('2d', { willReadFrequently: true })!.getImageData(0, 0, w, h).data;
+  let x0 = w, y0 = h, x1 = -1, y1 = -1;
+  for (let y = 0; y < h; y++)
+    for (let x = 0; x < w; x++)
+      if (d[(y * w + x) * 4 + 3] > 24) {
+        if (x < x0) x0 = x;
+        if (x > x1) x1 = x;
+        if (y < y0) y0 = y;
+        if (y > y1) y1 = y;
+      }
+  return x1 < 0 ? null : { x: x0, y: y0, w: x1 - x0 + 1, h: y1 - y0 + 1 };
+}
+
+/** Crop a canvas to what is drawn on it (plus a hair of margin), so the art fills the tile it sits in. */
+function trimmedURL(c: HTMLCanvasElement): string {
+  const b = visibleBounds(c);
+  if (!b) return c.toDataURL('image/webp', 0.9);
+  const m = Math.round(Math.max(b.w, b.h) * 0.02);
+  const x = Math.max(0, b.x - m);
+  const y = Math.max(0, b.y - m);
+  const w = Math.min(c.width - x, b.w + 2 * m);
+  const hh = Math.min(c.height - y, b.h + 2 * m);
+  const out = document.createElement('canvas');
+  out.width = w;
+  out.height = hh;
+  out.getContext('2d')!.drawImage(c, x, y, w, hh, 0, 0, w, hh);
+  return out.toDataURL('image/webp', 0.9);
+}
+
+/** An icon SVG (160×160 viewBox) with its viewBox cropped to the drawing: still vector, but without the empty border. */
+async function trimmedSVG(svg: string): Promise<string> {
+  const b = visibleBounds(await svgCanvas(svg, 160, 160));
+  if (!b) return svgURL(svg);
+  const m = Math.max(b.w, b.h) * 0.03;
+  const vb = `${b.x - m} ${b.y - m} ${b.w + 2 * m} ${b.h + 2 * m}`;
+  return svgURL(svg.replace('viewBox="0 0 160 160"', `viewBox="${vb}" width="${Math.round((b.w + 2 * m) * 2)}" height="${Math.round((b.h + 2 * m) * 2)}"`));
+}
+
 export function thumb(it: Item, mut: Mutation = 'basic'): Promise<string> {
   const key = it.id + ':' + mut;
   let p = thumbCache.get(key);
@@ -21,17 +62,17 @@ export function thumb(it: Item, mut: Mutation = 'basic'): Promise<string> {
     p = (async () => {
       switch (it.cat) {
         case 'sleeve':
-          return (await sleeveCanvas(it.style, mut, 180)).toDataURL('image/webp', 0.9);
+          return trimmedURL(await sleeveCanvas(it.style, mut, 240));
         case 'playmat':
           return swatchURL(it.style, mut);
         case 'impact':
-          return svgURL(impactIconSVG(it.style, mut));
+          return trimmedSVG(impactIconSVG(it.style, mut));
         case 'charm':
-          return svgURL(charmIconSVG(it.style.model));
+          return trimmedSVG(charmIconSVG(it.style.model));
         case 'seat':
-          return svgURL(seatIconSVG(it.style.model));
+          return trimmedSVG(seatIconSVG(it.style.model));
         case 'banner':
-          return (await svgCanvas(bannerSVG(it.style, mut), 120, 240)).toDataURL('image/webp', 0.9);
+          return trimmedURL(await svgCanvas(bannerSVG(it.style, mut), 160, 320));
       }
     })();
     thumbCache.set(key, p);
@@ -128,7 +169,6 @@ export class ShopScreen implements Screen {
       { class: `ware r-${it.rarity}${owned ? ' owned' : ''}` },
       h('div', { class: 'art' }, img(it)),
       h('b', {}, it.name),
-      h('small', {}, `${RARITY[it.rarity].name} ${CATEGORY[it.cat].name}`),
       owned ? h('span', { class: 'price owned' }, 'Owned') : priceTag(it)
     );
     el.addEventListener('pointerenter', () => audio.play('hover', { vol: 0.5 }));
@@ -177,7 +217,7 @@ export class ShopScreen implements Screen {
       this.body.append(h('h3', { class: 'sect' }, 'Ruby wares — always in stock'));
       const grid = h('div', { class: 'wares' });
       for (const it of rubyWares()) grid.append(this.card(it));
-      this.body.append(grid, h('p', { class: 'note' }, 'Rubies come from levelling up, weekly challenges and Ranked victories.'));
+      this.body.append(grid);
     } else this.fortune();
   }
 
@@ -228,7 +268,6 @@ export class ShopScreen implements Screen {
           h('span', { class: 'rarity', style: `color:${RARITY[it.rarity].color}` }, `${RARITY[it.rarity].name} ${CATEGORY[it.cat].name}`),
           h('h2', {}, it.name),
           h('p', { class: 'lede' }, it.blurb),
-          h('p', { class: 'where' }, CATEGORY[it.cat].where),
           h('div', { class: 'muts' }, ...(Object.keys(MUTATIONS) as Mutation[]).map((m) => h('span', { style: `color:${MUTATIONS[m].color}` }, `${MUTATIONS[m].name} ${Math.round(MUTATIONS[m].odds * 100)}%`))),
           h('div', { class: 'row' }, close, h('div', {}, equip, buy))
         )
@@ -296,7 +335,7 @@ export class ShopScreen implements Screen {
           'div',
           { class: `won r-${win.rarity} m-${mut}` },
           img(win, mut, 'big'),
-          h('div', {}, h('span', { class: 'rarity', style: `color:${RARITY[win.rarity].color}` }, `${RARITY[win.rarity].name} ${CATEGORY[win.cat].name}`), h('b', {}, win.name), h('em', { style: `color:${MUTATIONS[mut].color}` }, MUTATIONS[mut].name), h('p', {}, msg))
+          h('div', {}, h('b', {}, win.name), h('em', { style: `color:${MUTATIONS[mut].color}` }, MUTATIONS[mut].name), h('p', {}, msg))
         )
       );
       spinT.textContent = `Spin · 1 token (${profile.tokens})`;
@@ -311,7 +350,6 @@ export class ShopScreen implements Screen {
     }
     this.body.append(
       h('h3', { class: 'sect' }, "Fate's Wheel"),
-      h('p', { class: 'note' }, 'Spin for a random cosmetic with a random finish: Basic, Gilded, Mosaic or Prismatic. Rarer things are rarer.'),
       reel,
       h('div', { class: 'row center' }, spinT, spinR),
       result
@@ -360,8 +398,7 @@ export class InventoryScreen implements Screen {
       const cats: Category[] = ['sleeve', 'charm', 'seat', 'impact', 'banner', 'playmat'];
       cats.forEach((c, i) => {
         const it = item(profile.equipped[catKey(c)])!;
-        const n = ITEMS.filter((x) => x.cat === c && owns(x.id)).length;
-        const tile = h('button', { class: 'pin', style: `--r:${((i * 37) % 9) - 4}deg` }, h('span', { class: 'tack' }), img(it, mutOf(it.id)), h('b', {}, CATEGORY[c].plural), h('small', {}, `${it.name} · ${n} owned`));
+        const tile = h('button', { class: 'pin', style: `--r:${((i * 37) % 9) - 4}deg` }, h('span', { class: 'tack' }), img(it, mutOf(it.id)), h('b', {}, CATEGORY[c].plural));
         tile.addEventListener('pointerenter', () => audio.play('hover', { vol: 0.5 }));
         tile.addEventListener('click', () => {
           audio.play('paper');
@@ -372,13 +409,13 @@ export class InventoryScreen implements Screen {
       this.body.append(board);
       return;
     }
-    this.body.append(h('div', { class: 'inv-head' }, h('h2', {}, CATEGORY[cat].plural), wallet()), h('p', { class: 'lede' }, CATEGORY[cat].where));
+    this.body.append(h('div', { class: 'inv-head' }, h('h2', {}, CATEGORY[cat].plural), wallet()));
     const grid = h('div', { class: 'wares inv' });
     const all = ITEMS.filter((x) => x.cat === cat);
     for (const it of all) {
       const owned = profile.owned[it.id] ?? [];
       if (!owned.length) {
-        grid.append(h('div', { class: `ware locked r-${it.rarity}` }, h('div', { class: 'art' }, img(it)), h('b', {}, it.name), h('small', {}, 'Not owned — find it in the shop'), priceTag(it)));
+        grid.append(h('div', { class: `ware locked r-${it.rarity}` }, h('div', { class: 'art' }, img(it)), h('b', {}, it.name), priceTag(it)));
         continue;
       }
       for (const mut of owned as Mutation[]) {
@@ -388,7 +425,6 @@ export class InventoryScreen implements Screen {
           { class: `ware r-${it.rarity} m-${mut}${equipped ? ' equipped' : ''}` },
           h('div', { class: 'art' }, img(it, mut)),
           h('b', {}, it.name),
-          h('small', { style: `color:${MUTATIONS[mut].color}` }, `${MUTATIONS[mut].name} · ${RARITY[it.rarity].name}`),
           h('span', { class: 'price owned' }, equipped ? 'Equipped' : 'Equip')
         );
         el.addEventListener('pointerenter', () => {
@@ -494,8 +530,6 @@ export function openChallenges(nav: Nav): void {
     };
     list('Daily ', profile.daily.items, timer);
     list('Weekly', profile.weekly.items);
-    const st = profile.stats;
-    panel.append(h('p', { class: 'note' }, `Matches ${st.matches} · Wins ${st.wins} · Escapes from the Hand ${st.rescues} · Rivals outlasted ${st.outlasted}`));
     const close = h('button', { class: 'btn-text' }, 'Close');
     close.addEventListener('click', () => {
       audio.play('click');

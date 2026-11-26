@@ -1,5 +1,5 @@
 import { h, icon } from './dom';
-import { onProfile, profile, saveProfile } from './profile';
+import { onProfile, profile } from './profile';
 
 /** Persistent overlay: profile plate (bottom-right) and corner buttons (top-left). */
 export class Hud {
@@ -9,9 +9,11 @@ export class Hud {
   private nameEl: HTMLElement;
   private levelEl: HTMLElement;
   private rubiesEl: HTMLElement;
-  private soundBtn: HTMLButtonElement;
+  private settingsBtn: HTMLButtonElement;
   readonly leaveBtn: HTMLButtonElement;
-  onToggleSound?: (muted: boolean) => void;
+  /** Frame-rate readout next to the corner buttons (Settings → Show frame rate). */
+  readonly fpsEl: HTMLElement;
+  onSettings?: () => void;
   onLeave?: () => void;
 
   constructor(parent: HTMLElement) {
@@ -27,17 +29,14 @@ export class Hud {
       h('div', { class: 'coins' }, h('i', { class: 'coin-ico' }), this.coinsEl),
       h('div', { class: 'coins' }, h('i', { class: 'ruby-ico' }), this.rubiesEl)
     );
-    this.soundBtn = h('button', { class: 'icon-btn', title: 'Sound', 'aria-label': 'Toggle sound' }) as HTMLButtonElement;
-    this.soundBtn.append(icon(profile.muted ? 'mute' : 'sound'));
-    this.soundBtn.addEventListener('click', () => {
-      saveProfile({ muted: !profile.muted });
-      this.soundBtn.replaceChildren(icon(profile.muted ? 'mute' : 'sound'));
-      this.onToggleSound?.(profile.muted);
-    });
+    this.settingsBtn = h('button', { class: 'icon-btn', title: 'Settings', 'aria-label': 'Settings' }) as HTMLButtonElement;
+    this.settingsBtn.append(icon('gear'));
+    this.settingsBtn.addEventListener('click', () => this.onSettings?.());
+    this.fpsEl = h('span', { class: 'fps', style: 'display:none' });
     this.leaveBtn = h('button', { class: 'icon-btn', title: 'Leave table', 'aria-label': 'Leave table', style: 'display:none' }) as HTMLButtonElement;
     this.leaveBtn.append(icon('door'));
     this.leaveBtn.addEventListener('click', () => this.onLeave?.());
-    this.el = h('div', { class: 'layer' }, h('div', { class: 'corner-btns' }, this.soundBtn, this.leaveBtn), this.plate);
+    this.el = h('div', { class: 'layer' }, h('div', { class: 'corner-btns' }, this.settingsBtn, this.leaveBtn, this.fpsEl), this.plate);
     parent.append(this.el);
     onProfile(() => {
       this.coinsEl.textContent = profile.coins.toLocaleString();
