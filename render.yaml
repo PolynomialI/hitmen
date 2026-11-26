@@ -1,16 +1,22 @@
 # Render Blueprint for The Hooded Hand.
-# One Node web service serves the built client (static files) and the WebSocket game server on the same port.
-# Deploy: Render dashboard -> New -> Blueprint -> pick this repo.
+# One Node web service serves the built client (static files) and the WebSocket game server (online tables) on the
+# same port. Deploy: Render dashboard -> New -> Blueprint -> connect this repo. See HANDOFF.md, "Deploy".
 services:
   - type: web
     name: the-hooded-hand
     runtime: node
     plan: free
-    region: oregon
+    # Can't be changed after the service is created: pick the one nearest the players.
+    # oregon | ohio | virginia | frankfurt | singapore
+    region: virginia
     buildCommand: npm ci --include=dev && npm run build
     startCommand: npm start
     healthCheckPath: /healthz
-    autoDeploy: true
+    # Deploy a push only once the GitHub checks (typecheck, rules sims, build) pass.
+    autoDeployTrigger: checksPass
+    # During a deploy the old server keeps running matches in progress for up to 5 minutes (server/index.ts finishes
+    # them, then exits); new players go to the new version straight away.
+    maxShutdownDelaySeconds: 300
     envVars:
       - key: NODE_VERSION
         value: "22"

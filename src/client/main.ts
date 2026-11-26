@@ -6,7 +6,7 @@ import { ease, tweens } from './core/tween';
 import { MatchScreen, type MatchOptions } from './match/matchScreen';
 import { MainMenu, PlayMenu, TitleScreen, type Nav } from './screens/menus';
 import { InventoryScreen, openChallenges, ShopScreen } from './screens/shop';
-import { applyCosmetics } from './cosmetics/apply';
+import { applyCosmetics, lookFromProfile } from './cosmetics/apply';
 import { refreshChallenges } from './ui/progression';
 import { h } from './ui/dom';
 import { Hud } from './ui/hud';
@@ -14,6 +14,7 @@ import { profile } from './ui/profile';
 import type { GameMode } from '../shared/types';
 import type { LobbyInfo } from '../shared/online';
 import { OnlineSession } from './net/online';
+import { toast } from './ui/hud';
 
 const uiRoot = document.getElementById('ui')!;
 const app = new App(document.getElementById('app')!, uiRoot);
@@ -85,7 +86,13 @@ document.body.append(loading);
   const quick = params.get('start') as GameMode | null;
   const rivals = Number(params.get('rivals')) || 1;
   // Reloaded while seated at an online table? Take the seat back.
-  const resumed = quick ? null : OnlineSession.resume();
+  let resumed = quick ? null : OnlineSession.resume();
+  // An invite link (?join=CODE): sit straight down at that table.
+  const invite = !resumed && !quick ? params.get('join') : null;
+  if (invite) {
+    history.replaceState(null, '', location.pathname);
+    resumed = OnlineSession.join(invite, profile.name, lookFromProfile());
+  }
   let lobby: LobbyInfo | null = null;
   if (resumed) {
     label.textContent = 'Returning to your table';
@@ -121,6 +128,7 @@ document.body.append(loading);
   if (st === 'play') nav.toPlay();
   if (st === 'shop') nav.toShop();
   if (st === 'inventory') nav.toInventory();
+  if (invite && !lobby) toast(layer, 'That table could not be found', 'It may have started or closed. Ask for a new invite.');
   document.body.dataset.ready = '1';
   void profile;
 })();

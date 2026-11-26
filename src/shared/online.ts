@@ -53,6 +53,8 @@ export type ClientMsg =
   | { t: 'start' }
   | { t: 'again' }
   | { t: 'leave' }
+  /** Host only, while waiting: ask a player to leave the table. */
+  | { t: 'kick'; id: string }
   | { t: 'emote'; id: string }
   | { t: 'action'; id: number; action: Action };
 

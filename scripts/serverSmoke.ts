@@ -138,6 +138,20 @@ async function main(): Promise<void> {
   await c.until(() => c.errors.length > 0, 'bad code error');
   c.close();
 
+  // A second "Alys" gets a distinct name; the host can ask them to leave before the start.
+  const twin = new Player('Alys');
+  await twin.connect();
+  twin.send({ t: 'join', room: a.room, name: 'Alys' });
+  await a.until(() => a.lobby!.seats.length === 3, 'twin seated');
+  assert(a.lobby!.seats.some((x) => x.name === 'Alys II'), 'duplicate name becomes "Alys II": ' + a.lobby!.seats.map((x) => x.name).join(', '));
+  b.send({ t: 'kick', id: twin.me });
+  await pause(300);
+  assert(a.lobby!.seats.length === 3, 'only the host may ask someone to leave');
+  a.send({ t: 'kick', id: twin.me });
+  await twin.until(() => twin.errors.some((m) => m.includes('asked you to leave')), 'kicked player is told');
+  await a.until(() => a.lobby!.seats.length === 2, 'kicked player removed');
+  twin.close();
+
   b.send({ t: 'start' });
   await pause(400);
   assert(a.lobby!.status === 'waiting', 'only the host may start');

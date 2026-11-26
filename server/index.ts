@@ -12,7 +12,7 @@ import type { Host } from '../src/shared/host';
 import { EMOTE_COOLDOWN_MS, isEmote } from '../src/shared/emotes';
 import { createTableMatch } from '../src/shared/match';
 import { normalizeCode, ONLINE_MODES, ROOM_CODE, seatOptions, type ClientMsg, type LobbyInfo, type Look, type OnlineMode, type RoomSummary, type ServerMsg } from '../src/shared/online';
-import { cleanName } from '../src/shared/text';
+import { cleanName, NAME_MAX } from '../src/shared/text';
 import type { Action, GameEvent } from '../src/shared/types';
 
 const PORT = Number(process.env.PORT) || 8787;
@@ -23,6 +23,10 @@ const GRACE_WAITING_MS = 20_000;
 const GRACE_PLAYING_MS = 90_000;
 /** A finished table with nobody asking for another round closes after this long. */
 const OVER_TTL_MS = 5 * 60_000;
+/** On shutdown (a redeploy), matches in progress may run on this long before the process exits. */
+const SHUTDOWN_GRACE_MS = Number(process.env.SHUTDOWN_GRACE_MS) || 290_000;
+const UPDATING = 'The tavern is being updated. Open the board again in a minute.';
+let closing = false;
 
 // ------------------------------------------------------------------ static files + API
 
@@ -133,6 +137,10 @@ class Room {
     if (this.status !== 'waiting') return 'That table is already playing.';
     if (this.clients.length >= this.size) return 'That table is full.';
     const teamCount = [0, 1].map((t) => this.clients.filter((c) => c.team === t).length);
+    // Two "Stranger"s at one table would be confusing: the second becomes "Stranger II".
+    const taken = new Set(this.clients.map((x) => x.name));
+    const numerals = ['II', 'III', 'IV', 'V', 'VI'];
+    for (let k = 0; taken.has(name) && k < numerals.length; k++) name = `${name.replace(/ (II|III|IV|V|VI)$/, '').slice(0, NAME_MAX - 1 - numerals[k].length)} ${numerals[k]}`;
     const c: Client = { pid: 'p' + this.nextPid++, name, look, token: randomBytes(18).toString('base64url'), ws, team: teamCount[0] <= teamCount[1] ? 0 : 1, grace: null, lastEmote: 0 };
     this.clients.push(c);
     if (!this.hostPid) this.hostPid = c.pid;
@@ -220,6 +228,20 @@ class Room {
       result = { ok: false, err: 'bad action' };
     }
     if (c.ws) send(c.ws, { t: 'result', id, result });
+  }
+
+  /** The host asks a player to leave (waiting room only). */
+  kick(by: Client, id: string): void {
+    if (this.status !== 'waiting' || by.pid !== this.hostPid || id === by.pid) return;
+    const c = this.clients.find((x) => x.pid === id);
+    if (!c) return;
+    const ws = c.ws;
+    c.ws = null;
+    this.remove(c);
+    if (ws) {
+      send(ws, { t: 'error', message: 'The host has asked you to leave the table.', fatal: true });
+      ws.close(4001, 'kicked');
+    }
   }
 
   /** A phrase across the table: to everyone else at it (the sender shows its own). */
@@ -333,6 +355,7 @@ wss.on('connection', (ws) => {
     switch (msg.t) {
       case 'create': {
         if (room) return;
+        if (closing) return fail(UPDATING);
         if (rooms.size >= MAX_ROOMS) return fail('The tavern is full tonight. Try again soon.');
         const mode = ONLINE_MODES.includes(msg.mode) ? msg.mode : 'original';
         const size = seatOptions(mode).includes(msg.size) ? msg.size : seatOptions(mode)[0];
@@ -346,6 +369,7 @@ wss.on('connection', (ws) => {
       }
       case 'join': {
         if (room) return;
+        if (closing) return fail(UPDATING);
         const code = normalizeCode(String(msg.room ?? ''));
         const r = ROOM_CODE.test(code) ? rooms.get(code) : undefined;
         if (!r) return fail('No table with that code. Check the letters and try again.');
@@ -376,6 +400,8 @@ wss.on('connection', (ws) => {
         return room.again();
       case 'emote':
         return room.emote(me, msg.id);
+      case 'kick':
+        return room.kick(me, String(msg.id ?? ''));
       case 'leave':
         room.remove(me);
         room = me = null;
@@ -394,3 +420,26 @@ wss.on('connection', (ws) => {
 });
 
 http.listen(PORT, () => console.log(`The Hooded Hand server listening on :${PORT} (static from ${DIST})`));
+
+// A redeploy stops this process (SIGTERM) while a new one takes new players. Matches already being played may finish
+// (up to SHUTDOWN_GRACE_MS, if the host allows that long); waiting and finished tables are told to come back shortly.
+function shutdown(): void {
+  if (closing) return;
+  closing = true;
+  console.log('Shutting down: letting matches in progress finish.');
+  // Stop accepting connections right away (frees the port; new players reach the new instance). Open sockets of
+  // matches in progress stay up.
+  http.close();
+  const deadline = Date.now() + SHUTDOWN_GRACE_MS;
+  const check = (): void => {
+    for (const r of [...rooms.values()]) if (r.status !== 'playing' || Date.now() > deadline) r.close(UPDATING);
+    if (rooms.size === 0) {
+      clearInterval(timer);
+      setTimeout(() => process.exit(0), 300);
+    }
+  };
+  const timer = setInterval(check, 1000);
+  check();
+}
+process.on('SIGTERM', shutdown);
+process.on('SIGINT', shutdown);

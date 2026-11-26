@@ -80,11 +80,35 @@ To reset a local profile: devtools → Application → Local Storage → delete 
 
 ## Deploy
 
-- **Render (where the game will be played):** `render.yaml` is a Blueprint for one Node web service
-  (`npm ci && npm run build`, then `npm start`, health check `/healthz`). It serves the client and the online tables
-  from one origin. Free plan sleeps when idle (first visit waits ~1 min). Owner, when ready: Render dashboard → New →
-  Blueprint → pick this repo. (Check the Chromebook can reach `*.onrender.com`; if the school/admin blocks it too, a
-  custom domain on the Render service is the fallback.)
+- **Render (where the game is played):** `render.yaml` is a Blueprint for one free Node web service that serves the
+  client and the online tables from one origin: build `npm ci --include=dev && npm run build`, start `npm start`,
+  health check `/healthz`, `autoDeployTrigger: checksPass` (a push goes live only after the CI checks pass), and
+  `maxShutdownDelaySeconds: 300` (during a deploy the old server finishes matches in progress, up to 5 minutes, then
+  exits; see `shutdown()` in server/index.ts; new players reach the new version at once). Region is `virginia` (US East, the owner's choice) and
+  cannot be changed after creation.
+
+  Owner setup, route A (recommended; updates go live by themselves). GitHub is blocked on the Chromebook, so do
+  steps 1-3 on a phone or another computer:
+  1. dashboard.render.com → avatar → Account Settings → Account Security → Git Deployment Credentials → Add
+     credential → GitHub → authorize.
+  2. When GitHub asks which repositories Render may use, choose "Only select repositories" → PolynomialI/hitmen.
+     (Later: github.com/apps/render/installations/new.)
+  3. Dashboard → New → Blueprint → Connect next to PolynomialI/hitmen → branch `main` → name it → Deploy Blueprint.
+     The first build takes a few minutes; the Events tab shows "Deploy live".
+  4. On the Chromebook open the service URL (https://the-hooded-hand.onrender.com, or whatever the dashboard shows
+     under the service name). Join a Table is unlocked when the page talks to the server.
+
+  Route B (no GitHub login at all; manual updates): New → Web Service → Public Git Repository →
+  `https://github.com/PolynomialI/hitmen` → Connect; Language Node, Branch main, Build Command
+  `npm ci --include=dev && npm run build`, Start Command `npm start`, Instance Type Free; Advanced → Health Check Path
+  `/healthz`, environment variable `NODE_VERSION` = `22`. Updates only go live with Manual Deploy → Deploy latest
+  commit.
+
+  Free plan facts (Render docs, Nov 2026): it sleeps after 15 minutes with no HTTP requests or WebSocket messages and
+  takes about a minute to wake (first visitor waits on Render's loading page); 750 free instance hours a month; Render
+  may restart a free service at any time, which ends tables in memory (players see "the tavern is being updated" or
+  "that table has closed"). If `*.onrender.com` is blocked on the Chromebook, a custom domain can be added in the
+  service's Settings → Custom Domains.
 - **CI:** `.github/workflows/ci.yml` runs typecheck, the sims and a full build on every push. There is no GitHub
   Pages deploy (github.io is blocked on the owner's Chromebook).
 
@@ -230,10 +254,12 @@ regulars (named bots with random looks) take the empty chairs. In a match, a dro
 so an absent player auto-draws). Reloading the page takes the seat back: the server sends the match so far and the
 match screen replays it instantly (`tweens.instant`, `audio.suppressed`). After the results, **Back to the table**
 returns everyone to the waiting room for another round; if the host starts it while you are still on the results,
-you are sat down automatically. Leaving an online match gives up the seat (counts as slain).
+you are sat down automatically. Leaving an online match gives up the seat (counts as slain). The waiting room's
+**Copy invite link** gives `https://<host>/?join=CODE`, which opens the game straight into that table. The host can
+ask a player to leave (✕) before the start. Two players with the same name at one table become "Name" and "Name II".
 
 Server (`server/index.ts`): rooms keyed by a 5-letter code; `create` / `join` / `rejoin {token, since, round}` /
-`team` / `start` (host only) / `again` / `leave` / `action`; replies `welcome {you, token}`, `lobby {LobbyInfo}`,
+`team` / `start` (host only) / `kick` (host only, waiting) / `again` / `leave` / `emote` / `action`; replies `welcome {you, token}`, `lobby {LobbyInfo}`,
 `event`, `history {evs, from}` (events missed since `since`, or the whole match when `from` is 0), `result`,
 `presence`, `error {fatal?}`. Names are cleaned (`cleanName`), looks are reduced to short ids, messages are
 rate-limited, at most 300 rooms, finished tables close after 5 min. Rewards are still granted client-side from the

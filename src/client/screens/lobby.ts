@@ -29,13 +29,15 @@ const button = (cls: string, label: string, fn: () => void): HTMLButtonElement =
 /** The waiting room of an online table. Starts the match for everyone at the table when the host does. */
 export function lobbyModal(nav: Nav, session: OnlineSession, onClose: () => void): Modal {
   const code = h('span', { class: 'code' }, '·····');
-  const copy = button('copy', 'Copy', () => {
+  // An invite link opens the game straight into this table (no code to type).
+  const copy = button('copy', 'Copy invite link', () => {
     const c = session.room;
     if (!c) return;
-    navigator.clipboard?.writeText(c).then(
-      () => toast(nav.layer, 'Code copied', `Tell your friends: ${c}`),
-      () => toast(nav.layer, `Tell your friends: ${c}`)
-    ) ?? toast(nav.layer, `Tell your friends: ${c}`);
+    const link = `${location.origin}${location.pathname}?join=${c}`;
+    const shown = () => toast(nav.layer, 'Invite link copied', 'Send it to your friends');
+    const fallback = () => toast(nav.layer, `Table code: ${c}`, link);
+    if (navigator.clipboard) navigator.clipboard.writeText(link).then(shown, fallback);
+    else fallback();
   });
   const lede = h('p', { class: 'lede' }, 'Setting the table…');
   const seats = h('ol', { class: 'seats' });
@@ -83,6 +85,15 @@ export function lobbyModal(nav: Nav, session: OnlineSession, onClose: () => void
         s.host ? h('em', { class: 'host' }, 'host') : null,
         s.connected ? null : h('em', {}, 'away')
       );
+      // The host can ask someone to leave before the night begins.
+      if (iHost && s.id !== session.me && l.status === 'waiting') {
+        const kick = h('button', { class: 'kick', title: `Ask ${s.name} to leave` }, '✕');
+        kick.addEventListener('click', () => {
+          audio.play('click');
+          session.kick(s.id);
+        });
+        li.append(kick);
+      }
       if (s.team != null) {
         const chip = h('button', { class: 'team-chip t' + s.team, disabled: s.id === session.me && l.status === 'waiting' ? null : 'true' }, TEAM_NAME[s.team]) as HTMLButtonElement;
         chip.title = s.id === session.me ? 'Switch sides' : '';

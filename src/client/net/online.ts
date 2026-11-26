@@ -253,6 +253,11 @@ export class OnlineSession {
     this.send({ t: 'emote', id });
   }
 
+  /** Host only, while waiting. */
+  kick(id: string): void {
+    this.send({ t: 'kick', id });
+  }
+
   setTeam(team: number): void {
     this.send({ t: 'team', team });
   }

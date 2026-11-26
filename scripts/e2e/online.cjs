@@ -1,8 +1,8 @@
 // Online tables end to end, against the game server serving the built client (same origin, as on Render):
 //   npm run build && npm start            (or: npm run build && npx tsx server/index.ts)
 //   BASE=http://localhost:8787 SHOTS=e2e-shots node scripts/e2e/online.cjs
-// Three players: Alys creates an open 4-seat table from the board, Bram finds it in Join a Table, Cobb joins by
-// code and leaves again, Alys starts (two regulars fill the chairs), both play; Bram reloads mid-match and must get
+// Three players: Alys creates an open 4-seat table from the board, Bram finds it in Join a Table, Cobb arrives by
+// invite link and leaves again, Alys starts (two regulars fill the chairs), both play; Bram reloads mid-match and must get
 // his seat back (the table is rebuilt from the server's history); results; back to the table for another round.
 const fs = require('fs');
 const BASE = process.env.BASE || 'http://localhost:8787';
@@ -67,11 +67,11 @@ const { autoplay, helpers } = require('./autoplay.cjs');
   await B.click('.open-table:has-text("Alys")');
   await until(A, async () => (await seated(A)) === 2, 'Bram seated');
 
-  // 3. Cobb joins with the code (typed in lower case), then thinks better of it.
-  await board(C);
-  await C.click('text=Join a Table');
-  await C.fill('.code-input', code.toLowerCase());
-  await C.click('.code-row >> text=Join');
+  // 3. Cobb opens the invite link Alys would send (it lands him straight at the table), then thinks better of it.
+  //    (Joining by typing the code is covered by scripts/serverSmoke.ts and the Join a Table panel above.)
+  await C.goto(`${BASE}/?join=${code.toLowerCase()}&q=low&dtcap=0.4`);
+  await C.waitForSelector('body[data-ready]', { timeout: 120000, state: 'attached' });
+  await C.waitForSelector('.panel.lobby .seat.me', { timeout: 30000 });
   await until(A, async () => (await seated(A)) === 3, 'Cobb seated');
   await B.waitForSelector('.panel.lobby .wait');
   await A.waitForTimeout(500);

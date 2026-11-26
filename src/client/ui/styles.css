@@ -2356,3 +2356,22 @@ h4 .timer {
     transform: translate(-50%, 10px) scale(0.85);
   }
 }
+
+/* Waiting room: the host can ask a player to leave. */
+.seat .kick {
+  margin-left: auto;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  font-size: 13px;
+  color: #8a1f14;
+  background: rgba(138, 31, 20, 0.1);
+  transition: background 0.2s, color 0.2s;
+}
+.seat .kick:hover {
+  color: #fff3d0;
+  background: #8a1f14;
+}
+.seat .team-chip + .kick {
+  margin-left: 8px;
+}

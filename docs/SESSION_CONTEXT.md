@@ -58,6 +58,17 @@ Second chat (continuing from this file):
 8. The starter prompt below ("Continue building ... tell me what you plan to do next ...").
 9. > do whatever you can possiblt do without me creating a render blueprint for this yet but note that github is
    > blocked on our managed Chromebook so don't build anything to access or refernce from tbere
+10. GUI feedback (screenshot of the play bar): icons too small inside their circles, the rectangle behind them looks
+    barren; same for all text; remove unnecessary text; better sizing; much better menu textures.
+11. Table feedback: the name text drew over the Hooded Hand card; heavily improve animations (drawing, attacking,
+    scrying, shuffling, pulling a card); up to 5 bots; a large clock in front of whoever's turn it is that travels
+    clockwise to the next player; white target arrows for all bots; icons for turns owed; attack stacking; drawing
+    the Hand resets turns.
+12. More table feedback: no hands resting on the table (players only hold their cards); equal spacing; much better
+    player textures; deck larger and turned right; held cards larger, upright, matching real counts; great
+    animations for playing, gaining and burning cards.
+13. > I created a new render.com account, give me all the steps to connect github and whatever else to do to set up
+    > multiplayer. Make sure you do everything on your part and set up actually good multiplayer/private rooms
 
 ## How the requests were interpreted
 
@@ -109,6 +120,14 @@ Second chat:
     all above the hand), readable rival name tags, hide step polish, tutorial parry made timing-proof.
 19. Online tables: server rooms (create/join/rejoin/team/start/again/leave, open-table list API, rate limits),
     OnlineSession + WsTransport, waiting room and Join a Table UI, instant replay on reload, Back to the table.
+20. Emotes; shimmering top-rarity sleeves; leaving a match no longer blanks the tavern.
+21. Name tags depth-tested; surviving the Hand ends all owed turns (rules test in the sims).
+22. Table rework: equal seats, clockwise order, held cards upright and larger, hold pose, larger turned deck, turn
+    clock (timer + owed-turns medallion); aiming holds the view still (targets e2e).
+23. Animations: draw suspense, plays from the row to the middle, attack bolt, scry cascade, aerial riffle, gains, burn.
+24. GUI: medallion play bar, tickets, less text, icons that fill their medallions; wool/leather for players; detailed
+    wood, plaster, metals, leather, velvet, parchment.
+25. Render-ready multiplayer: invite links, unique names, host kick, graceful deploys, render.yaml on current fields.
 
 ## How work was verified
 
@@ -125,8 +144,9 @@ Second chat:
 
 ## Owner's open to-dos / known state
 
-- **Render is not set up yet** (owner's account): Render dashboard → New → Blueprint → this repo. Until then the
-  game only runs where someone runs `npm start` (or `npm run dev` for bot tables).
+- **Render:** the owner created an account (Nov 25). Steps are in HANDOFF.md → Deploy (route A via a device where
+  GitHub opens, or route B with the public repo URL). Until it is live, the game only runs where someone runs
+  `npm start` (or `npm run dev` for bot tables).
 - Online tables are built and tested locally; they unlock automatically when the page is served by the server.
 - The Leaderboard is the local ranked ladder; a real one needs server-side accounts.
 - Coins/items live in the browser's localStorage (also for online tables); move them server-side if they must be
