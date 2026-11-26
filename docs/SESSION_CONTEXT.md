@@ -79,6 +79,8 @@ Second chat (continuing from this file):
     line; make icons fill their shop cards (too much white space); turn the volume button into a settings button
     (resolution, quality, volume, anything else), with a higher top quality and a much lower bottom one for
     Chromebooks.
+16. Asked what the "1000 Renown · Peasant" badge is (answered: the local Ranked ladder). Then: remove the title
+    screen's "Draw a card. Pray it is not him." line; put the Guardian Angel's head closer to its body on the card.
 
 ## How the requests were interpreted
 
@@ -147,6 +149,7 @@ Second chat:
     Ultra / High / Medium / Low / Lowest, resolution, frame-rate readout, 30 FPS cap, sound + 4 volumes; Ultra
     (supersampling, 2048 soft shadows, more lights) and Lowest (0.45 MP, no bloom/shadows, one lamp: ~2x Low's frame
     rate on the software GPU).
+28. Title screen without the tagline; Guardian Angel card art with the head resting on the robe.
 
 ## How work was verified
 

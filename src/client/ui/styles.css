@@ -186,14 +186,6 @@ button:focus-visible {
   opacity: 0;
   animation: rise 2s 0.6s var(--ease) forwards;
 }
-.title-card .tag {
-  font-family: var(--f-body);
-  font-style: italic;
-  font-size: clamp(16px, 2vw, 21px);
-  color: #e9d6ae;
-  opacity: 0;
-  animation: rise 1.8s 1.2s var(--ease) forwards;
-}
 .title-card .enter {
   margin-top: 48px;
   font-family: var(--f-label);

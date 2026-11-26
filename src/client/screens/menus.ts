@@ -47,7 +47,6 @@ export class TitleScreen implements Screen {
       { class: 'title-card' },
       h('div', { class: 'kicker' }, 'A tavern card game'),
       h('h1', {}, 'The Hooded Hand'),
-      h('div', { class: 'tag' }, 'Draw a card. Pray it is not him.'),
       h('div', { class: 'enter' }, 'Click to enter')
     );
     this.el.addEventListener('click', () => this.enter(), { once: true });

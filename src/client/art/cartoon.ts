@@ -88,12 +88,12 @@ function angel(p: Pal): string {
     <g transform="translate(500,0) scale(-1,1)">${wingSet}</g>
     ${solid(robe, RIGHT(266))}
     <path d="M 198,404 C 232,416 268,416 302,404" fill="none" stroke="${G}" stroke-width="10" stroke-linecap="round"/>
-    ${solid('M 250,206 m -44,0 a 44,44 0 1,0 88,0 a 44,44 0 1,0 -88,0', 'M 270,150 L 320,150 L 320,280 L 270,280 Z')}
-    <path d="M 226,208 Q 234,216 242,208" fill="none" stroke="${p.D}" stroke-width="5" stroke-linecap="round"/>
-    <path d="M 258,208 Q 266,216 274,208" fill="none" stroke="${p.D}" stroke-width="5" stroke-linecap="round"/>
-    <path d="M 242,228 Q 250,234 258,228" fill="none" stroke="${p.D}" stroke-width="4" stroke-linecap="round"/>
-    <ellipse cx="250" cy="146" rx="52" ry="14" fill="none" stroke="#ffe6a0" stroke-width="13"/>
-    <ellipse cx="250" cy="143" rx="52" ry="14" fill="none" stroke="#fff8dc" stroke-width="4"/>`;
+    ${solid('M 250,236 m -44,0 a 44,44 0 1,0 88,0 a 44,44 0 1,0 -88,0', 'M 270,180 L 320,180 L 320,310 L 270,310 Z')}
+    <path d="M 226,238 Q 234,246 242,238" fill="none" stroke="${p.D}" stroke-width="5" stroke-linecap="round"/>
+    <path d="M 258,238 Q 266,246 274,238" fill="none" stroke="${p.D}" stroke-width="5" stroke-linecap="round"/>
+    <path d="M 242,258 Q 250,264 258,258" fill="none" stroke="${p.D}" stroke-width="4" stroke-linecap="round"/>
+    <ellipse cx="250" cy="176" rx="52" ry="14" fill="none" stroke="#ffe6a0" stroke-width="13"/>
+    <ellipse cx="250" cy="173" rx="52" ry="14" fill="none" stroke="#fff8dc" stroke-width="4"/>`;
 }
 
 function parry(p: Pal): string {
