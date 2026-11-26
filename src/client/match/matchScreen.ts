@@ -857,6 +857,9 @@ export class MatchScreen implements Screen {
     this.table.setSeats(seats, this.me);
     this.table.setMyCharm(seats.find((x) => x.id === this.me)?.look?.charm);
     const app = this.app;
+    // Figures, chairs, cards and the clock bring new shaders: compile them now, in the background where the browser
+    // can, instead of one by one in the middle of the camera's glide to the table.
+    void app.gfx.renderer.compileAsync(app.gfx.scene, app.gfx.camera).catch(() => {});
     void app.rig.glide(this.tableStation, 2.2, 0.1);
     // Introduce everyone around the table.
     const others = seats.filter((s) => s.id !== this.me);

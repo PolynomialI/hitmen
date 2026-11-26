@@ -8,6 +8,7 @@ import { buildStage, STAGE, type StageRefs } from './stage';
 import type { Quality } from '../core/gfx';
 import { Figure } from './figure';
 import { FONT3D } from './fonts3d';
+import { LightBudget } from './lightBudget';
 import { buildMaterials, type Mats } from './materials';
 import { barrel, bottle, box, candle, chair, chest, coinStack, cyl, dice, drape, lantern, plank, purse, tankard } from './props';
 
@@ -80,6 +81,8 @@ export class Tavern {
   readonly chandelierFlames: number[] = [];
   readonly tableCandleFlames: number[] = [];
   private flickers: Array<{ light: THREE.Light; base: number; amp: number; speed: number; seed: number }> = [];
+  /** Only the lights that matter for the current view are live (see LightBudget). */
+  readonly lightBudget: LightBudget;
 
   readonly stage: StageRefs;
 
@@ -145,6 +148,26 @@ export class Tavern {
     const stats = batchStatic(this.group, keep);
     console.info(`[tavern] batched ${stats.before} static meshes into ${stats.after}`);
     this.buildMerchant();
+    // Every point / spot light except the table's shadow-casting spot goes through the budget.
+    const locals: Array<THREE.PointLight | THREE.SpotLight> = [];
+    g.traverse((o) => {
+      const l = o as THREE.Light & { isPointLight?: boolean; isSpotLight?: boolean };
+      if ((l.isPointLight || l.isSpotLight) && !l.castShadow) locals.push(l as THREE.PointLight | THREE.SpotLight);
+    });
+    this.lightBudget = new LightBudget(locals, quality === 'low' ? 2 : 3, 1);
+    // Only the table spot casts shadows: surfaces outside its cone gain nothing from sampling the shadow map, and
+    // it is a per-pixel cost (a soft filter of many taps) on every one of them.
+    g.updateMatrixWorld(true);
+    tableSpot.shadow.updateMatrices(tableSpot);
+    const lit = tableSpot.shadow.getFrustum();
+    const sphere = new THREE.Sphere();
+    g.traverse((o) => {
+      const mesh = o as THREE.Mesh;
+      if (!mesh.isMesh || !mesh.receiveShadow) return;
+      if (!mesh.geometry.boundingSphere) mesh.geometry.computeBoundingSphere();
+      sphere.copy(mesh.geometry.boundingSphere!).applyMatrix4(mesh.matrixWorld);
+      if (!lit.intersectsSphere(sphere)) mesh.receiveShadow = false;
+    });
 
     // ---------------------------------------------------------------- stations
     this.stations = {
@@ -1205,6 +1228,16 @@ export class Tavern {
     g.add(this.snow);
     this.festive = g;
     this.group.add(g);
+  }
+
+  /** Pick this frame's live lights for the camera and fade them in; `afterRender` undoes the fade on the owners' values. */
+  beforeRender(camera: THREE.Camera, dt: number): void {
+    this.lightBudget.update(camera, dt);
+    this.lightBudget.apply();
+  }
+
+  afterRender(): void {
+    this.lightBudget.restore();
   }
 
   /** Scale all practical lights (e.g. dim for drama). */

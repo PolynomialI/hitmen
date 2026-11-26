@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { mergeLocal } from './batch';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { Noise2 } from '../gfx/noise';
 
@@ -498,8 +499,10 @@ export class Figure {
     // ---------------------------------------------------------------- accessory
     this.addAccessory(o.accessory ?? 'none', { neckY, beltY, gold, leather, trim, seated });
 
-    mergeChildren(this.head, new Set(this.eyes));
-    mergeChildren(this.body, new Set(this.sway));
+    // One draw call per material for all static parts, accessories included (blinking eyes, swaying tails, the head
+    // and the arms move on their own and stay separate).
+    mergeLocal(this.head, [...this.eyes, ...this.sway]);
+    mergeLocal(this.body, [this.head, this.armL, this.armR, ...this.sway]);
     this.root.add(this.body);
     this.root.scale.setScalar(s);
   }

@@ -3,6 +3,7 @@ import { audio } from '../audio/audio';
 import { damp, ease, tweens } from '../core/tween';
 import { paint } from '../gfx/textures';
 import type { Mats } from '../world/materials';
+import { mergeLocal } from '../world/batch';
 import { makeText } from '../world/tavern';
 import { FONT3D } from '../world/fonts3d';
 
@@ -60,11 +61,13 @@ export class TurnClock {
     drum.position.y = cy;
     this.body.add(plinth, band, ...feet, neck, drum);
     const dial = dialTexture();
+    const discMat = new THREE.MeshStandardMaterial({ map: dial, roughness: 0.45, emissiveMap: dial, emissive: new THREE.Color(0.25, 0.22, 0.18) });
+    const glassMat = new THREE.MeshStandardMaterial({ color: '#ffffff', transparent: true, opacity: 0.08, roughness: 0.05, metalness: 0.4 });
     for (const side of [1, -1]) {
       const face = new THREE.Group();
       face.position.set(0, cy, side * 0.031);
       if (side < 0) face.rotation.y = Math.PI;
-      const disc = new THREE.Mesh(new THREE.CircleGeometry(FACE_R, 48), new THREE.MeshStandardMaterial({ map: dial, roughness: 0.45, emissiveMap: dial, emissive: new THREE.Color(0.25, 0.22, 0.18) }));
+      const disc = new THREE.Mesh(new THREE.CircleGeometry(FACE_R, 48), discMat);
       const bezel = new THREE.Mesh(new THREE.TorusGeometry(FACE_R + 0.006, 0.009, 10, 48), brass);
       // Time left: a translucent red wedge over the dial that shrinks clockwise.
       const wedgeMat = new THREE.ShaderMaterial({
@@ -92,7 +95,7 @@ export class TurnClock {
       const pin = new THREE.Mesh(new THREE.CylinderGeometry(0.006, 0.006, 0.006, 10), brass);
       pin.rotation.x = Math.PI / 2;
       pin.position.z = 0.005;
-      const glass = new THREE.Mesh(new THREE.CircleGeometry(FACE_R, 32), new THREE.MeshStandardMaterial({ color: '#ffffff', transparent: true, opacity: 0.08, roughness: 0.05, metalness: 0.4 }));
+      const glass = new THREE.Mesh(new THREE.CircleGeometry(FACE_R, 32), glassMat);
       glass.position.z = 0.008;
       face.add(disc, wedge, hourHand, minHand, pin, glass, bezel);
       this.body.add(face);
@@ -129,7 +132,10 @@ export class TurnClock {
     }
     this.medal.position.y = 0.062;
     this.medal.scale.setScalar(0.0001);
+    this.medal.visible = false;
     this.body.add(this.medal);
+    // One draw call per material for everything that doesn't move on its own (the clock had 31 meshes).
+    mergeLocal(this.body, [...this.hands, ...this.bells, this.medal]);
     this.root.add(this.body);
     this.root.scale.setScalar(1.3);
     this.place(this.angle);
@@ -197,7 +203,10 @@ export class TurnClock {
         t.sync();
       }
     const s0 = this.medal.scale.x;
-    void tweens.to(0.45, (k) => this.medal.scale.setScalar(Math.max(0.0001, s0 + ((on ? 1 : 0) - s0) * k)), { ease: on ? ease.outBack : ease.inQuad });
+    if (on) this.medal.visible = true;
+    void tweens
+      .to(0.45, (k) => this.medal.scale.setScalar(Math.max(0.0001, s0 + ((on ? 1 : 0) - s0) * k)), { ease: on ? ease.outBack : ease.inQuad })
+      .then(() => (this.medal.visible = this.medal.scale.x > 0.001));
   }
 
   private ringBells(): void {

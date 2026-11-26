@@ -8,6 +8,7 @@ import { paint } from '../gfx/textures';
 import { accessoryFor, Figure } from '../world/figure';
 import { FONT3D } from '../world/fonts3d';
 import { buildCharm, buildSeat } from '../cosmetics/art';
+import { mergeLocal } from '../world/batch';
 import { makeText, type Tavern } from '../world/tavern';
 import { CARD_H, CARD_R, CARD_THICK, CARD_W, CardMesh, roundedWallGeometry } from './cardMesh';
 import { TurnClock } from './turnClock';
@@ -307,11 +308,13 @@ export class TableView {
       const out = new THREE.Vector3(Math.cos(angle), 0, Math.sin(angle));
       const pos = this.center.clone().setY(0).addScaledVector(out, SEAT_R);
       const chair = buildSeat(info.look?.seat ?? 'oak', this.tv.mats);
+      mergeLocal(chair); // a chair is 6-12 parts: one draw call per material instead
       chair.position.copy(pos).addScaledVector(out, 0.02);
       chair.lookAt(this.center.clone().setY(0));
       this.group.add(chair);
       if (info.look?.charm && info.look.charm !== 'none') {
         const ch = buildCharm(info.look.charm, this.tv.mats);
+        mergeLocal(ch, ch.userData.spin ? [ch.userData.spin as THREE.Object3D] : []);
         const cp = this.center.clone().addScaledVector(out, 0.86).add(new THREE.Vector3(-out.z, 0, out.x).multiplyScalar(0.28));
         ch.position.set(cp.x, this.tv.tableTop + 0.002, cp.z);
         ch.lookAt(this.center.x, ch.position.y, this.center.z);

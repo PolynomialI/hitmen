@@ -213,12 +213,14 @@ src/shared/        Pure TypeScript, runs in browser AND on the server
 src/client/
   main.ts          Boot, loading screen, navigation (title → menu → play/shop/inventory → match)
   app.ts           Render loop, screen management
-  core/            gfx.ts (renderer + post: bloom, ACES, grade/danger/holy/grain, vignette, adaptive res),
+  core/            gfx.ts (renderer + post: bloom, ACES, grade/danger/holy/grain, vignette, SMAA on high; quality
+                   tiers, pixel budget, adaptive resolution, shadow-map scheduling; see "Performance"),
                    cameraRig.ts (stations, look-around, glides, shake), tween.ts, picker.ts (3D hover/click)
   gfx/             noise, procedural textures (wood, stone, plaster, felt, iron), flame shaders
   world/           tavern.ts (room, bar, hearth, notice board, card den, merchant stall + display table, festive
                    decor, stations), figure.ts (hooded characters: breathe, blink, reach, lean, flinch, look at),
-                   props.ts, materials.ts, fonts3d.ts, batch.ts (static mesh merging)
+                   props.ts, materials.ts, fonts3d.ts, batch.ts (static mesh merging: batchStatic per quarter
+                   of the room, mergeLocal for things that move as one), lightBudget.ts (live-light selection)
   art/             card art (SVG → canvas textures)
   cards/           cardTextures.ts (texture cache + data URLs for HTML previews)
   cosmetics/       catalog, art, apply (see above)
@@ -235,7 +237,8 @@ src/client/
                    (seat token in sessionStorage), event buffer; serverAvailable() / listRooms() via /api
   ui/              styles.css, dom helpers, HUD (level, coins, rubies), profile, progression
 server/index.ts    Static files + /api/info + /api/rooms + WebSocket rooms (see "Online tables"), same Host as the browser
-scripts/           sim.ts (rules tests), serverSmoke.ts (online smoke test), e2e/ (Playwright browser tests)
+scripts/           sim.ts (rules tests), serverSmoke.ts (online smoke test), e2e/ (Playwright browser tests),
+                   perf.cjs (per-scene frame stats), hitches.cjs (late shader compiles and long frames in a match)
 ```
 
 Flow of a match: `Transport` delivers `GameEvent`s (already filtered for this player) → `MatchScreen.pump()` plays them
@@ -277,12 +280,46 @@ local profile (see Next steps).
 3. More cosmetics and seasonal wares; per-player sleeves at the table (today every back shows your own sleeve).
 4. The Leaderboard is the local ranked ladder (named rivals); a real one needs server-side accounts.
 
+## Performance
+
+Budget: smooth on a school Chromebook (small integrated GPU, 2-4 core CPU). What keeps it there:
+
+- **Quality tiers** (`Gfx`, `?q=` forces one): `guessQuality` starts Chromebooks with weak GPUs on low, other
+  integrated GPUs on medium, the rest on high. Per tier: a pixel budget (high 2.4 MP, medium 1.4 MP, low 0.85 MP;
+  bigger screens are upscaled, bloom and grain hide it), a device-pixel-ratio cap (1.5 / 1.25 / 1), bloom levels
+  (7 / 5 / 4), shadow filter (PCF soft / PCF / off), shadow redraw every 1st / 2nd / 3rd frame, anisotropy 8 / 4 / 2,
+  live point lights 3 / 3 / 2, velvet sheen on high only. Anti-aliasing is SMAA on high when rendering below 1.4
+  pixels per CSS pixel (4x MSAA on the half-float buffer cost ~40% of a frame).
+- **Adaptive quality** (`Gfx.adapt`): judged on frame intervals against the display's refresh period (10th
+  percentile of the last 90 frames). Slow: drop high to medium first, then resolution, then low. Keeping up: creep
+  resolution back up; a step up that proves too slow is rolled back and not retried. Shadows and the shadow filter are
+  never switched at runtime (that recompiles every shader).
+- **Light budget** (`world/lightBudget.ts`): every lit shader pays for every live light on every pixel. A fixed
+  number of point and spot lights is live, chosen by what the camera looks at, with fades when they swap. Counts never
+  change, so swaps never recompile shaders. Lights must exist when the Tavern constructor builds the budget.
+- **Shadows**: only the table spot casts. `renderer.shadowMap.autoUpdate` is off; `Gfx` redraws the map while
+  `gfx.shadowFocus` (the card table) is on screen. Surfaces outside the spot's cone don't receive shadows (no
+  per-pixel shadow filtering where it can't show). Cards cast from the back plane only (`shadowSide` double).
+- **Draw calls** (the CPU cost on Chromebooks): static tavern meshes merge per material per quarter of the room
+  (`batchStatic`), so off-screen quarters are culled; figures, chairs, charms and the turn clock merge their static
+  parts with `mergeLocal` (animated parts listed in `keep`).
+- **Hitches**: production builds skip three.js shader error checks (a synchronous stall per compile); the tavern's
+  shaders compile behind the loading screen, the table's in the background as a match starts
+  (`renderer.compileAsync`).
+
+Measuring (software GPU in this container, so compare runs with each other, not with real hardware):
+`npx vite build --minify false --outDir /tmp/perf && npx vite preview --outDir /tmp/perf --port 5174 --strictPort &`,
+then `BASE=http://localhost:5174 node scripts/perf.cjs` (fps, CPU ms per frame, draw calls, triangles, lights,
+shaders; `TOP=1` adds JS hot spots, `Q=low|medium|high`) and `node scripts/hitches.cjs` (plays a match from the board).
+
 ## Gotchas
 
 - Cards are textured planes with alpha-tested rounded corners; `CardMesh` has 'table' (lit) and 'hand' (self-lit)
   material variants. Use 'hand' for anything held in front of the camera.
 - troika-three-text: when an outline is set its `material` becomes an array; change colour via `text.color`.
-- Overlay CSS: nested `.layer` elements must stay `pointer-events: none` or they block the 3D canvas.
+- Overlay CSS: nested `.layer` elements must stay `pointer-events: none` or they block the 3D canvas. The default
+  `pointer-events: auto` for UI children has zero specificity (`:where`), so a class's own `pointer-events: none`
+  wins (the turn countdown and captions used to swallow clicks meant for the table).
 - `THREE.Color` converts hex to linear; for canvas drawing parse hex yourself (see `feltCanvas` in cosmetics/art.ts).
 - SVG art: duplicate attributes break rasterisation (`dedupeAttrs` in cardArt.ts).
 - Fonts: fontsource packages, loaded before card textures are rasterised (`loadFonts()`).

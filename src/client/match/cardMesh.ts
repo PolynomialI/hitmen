@@ -148,6 +148,8 @@ function backMaterial(tex: CardTexSet, v: CardVariant): THREE.MeshStandardMateri
   let m = backMats.get(v);
   if (!m) {
     m = new THREE.MeshStandardMaterial({ map: tex.back, roughness: 0.66 });
+    // The back plane alone casts the card's shadow, from either side (one shadow draw per card instead of two).
+    m.shadowSide = THREE.DoubleSide;
     addGlint(m);
     if (v === 'hand') {
       m.emissiveMap = tex.back;
@@ -192,7 +194,7 @@ export class CardMesh {
     this.face.position.z = CARD_THICK / 2;
     this.back.position.z = -CARD_THICK / 2;
     this.edge = new THREE.Mesh(edge(), edgeMaterial(variant));
-    this.face.castShadow = this.back.castShadow = true;
+    this.back.castShadow = true;
     this.face.receiveShadow = this.back.receiveShadow = true;
     this.root.add(this.face, this.back, this.edge);
   }

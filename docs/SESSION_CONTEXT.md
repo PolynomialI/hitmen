@@ -69,6 +69,10 @@ Second chat (continuing from this file):
     animations for playing, gaining and burning cards.
 13. > I created a new render.com account, give me all the steps to connect github and whatever else to do to set up
     > multiplayer. Make sure you do everything on your part and set up actually good multiplayer/private rooms
+    Region chosen: US East (Virginia). Then a screenshot of the Blueprint page: `maxShutdownDelaySeconds` is not
+    allowed on the free plan (removed; the server's shutdown grace is now 25 s to fit Render's 30 s).
+14. > the game is so not optimized. Even on my i5 13600k machine it is super laggy, imagine what it would be like on a
+    > chromebook. heavily optmize every single aspect of it, it shouldnt be laggy at all
 
 ## How the requests were interpreted
 
@@ -128,6 +132,11 @@ Second chat:
 24. GUI: medallion play bar, tickets, less text, icons that fill their medallions; wool/leather for players; detailed
     wood, plaster, metals, leather, velvet, parchment.
 25. Render-ready multiplayer: invite links, unique names, host kick, graceful deploys, render.yaml on current fields.
+26. Performance pass (HANDOFF.md → Performance): no MSAA (SMAA on high), pixel budget per tier, smarter adaptive
+    quality, light budget (10 → 6 live lights), shadow map only redrawn when the table is in view, shadows sampled
+    only in the spot's cone, room batched per quarter (culling works), merged figures/chairs/clock, background shader
+    compile at match start, no shader error checks in production, Chromebooks start on low. Also fixed: the turn
+    countdown, captions and hints swallowed clicks meant for the table.
 
 ## How work was verified
 

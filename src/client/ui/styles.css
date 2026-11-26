@@ -51,7 +51,9 @@ body {
   z-index: 2;
 }
 
-#ui > *:not(.layer) {
+/* Children of the UI take the pointer by default. Zero specificity (:where), so an element's own
+   `pointer-events: none` (hints, captions, the turn countdown, toasts...) still lets clicks through to the table. */
+:where(#ui) > :where(:not(.layer)) {
   pointer-events: auto;
 }
 
@@ -60,7 +62,7 @@ body {
   inset: 0;
   pointer-events: none;
 }
-.layer > *:not(.layer) {
+:where(.layer) > :where(:not(.layer)) {
   pointer-events: auto;
 }
 

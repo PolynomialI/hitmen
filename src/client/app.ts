@@ -48,11 +48,16 @@ export class App {
     await nextFrame();
     this.tavern = new Tavern(this.cards.back, this.gfx.quality);
     this.gfx.scene.add(this.tavern.group);
+    this.gfx.shadowFocus = new THREE.Sphere(this.tavern.tableCenter.clone(), 2.8);
+    this.gfx.beforeRender = (cam, dt) => this.tavern.beforeRender(cam, dt);
+    this.gfx.afterRender = () => this.tavern.afterRender();
     progress(0.8, 'Warming the hearth');
     await nextFrame();
     // Compile shaders up front to avoid hitches later.
     this.rig.snap(this.tavern.stations.intro);
     this.rig.update(0);
+    // With the live lights chosen, so the shaders compiled are the ones used.
+    this.tavern.lightBudget.update(this.gfx.camera, 0);
     this.gfx.renderer.compile(this.gfx.scene, this.gfx.camera);
     progress(1, 'Ready');
     this.last = performance.now();
