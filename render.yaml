@@ -14,9 +14,6 @@ services:
     healthCheckPath: /healthz
     # Deploy a push only once the GitHub checks (typecheck, rules sims, build) pass.
     autoDeployTrigger: checksPass
-    # During a deploy the old server keeps running matches in progress for up to 5 minutes (server/index.ts finishes
-    # them, then exits); new players go to the new version straight away.
-    maxShutdownDelaySeconds: 300
     envVars:
       - key: NODE_VERSION
         value: "22"

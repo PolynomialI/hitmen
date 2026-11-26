@@ -23,8 +23,9 @@ const GRACE_WAITING_MS = 20_000;
 const GRACE_PLAYING_MS = 90_000;
 /** A finished table with nobody asking for another round closes after this long. */
 const OVER_TTL_MS = 5 * 60_000;
-/** On shutdown (a redeploy), matches in progress may run on this long before the process exits. */
-const SHUTDOWN_GRACE_MS = Number(process.env.SHUTDOWN_GRACE_MS) || 290_000;
+/** On shutdown (a redeploy), matches in progress may run on this long before the process exits. Render stops a free
+ * service 30 s after SIGTERM (paid plans can raise that with maxShutdownDelaySeconds; raise this env var to match). */
+const SHUTDOWN_GRACE_MS = Number(process.env.SHUTDOWN_GRACE_MS) || 25_000;
 const UPDATING = 'The tavern is being updated. Open the board again in a minute.';
 let closing = false;
 
@@ -422,7 +423,7 @@ wss.on('connection', (ws) => {
 http.listen(PORT, () => console.log(`The Hooded Hand server listening on :${PORT} (static from ${DIST})`));
 
 // A redeploy stops this process (SIGTERM) while a new one takes new players. Matches already being played may finish
-// (up to SHUTDOWN_GRACE_MS, if the host allows that long); waiting and finished tables are told to come back shortly.
+// (up to SHUTDOWN_GRACE_MS); waiting and finished tables are told to come back shortly.
 function shutdown(): void {
   if (closing) return;
   closing = true;

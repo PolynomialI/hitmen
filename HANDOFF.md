@@ -82,9 +82,11 @@ To reset a local profile: devtools → Application → Local Storage → delete 
 
 - **Render (where the game is played):** `render.yaml` is a Blueprint for one free Node web service that serves the
   client and the online tables from one origin: build `npm ci --include=dev && npm run build`, start `npm start`,
-  health check `/healthz`, `autoDeployTrigger: checksPass` (a push goes live only after the CI checks pass), and
-  `maxShutdownDelaySeconds: 300` (during a deploy the old server finishes matches in progress, up to 5 minutes, then
-  exits; see `shutdown()` in server/index.ts; new players reach the new version at once). Region is `virginia` (US East, the owner's choice) and
+  health check `/healthz`, `autoDeployTrigger: checksPass` (a push goes live only after the CI checks pass). During a
+  deploy new players reach the new version at once; the old server gives matches in progress 25 s, tells their players
+  the tavern is being updated, then exits (`shutdown()` in server/index.ts). Render kills a free service 30 s after
+  SIGTERM; `maxShutdownDelaySeconds` (up to 300) is refused by the Blueprint on the free plan, so on a paid plan add it
+  and set `SHUTDOWN_GRACE_MS` a little below it. Region is `virginia` (US East, the owner's choice) and
   cannot be changed after creation.
 
   Owner setup, route A (recommended; updates go live by themselves). GitHub is blocked on the Chromebook, so do
