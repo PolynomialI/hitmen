@@ -1,5 +1,5 @@
-// The card frame shared by card faces, the default back and every sleeve: a thin leather-brown border around one
-// colour laid in flat concentric bands, each a touch darker toward the middle. Coordinates: 500x700.
+// The card frame shared by card faces, the default back and every sleeve: one colour edge to edge, laid in flat
+// concentric bands, each a touch darker toward the middle. No border. Coordinates: 500x700.
 
 export const RIM_RX = 44;
 
@@ -58,19 +58,15 @@ const BANDS: Array<[number, number]> = [
   [146, 16],
 ];
 
-/** Border + the card's colour in flat concentric bands darkening toward the middle. Draw content after this. */
+/** The card's colour edge to edge, in flat concentric bands darkening toward the middle (no border). */
 export function frameBody(o: FrameOpts): string {
-  const p = o.id ?? 'k';
-  const B = BORDER;
-  const inner = `x="${B}" y="${B}" width="${500 - 2 * B}" height="${700 - 2 * B}" rx="${RIM_RX - B}"`;
+  const whole = `x="0" y="0" width="500" height="700" rx="${RIM_RX}"`;
   const dark = mix(o.color, '#000000', 0.55);
   const bands = BANDS.map(([i, rx], k) => `<rect x="${i}" y="${i}" width="${500 - 2 * i}" height="${700 - 2 * i}" rx="${rx}" fill="${mix(o.color, dark, 0.11 * (k + 1))}"/>`).join('');
   return `
-    <rect x="0" y="0" width="500" height="700" rx="${RIM_RX}" fill="url(#${p}rimg)"/>
-    <rect ${inner} fill="${o.color}"/>
+    <rect ${whole} fill="${o.color}"/>
     ${bands}
-    ${o.patternId ? `<rect ${inner} fill="url(#${o.patternId})"/>` : ''}
-    <rect ${inner} fill="none" stroke="${mix(o.rim ?? LEATHER, '#000000', 0.45)}" stroke-width="2.5" opacity="0.6"/>`;
+    ${o.patternId ? `<rect ${whole} fill="url(#${o.patternId})"/>` : ''}`;
 }
 
 /** Nothing on top any more: kept so callers can stay unchanged. */

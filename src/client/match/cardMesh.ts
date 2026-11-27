@@ -102,10 +102,10 @@ function edge(): THREE.BufferGeometry {
 function edgeMaterial(v: CardVariant): THREE.MeshStandardMaterial {
   let m = edgeMats.get(v);
   if (!m) {
-    // The card's edge: the same leather brown as its border.
-    m = new THREE.MeshStandardMaterial({ color: v === 'pile' ? '#000000' : '#6e4226', roughness: v === 'pile' ? 1 : 0.7 });
-    if (v === 'hand') m.emissive.setRGB(0.12, 0.07, 0.04);
-    if (v === 'pile') m.emissive.set('#4a2c18');
+    // The card's thin edge: a dark neutral (cards have no border).
+    m = new THREE.MeshStandardMaterial({ color: v === 'pile' ? '#000000' : '#2e2622', roughness: v === 'pile' ? 1 : 0.7 });
+    if (v === 'hand') m.emissive.setRGB(0.05, 0.04, 0.035);
+    if (v === 'pile') m.emissive.set('#241c18');
     edgeMats.set(v, m);
   }
   return m;

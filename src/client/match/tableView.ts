@@ -130,9 +130,9 @@ export class TableView {
     this.deckPos = new THREE.Vector3(T.x + 0.02, top, T.z - 0.26);
     this.pilePos = new THREE.Vector3(T.x + 0.16, top, T.z + 0.2);
 
-    // Deck: a rounded slab whose sides show one leather-brown layer per card.
+    // Deck: a rounded slab whose sides show one dark layer per card (the cards' edges).
     const edge = paint(8, 16, (ctx, w, h) => {
-      ctx.fillStyle = '#7a4a2a';
+      ctx.fillStyle = '#4a3e36';
       ctx.fillRect(0, 0, w, h);
       ctx.fillStyle = 'rgba(30,14,4,0.6)';
       ctx.fillRect(0, h - 3, w, 3);
