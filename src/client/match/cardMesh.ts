@@ -2,6 +2,9 @@ import * as THREE from 'three';
 import type { Card, CardType } from '../../shared/cards';
 import type { CardTexSet } from '../cards/cardTextures';
 
+/** Brightness of pile cards (kept under the bloom threshold: no glare). */
+const PILE_GLOW = 0.56;
+
 export const CARD_W = 0.16;
 export const CARD_H = 0.224;
 /** Cardstock thickness: chunky on purpose, so cards read as solid little slabs. */
@@ -80,7 +83,11 @@ const faceMats = new Map<string, THREE.MeshStandardMaterial>();
 const backMats = new Map<string, THREE.MeshStandardMaterial>();
 
 /** 'table' cards are lit by the room; 'hand' cards get a little self-light so they stay readable. */
-export type CardVariant = 'table' | 'hand';
+/**
+ * table: lit like the room; hand: self-lit, held before the camera; pile: on the pile, the deck or floating up when
+ * played: it shows only its own picture at a fixed brightness (no lamp highlight, no bloom glare), always readable.
+ */
+export type CardVariant = 'table' | 'hand' | 'pile';
 
 function plane(): THREE.BufferGeometry {
   if (!faceGeo) faceGeo = roundedFaceGeometry(CARD_W, CARD_H, CARD_R);
@@ -95,8 +102,10 @@ function edge(): THREE.BufferGeometry {
 function edgeMaterial(v: CardVariant): THREE.MeshStandardMaterial {
   let m = edgeMats.get(v);
   if (!m) {
-    m = new THREE.MeshStandardMaterial({ color: '#efe3c6', roughness: 0.6 });
-    if (v === 'hand') m.emissive.setRGB(0.3, 0.27, 0.22);
+    // The card's edge: the same leather brown as its border.
+    m = new THREE.MeshStandardMaterial({ color: v === 'pile' ? '#000000' : '#6e4226', roughness: v === 'pile' ? 1 : 0.7 });
+    if (v === 'hand') m.emissive.setRGB(0.12, 0.07, 0.04);
+    if (v === 'pile') m.emissive.set('#4a2c18');
     edgeMats.set(v, m);
   }
   return m;
@@ -106,10 +115,14 @@ function faceMat(tex: CardTexSet, type: CardType, v: CardVariant): THREE.MeshSta
   const key = type + v;
   let m = faceMats.get(key);
   if (!m) {
-    m = new THREE.MeshStandardMaterial({ map: tex.faces[type], roughness: 0.62, metalness: 0, side: THREE.FrontSide });
+    m = new THREE.MeshStandardMaterial({ map: v === 'pile' ? null : tex.faces[type], color: v === 'pile' ? '#000000' : '#ffffff', roughness: v === 'pile' ? 1 : 0.62, metalness: 0, side: THREE.FrontSide });
     if (v === 'hand') {
       m.emissiveMap = tex.faces[type];
       m.emissive.setRGB(0.42, 0.38, 0.34);
+    }
+    if (v === 'pile') {
+      m.emissiveMap = tex.faces[type];
+      m.emissive.setScalar(PILE_GLOW);
     }
     faceMats.set(key, m);
   }
@@ -147,13 +160,17 @@ export function addGlint(m: THREE.MeshStandardMaterial): void {
 function backMaterial(tex: CardTexSet, v: CardVariant): THREE.MeshStandardMaterial {
   let m = backMats.get(v);
   if (!m) {
-    m = new THREE.MeshStandardMaterial({ map: tex.back, roughness: 0.66 });
+    m = new THREE.MeshStandardMaterial({ map: v === 'pile' ? null : tex.back, color: v === 'pile' ? '#000000' : '#ffffff', roughness: v === 'pile' ? 1 : 0.66 });
     // The back plane alone casts the card's shadow, from either side (one shadow draw per card instead of two).
     m.shadowSide = THREE.DoubleSide;
-    addGlint(m);
+    if (v !== 'pile') addGlint(m);
     if (v === 'hand') {
       m.emissiveMap = tex.back;
       m.emissive.setRGB(0.35, 0.3, 0.28);
+    }
+    if (v === 'pile') {
+      m.emissiveMap = tex.back;
+      m.emissive.setScalar(PILE_GLOW);
     }
     backMats.set(v, m);
   }
@@ -219,6 +236,11 @@ export class CardMesh {
     if (!this.ownMat) {
       this.ownMat = (this.face.material as THREE.MeshStandardMaterial).clone();
       this.face.material = this.ownMat;
+    }
+    if (this.variant === 'pile') {
+      // Light-independent: dim or warm it through its own glow only.
+      this.ownMat.emissive.setRGB(PILE_GLOW * r + emissive, PILE_GLOW * g + emissive * 0.7, PILE_GLOW * b + emissive * 0.3);
+      return;
     }
     this.ownMat.color.setRGB(r, g, b);
     if (this.ownMat.emissiveMap) this.ownMat.emissive.setRGB(0.42 * r + emissive, 0.38 * g + emissive * 0.7, 0.34 * b + emissive * 0.3);

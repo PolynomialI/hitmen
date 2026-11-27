@@ -56,44 +56,43 @@ function arcArrow(cx: number, cy: number, r: number, a0: number, a1: number, wid
 
 // ------------------------------------------------------------------------------------------- icons
 
-function hand(p: Pal): string {
-  const K = '#3a302c';
-  const K2 = '#262020';
-  const hood = 'M 262,158 C 198,176 158,250 154,322 C 151,374 170,410 204,426 L 296,426 C 330,410 349,374 346,322 C 342,250 306,188 262,158 Z';
-  const shoulders = 'M 98,532 C 106,460 160,424 212,414 L 288,414 C 340,424 394,460 402,532 Z';
+function hand(_p: Pal): string {
+  // The Hooded Hand: a grey hood, a black bandana over the lower face, white slanted eyes and pointed collars, all in
+  // thick black outlines.
+  const K = '#0d0d0f';
+  const ol = `stroke="${K}" stroke-width="13" stroke-linejoin="round"`;
+  const collar = 'M 86,548 C 112,470 168,436 222,430 L 250,474 L 278,430 C 332,436 388,470 414,548 C 362,520 310,520 250,578 C 190,520 138,520 86,548 Z';
+  const hood = 'M 250,134 C 178,150 126,222 122,304 C 119,368 148,416 194,442 L 306,442 C 352,416 381,368 378,304 C 374,222 322,150 250,134 Z';
+  const fold = 'M 250,134 C 264,180 268,222 264,262';
+  const bandana = 'M 168,340 C 202,358 298,358 332,340 L 314,390 C 296,432 276,456 250,492 C 224,456 204,432 186,390 Z';
   return `
-    <defs><filter id="eg" x="-50%" y="-50%" width="200%" height="200%"><feGaussianBlur stdDeviation="7"/></filter></defs>
-    ${solid(shoulders, RIGHT(262), K, K2)}
-    ${solid(hood, RIGHT(266), K, K2)}
-    <ellipse cx="250" cy="332" rx="60" ry="70" fill="#0c0908"/>
-    <g filter="url(#eg)"><ellipse cx="226" cy="328" rx="20" ry="11" fill="#ff7a1a"/><ellipse cx="274" cy="328" rx="20" ry="11" fill="#ff7a1a"/></g>
-    <ellipse cx="226" cy="328" rx="15" ry="7" transform="rotate(14 226 328)" fill="#ffd98a"/>
-    <ellipse cx="274" cy="328" rx="15" ry="7" transform="rotate(-14 274 328)" fill="#ffd98a"/>
-    <g transform="translate(352,478) rotate(28)">
-      ${solid('M -11,0 L -9,-118 L 0,-146 L 9,-118 L 11,0 Z', 'M 0,-200 L 40,-200 L 40,10 L 0,10 Z')}
-      <rect x="-34" y="-2" width="68" height="16" rx="8" fill="${G}"/>
-      <rect x="-8" y="12" width="16" height="40" rx="6" fill="${p.D}"/>
-      <circle cx="0" cy="58" r="11" fill="${G}"/>
-    </g>`;
+    <path d="${collar}" fill="#26262a" ${ol}/>
+    <path d="${hood}" fill="#5c5c62" ${ol}/>
+    <path d="M 264,156 C 326,190 364,250 364,306 C 364,362 342,404 304,430 L 272,430 C 306,392 318,334 312,282 C 306,234 290,192 264,156 Z" fill="#45454b"/>
+    <path d="${fold}" fill="none" stroke="#7a7a82" stroke-width="7" stroke-linecap="round"/>
+    <ellipse cx="250" cy="318" rx="80" ry="70" fill="#121214" stroke="${K}" stroke-width="8"/>
+    <path d="M 192,300 L 242,318 L 235,336 L 196,322 Z" fill="#f6f4ee" stroke="${K}" stroke-width="4" stroke-linejoin="round"/>
+    <path d="M 308,300 L 258,318 L 265,336 L 304,322 Z" fill="#f6f4ee" stroke="${K}" stroke-width="4" stroke-linejoin="round"/>
+    <path d="${bandana}" fill="#1c1c20" ${ol}/>
+    <path d="M 206,378 C 232,394 268,394 294,378" fill="none" stroke="#3a3a40" stroke-width="6" stroke-linecap="round"/>`;
 }
 
 function angel(p: Pal): string {
-  const wing = 'M 224,318 C 184,262 118,248 72,276 C 94,286 100,298 90,312 C 116,314 122,328 108,342 C 134,344 144,358 132,374 C 170,374 204,352 228,336 Z';
-  const robe = 'M 250,286 C 214,286 198,316 192,356 L 168,494 C 206,516 294,516 332,494 L 308,356 C 302,316 286,286 250,286 Z';
-  const wingSet = `<path d="${wing}" fill="${W}"/>
-    <path d="M 100,300 C 138,300 182,312 216,326" fill="none" stroke="${G}" stroke-width="8" stroke-linecap="round"/>
-    <path d="M 118,338 C 150,340 186,340 216,334" fill="none" stroke="${G}" stroke-width="8" stroke-linecap="round"/>`;
+  // A hooded spirit with small wings and a halo: white shapes, outlined in the card's own deep colour.
+  const O = mix(p.c, '#000000', 0.42);
+  const ol = `stroke="${O}" stroke-width="10" stroke-linejoin="round"`;
+  const wing = 'M 196,330 C 168,300 128,286 96,292 C 108,304 110,318 102,330 C 122,330 130,342 122,356 C 142,356 152,368 146,384 C 170,382 190,370 204,352 Z';
+  const body = 'M 250,206 C 194,206 162,252 162,310 C 162,352 168,392 164,438 C 162,470 158,494 150,514 C 176,526 196,506 214,522 C 232,538 250,520 250,520 C 250,520 268,538 286,522 C 304,506 324,526 350,514 C 342,494 338,470 336,438 C 332,392 338,352 338,310 C 338,252 306,206 250,206 Z';
   return `
-    ${wingSet}
-    <g transform="translate(500,0) scale(-1,1)">${wingSet}</g>
-    ${solid(robe, RIGHT(266))}
-    <path d="M 198,404 C 232,416 268,416 302,404" fill="none" stroke="${G}" stroke-width="10" stroke-linecap="round"/>
-    ${solid('M 250,236 m -44,0 a 44,44 0 1,0 88,0 a 44,44 0 1,0 -88,0', 'M 270,180 L 320,180 L 320,310 L 270,310 Z')}
-    <path d="M 226,238 Q 234,246 242,238" fill="none" stroke="${p.D}" stroke-width="5" stroke-linecap="round"/>
-    <path d="M 258,238 Q 266,246 274,238" fill="none" stroke="${p.D}" stroke-width="5" stroke-linecap="round"/>
-    <path d="M 242,258 Q 250,264 258,258" fill="none" stroke="${p.D}" stroke-width="4" stroke-linecap="round"/>
-    <ellipse cx="250" cy="176" rx="52" ry="14" fill="none" stroke="#ffe6a0" stroke-width="13"/>
-    <ellipse cx="250" cy="173" rx="52" ry="14" fill="none" stroke="#fff8dc" stroke-width="4"/>`;
+    <g transform="translate(200,340) scale(1.3) translate(-200,-340)"><path d="${wing}" fill="${W}" ${ol}/></g>
+    <g transform="translate(500,0) scale(-1,1) translate(200,340) scale(1.3) translate(-200,-340)"><path d="${wing}" fill="${W}" ${ol}/></g>
+    <path d="${body}" fill="${W}" ${ol}/>
+    <path d="M 196,262 C 214,236 286,236 304,262" fill="none" stroke="${G}" stroke-width="9" stroke-linecap="round"/>
+    <path d="M 250,256 C 214,256 196,282 196,312 C 196,342 216,364 250,364 C 284,364 304,342 304,312 C 304,282 286,256 250,256 Z" fill="${O}"/>
+    <ellipse cx="229" cy="314" rx="12" ry="17" fill="${W}"/>
+    <ellipse cx="271" cy="314" rx="12" ry="17" fill="${W}"/>
+    <ellipse cx="250" cy="170" rx="60" ry="17" fill="none" stroke="${O}" stroke-width="22"/>
+    <ellipse cx="250" cy="170" rx="60" ry="17" fill="none" stroke="${W}" stroke-width="11"/>`;
 }
 
 function parry(p: Pal): string {

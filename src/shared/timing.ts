@@ -7,7 +7,8 @@ export const DUR = {
   deal: 560,
   intro: 3000,
   turn: 900,
-  play: 950,
+  // The played card floats up above the pile with its name under it, then lands.
+  play: 1600,
   window: 0,
   parry: 900,
   redirect: 1000,
@@ -35,7 +36,7 @@ export const DUR = {
   rescue: 2600,
   hidePrompt: 300,
   hidden: 1500,
-  slain: 7600,
+  slain: 3800,
   over: 500,
 } as const;
 

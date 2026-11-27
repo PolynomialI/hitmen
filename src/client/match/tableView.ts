@@ -44,10 +44,11 @@ const HELD_S = 1.15;
 const HELD_Y = 1.05;
 const HELD_FWD = 0.38;
 const HELD_ROW = 0.66;
-/** The deck is a little larger than a single card and turned slightly to the right. */
-export const DECK_S = 1.18;
+/** The deck and the pile are drawn larger than a held card (easy to read from your seat); the deck is turned slightly right. */
+export const DECK_S = 1.5;
+export const PILE_S = 1.75;
 const DECK_YAW = -0.32;
-const MY_CLOCK_ANGLE = Math.PI - 0.55;
+const MY_CLOCK_ANGLE = Math.PI - 0.95;
 const Q_DECK_YAW = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), DECK_YAW);
 
 export interface SeatView {
@@ -63,6 +64,9 @@ export interface SeatView {
   name: Text;
   badge: THREE.Sprite;
   badgeTex: THREE.CanvasTexture | null;
+  /** Card count beside the head, and the count it shows. */
+  count: THREE.Sprite;
+  countN: number;
   ward: THREE.Mesh;
   wardK: number;
   wardOn: boolean;
@@ -123,27 +127,27 @@ export class TableView {
     this.center = T.clone();
     const top = this.tv.tableTop + 0.0015;
     // Deck and pile near the middle: the turn clock travels round them.
-    this.deckPos = new THREE.Vector3(T.x - 0.1, top, T.z - 0.24);
-    this.pilePos = new THREE.Vector3(T.x + 0.12, top, T.z + 0.17);
+    this.deckPos = new THREE.Vector3(T.x + 0.02, top, T.z - 0.26);
+    this.pilePos = new THREE.Vector3(T.x + 0.16, top, T.z + 0.2);
 
-    // Deck: a rounded slab whose sides show one ivory layer per card.
+    // Deck: a rounded slab whose sides show one leather-brown layer per card.
     const edge = paint(8, 16, (ctx, w, h) => {
-      ctx.fillStyle = '#efe3c6';
+      ctx.fillStyle = '#7a4a2a';
       ctx.fillRect(0, 0, w, h);
-      ctx.fillStyle = 'rgba(120,90,50,0.55)';
+      ctx.fillStyle = 'rgba(30,14,4,0.6)';
       ctx.fillRect(0, h - 3, w, 3);
-      ctx.fillStyle = 'rgba(255,255,255,0.5)';
+      ctx.fillStyle = 'rgba(255,220,180,0.25)';
       ctx.fillRect(0, 0, w, 2);
     });
     edge.wrapS = edge.wrapT = THREE.RepeatWrapping;
     this.deckEdgeTex = edge;
     const deckGeo = roundedWallGeometry(CARD_H * 0.992, CARD_W * 0.992, CARD_R, 1);
     deckGeo.rotateX(-Math.PI / 2);
-    this.deckBox = new THREE.Mesh(deckGeo, new THREE.MeshStandardMaterial({ map: edge, roughness: 0.7 }));
+    this.deckBox = new THREE.Mesh(deckGeo, new THREE.MeshStandardMaterial({ color: '#000000', roughness: 1, emissiveMap: edge, emissive: new THREE.Color(0.5, 0.5, 0.5) }));
     this.deckBox.castShadow = this.deckBox.receiveShadow = true;
     this.deckBox.quaternion.copy(Q_DECK_YAW);
     this.group.add(this.deckBox);
-    this.deckTop = new CardMesh(this.tex, null);
+    this.deckTop = new CardMesh(this.tex, null, 'pile');
     this.deckTop.root.quaternion.copy(this.deckQuat());
     this.deckTop.root.scale.setScalar(DECK_S);
     this.group.add(this.deckTop.root);
@@ -161,9 +165,10 @@ export class TableView {
     this.deckGlow.position.copy(this.deckPos).add(new THREE.Vector3(0, 0.002, 0));
     this.group.add(this.deckGlow);
 
-    this.label = makeText('', { font: FONT3D.fell, size: 0.038, color: '#f3e6c4', glow: 0.9, letterSpacing: 0.04 });
+    this.label = makeText('', { font: FONT3D.fell, size: 0.05, color: '#f3e6c4', glow: 0.95, letterSpacing: 0.03 });
     this.label.quaternion.copy(Q_DECK_YAW).multiply(Q_FLAT_UP);
-    this.label.position.copy(this.deckPos).add(new THREE.Vector3(-0.2 * DECK_S, 0.001, 0).applyQuaternion(Q_DECK_YAW));
+    // Just off the deck's near end.
+    this.label.position.copy(this.deckPos).add(new THREE.Vector3(-((CARD_H * DECK_S) / 2 + 0.042), 0.001, 0).applyQuaternion(Q_DECK_YAW));
     this.group.add(this.label);
 
     this.clock = new TurnClock(this.center, this.tv.tableTop, this.tv.mats);
@@ -263,15 +268,18 @@ export class TableView {
     return Q_DECK_YAW.clone().multiply(Q_FLAT_DOWN);
   }
 
-  pileSlot(): { p: THREE.Vector3; q: THREE.Quaternion } {
+  pileSlot(): { p: THREE.Vector3; q: THREE.Quaternion; s: number } {
     const n = this.pile.length;
-    const yaw = Math.sin(n * 12.9898) * 0.25;
+    // One tidy stack: each card lands on the last, turned a different way, barely off centre.
+    const yaw = Math.sin(n * 12.9898) * 0.55;
     const q = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), yaw).multiply(Q_FLAT_UP);
-    const p = this.pilePos.clone().add(new THREE.Vector3(Math.sin(n * 3.1) * 0.014, CARD_THICK / 2 + 0.0004 + n * PILE_STEP, Math.cos(n * 4.7) * 0.014));
-    return { p, q };
+    const p = this.pilePos.clone().add(new THREE.Vector3(Math.sin(n * 3.1) * 0.004, (CARD_THICK * PILE_S) / 2 + 0.0004 + n * PILE_STEP, Math.cos(n * 4.7) * 0.004));
+    return { p, q, s: PILE_S };
   }
 
   pushPile(c: CardMesh): void {
+    c.setVariant('pile');
+    c.root.scale.setScalar(PILE_S);
     this.pile.push(c);
     if (this.pile.length > PILE_MAX) {
       // Drop the buried card and settle the rest one layer down so heights stay unique.
@@ -338,7 +346,15 @@ export class TableView {
       this.group.add(name);
       const badge = new THREE.Sprite(new THREE.SpriteMaterial({ transparent: true, depthWrite: false }));
       badge.scale.setScalar(0.0001);
-      badge.position.copy(f.root.position).add(new THREE.Vector3(0, 0.84, 0)).addScaledVector(out, -0.05);
+      // The turns mace hangs at neck height to the right of the head (as you see it; you look along +x).
+      badge.position.set(f.root.position.x, Math.max(top - 0.5, f.root.position.y + 0.62), f.root.position.z + 0.44);
+      // How many cards they hold: a little card on the other side of the head.
+      const count = new THREE.Sprite(new THREE.SpriteMaterial({ transparent: true, depthWrite: false }));
+      count.position.set(f.root.position.x, badge.position.y, f.root.position.z - 0.42);
+      count.scale.set(0.13, 0.173, 1);
+      count.renderOrder = 26;
+      count.visible = false;
+      this.group.add(count);
       badge.renderOrder = 26;
       this.group.add(badge);
       const ward = new THREE.Mesh(
@@ -373,6 +389,8 @@ export class TableView {
         name,
         badge,
         badgeTex: null,
+        count,
+        countN: -1,
         ward,
         wardK: 0,
         wardOn: false,
@@ -442,36 +460,24 @@ export class TableView {
     return Promise.all(jobs).then(() => undefined);
   }
 
+  /** The turns a player still has to take, as a spiked mace ball with the number on it (0: hidden). */
   setBadge(id: PlayerId, turns: number): void {
     const sv = this.seats.get(id);
     if (!sv) return;
-    if (turns <= 1) {
-      if (sv.badge.scale.x > 0.001) void tweens.to(0.3, (k) => sv.badge.scale.setScalar(Math.max(0.0001, 0.15 * (1 - k))));
+    const S = 0.24;
+    if (turns <= 0) {
+      if (sv.badge.scale.x > 0.001) void tweens.to(0.3, (k) => sv.badge.scale.setScalar(Math.max(0.0001, S * (1 - k))));
+      sv.badge.userData.turns = 0;
       return;
     }
+    if (sv.badge.userData.turns === turns && sv.badge.scale.x > 0.001) return;
+    sv.badge.userData.turns = turns;
     sv.badgeTex?.dispose();
-    sv.badgeTex = paint(128, 128, (ctx, w, h) => {
-      const g = ctx.createRadialGradient(w * 0.4, h * 0.35, 4, w / 2, h / 2, w / 2);
-      g.addColorStop(0, '#e0503a');
-      g.addColorStop(1, '#6a0c06');
-      ctx.fillStyle = g;
-      ctx.beginPath();
-      for (let i = 0; i < 24; i++) {
-        const a = (i / 24) * Math.PI * 2;
-        const r = (i % 2 ? 0.46 : 0.5) * w;
-        ctx.lineTo(w / 2 + Math.cos(a) * r, h / 2 + Math.sin(a) * r);
-      }
-      ctx.fill();
-      ctx.fillStyle = '#ffe2b0';
-      ctx.font = '800 58px "Grenze Gotisch"';
-      ctx.textAlign = 'center';
-      ctx.textBaseline = 'middle';
-      ctx.fillText('×' + turns, w / 2, h / 2 + 4);
-    });
+    sv.badgeTex = maceTexture(turns);
     const mat = sv.badge.material as THREE.SpriteMaterial;
     mat.map = sv.badgeTex;
     mat.needsUpdate = true;
-    void tweens.to(0.45, (k) => sv.badge.scale.setScalar(Math.max(0.0001, 0.15 * k)), { ease: ease.outBack });
+    void tweens.to(0.45, (k) => sv.badge.scale.setScalar(Math.max(0.0001, S * k)), { ease: ease.outBack });
   }
 
   clearBadges(): void {
@@ -597,9 +603,19 @@ export class TableView {
   }
 
   update(t: number, dt: number): void {
+    // Card counts follow every deal, draw, play and theft.
+    for (const sv of this.seats.values()) {
+      sv.count.visible = sv.alive;
+      if (!sv.alive || sv.hand.length === sv.countN) continue;
+      sv.countN = sv.hand.length;
+      const mat = sv.count.material as THREE.SpriteMaterial;
+      mat.map?.dispose();
+      mat.map = paint(96, 128, (ctx, w, h) => drawCardCount(ctx, w, h, sv.countN));
+      mat.needsUpdate = true;
+    }
     this.clock.update(t, dt);
     this.deckGlowK = damp(this.deckGlowK, this.deckGlowTarget, 6, dt);
-    (this.deckGlow.material as THREE.MeshBasicMaterial).opacity = this.deckGlowK * (0.55 + Math.sin(t * 3) * 0.2);
+    (this.deckGlow.material as THREE.MeshBasicMaterial).opacity = this.deckGlowK * 0.3;
     const cam = this.app.gfx.camera;
     for (const sv of this.seats.values()) {
       if (sv.figure.root.visible) sv.figure.update(t, dt);
@@ -647,3 +663,104 @@ export class TableView {
 }
 
 export { CARD_W, CARD_H, TEAM_COLORS };
+
+/** A spiked iron mace ball with a number on it (turns owed). Also used for your own count beside your hand. */
+export function maceTexture(n: number): THREE.CanvasTexture {
+  return paint(256, 256, (ctx, w, h) => drawMace(ctx, w, h, n));
+}
+
+export function drawMace(ctx: CanvasRenderingContext2D, w: number, h: number, n: number): void {
+  const cx = w / 2;
+  const cy = h / 2;
+  const R = w * 0.29;
+  const red = '#d9481a';
+  const lw = w * 0.035;
+  ctx.lineJoin = 'round';
+  // Spikes: white points outlined in red, all round the ball.
+  for (let i = 0; i < 11; i++) {
+    const a = (i / 11) * Math.PI * 2 - 0.4;
+    const half = 0.24;
+    const base = R * 0.88;
+    const tip = R * (i % 2 ? 1.52 : 1.62);
+    ctx.beginPath();
+    ctx.moveTo(cx + Math.cos(a - half) * base, cy + Math.sin(a - half) * base);
+    ctx.lineTo(cx + Math.cos(a) * tip, cy + Math.sin(a) * tip);
+    ctx.lineTo(cx + Math.cos(a + half) * base, cy + Math.sin(a + half) * base);
+    ctx.closePath();
+    ctx.fillStyle = '#fbf9f4';
+    ctx.fill();
+    ctx.lineWidth = lw;
+    ctx.strokeStyle = red;
+    ctx.stroke();
+  }
+  // The ball.
+  ctx.beginPath();
+  ctx.arc(cx, cy, R, 0, Math.PI * 2);
+  ctx.fillStyle = '#fbf9f4';
+  ctx.fill();
+  ctx.lineWidth = lw * 1.25;
+  ctx.strokeStyle = red;
+  ctx.stroke();
+  // Hollow drops around the edge (they frame the number).
+  const drop = (x: number, y: number, s: number, rot: number) => {
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.rotate(rot);
+    ctx.beginPath();
+    ctx.moveTo(0, -s);
+    ctx.bezierCurveTo(s * 0.7, -s * 0.2, s * 0.75, s * 0.75, 0, s * 0.8);
+    ctx.bezierCurveTo(-s * 0.75, s * 0.75, -s * 0.7, -s * 0.2, 0, -s);
+    ctx.lineWidth = lw * 0.8;
+    ctx.strokeStyle = red;
+    ctx.stroke();
+    ctx.restore();
+  };
+  drop(cx - R * 0.66, cy - R * 0.36, R * 0.2, -0.6);
+  drop(cx + R * 0.64, cy + R * 0.42, R * 0.18, 2.4);
+  drop(cx + R * 0.58, cy - R * 0.5, R * 0.14, 0.7);
+  // The number.
+  ctx.font = `800 ${Math.round(R * 1.3)}px "Grenze Gotisch"`;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillStyle = '#7a1a08';
+  ctx.fillText(String(n), cx, cy + R * 0.08);
+}
+
+/** A small card with a number on it: how many cards a player holds. */
+export function drawCardCount(ctx: CanvasRenderingContext2D, w: number, h: number, n: number): void {
+  const x = w * 0.18;
+  const y = h * 0.08;
+  const cw = w * 0.64;
+  const ch = h * 0.84;
+  const r = cw * 0.14;
+  const rr = (x0: number, y0: number, ww: number, hh: number, rad: number) => {
+    ctx.beginPath();
+    ctx.moveTo(x0 + rad, y0);
+    ctx.arcTo(x0 + ww, y0, x0 + ww, y0 + hh, rad);
+    ctx.arcTo(x0 + ww, y0 + hh, x0, y0 + hh, rad);
+    ctx.arcTo(x0, y0 + hh, x0, y0, rad);
+    ctx.arcTo(x0, y0, x0 + ww, y0, rad);
+    ctx.closePath();
+  };
+  ctx.shadowColor = 'rgba(0,0,0,0.5)';
+  ctx.shadowBlur = w * 0.05;
+  rr(x, y, cw, ch, r);
+  ctx.fillStyle = '#7a4a2a';
+  ctx.fill();
+  ctx.shadowBlur = 0;
+  const b = cw * 0.08;
+  rr(x + b, y + b, cw - 2 * b, ch - 2 * b, r * 0.6);
+  ctx.fillStyle = '#f1e4c4';
+  ctx.fill();
+  // A red band across the top, like a card's crest.
+  ctx.save();
+  ctx.clip();
+  ctx.fillStyle = '#9a1c22';
+  ctx.fillRect(x, y, cw, ch * 0.2);
+  ctx.restore();
+  ctx.font = `800 ${Math.round(ch * 0.52)}px "Grenze Gotisch"`;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillStyle = '#2a1408';
+  ctx.fillText(String(n), x + cw / 2, y + ch * 0.6);
+}

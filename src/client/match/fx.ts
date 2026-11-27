@@ -56,23 +56,27 @@ export class Fx {
     size: number;
     gravity?: number;
     drag?: number;
-    kind?: 'glow' | 'feather';
+    kind?: 'glow' | 'feather' | 'blood';
     spread?: THREE.Vector3;
+    /** Bias every particle's direction this way (e.g. a spurt to one side). */
+    dir?: THREE.Vector3;
   }): void {
     const sprites: THREE.Sprite[] = [];
     const parts: Particle[] = [];
-    const col = new THREE.Color(o.color).multiplyScalar(o.intensity ?? 3);
+    const blood = o.kind === 'blood';
+    const col = new THREE.Color(o.color).multiplyScalar(blood ? 1 : (o.intensity ?? 3));
     const feathers = o.kind === 'feather';
     for (let i = 0; i < o.count; i++) {
       const mat = new THREE.SpriteMaterial({
         map: feathers ? feather() : this.glowTex,
         color: feathers ? new THREE.Color(1.6, 1.5, 1.3) : col,
         transparent: true,
-        blending: feathers ? THREE.NormalBlending : THREE.AdditiveBlending,
+        blending: feathers || blood ? THREE.NormalBlending : THREE.AdditiveBlending,
         depthWrite: false,
       });
       const s = new THREE.Sprite(mat);
       const dir = new THREE.Vector3(Math.random() - 0.5, Math.random() - 0.5 + (o.up ?? 0), Math.random() - 0.5).normalize();
+      if (o.dir) dir.multiplyScalar(0.55).add(o.dir).normalize();
       const sp = o.speed * (0.4 + Math.random() * 0.8);
       const start = o.at.clone();
       if (o.spread) start.add(new THREE.Vector3((Math.random() - 0.5) * o.spread.x, (Math.random() - 0.5) * o.spread.y, (Math.random() - 0.5) * o.spread.z));

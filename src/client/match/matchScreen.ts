@@ -12,13 +12,14 @@ import { h, icon } from '../ui/dom';
 import { toast } from '../ui/hud';
 import { profile } from '../ui/profile';
 import { lookFromProfile } from '../cosmetics/apply';
-import type { Station } from '../world/tavern';
+import { makeText, type Station } from '../world/tavern';
+import { FONT3D } from '../world/fonts3d';
 import { CardMesh } from './cardMesh';
 import { Fx } from './fx';
 import { HandView } from './handView';
 import { flyCurve, liftOut, settle, streak } from './motion';
 import { showResults } from './results';
-import { DECK_S, Q_FACE_PLAYER, Q_FLAT_DOWN, Q_FLAT_UP, TableView, TEAM_COLORS } from './tableView';
+import { DECK_S, drawMace, Q_FACE_PLAYER, Q_FLAT_DOWN, Q_FLAT_UP, TableView, TEAM_COLORS } from './tableView';
 
 type XForm = { p: THREE.Vector3; q: THREE.Quaternion; s: number };
 const V = (x: number, y: number, z: number) => new THREE.Vector3(x, y, z);
@@ -114,15 +115,14 @@ export class MatchScreen implements Screen {
     const app = this.app;
     const tv = app.tavern;
     const k = this.opts.spectate ? Math.max(2, Math.min(5, this.opts.rivals ?? 4)) : mode === 'tutorial' || mode === 'ranked' ? 1 : mode === 'teams' ? ((this.opts.rivals ?? 3) >= 5 ? 5 : 3) : Math.max(1, Math.min(5, this.opts.rivals ?? 1));
+    // Seated: eyes low and right at the table's edge, a narrow lens (the table and the room feel big). Turn your head
+    // (the pointer) to see the players beside you at the larger tables.
     this.tableStation =
       k === 1
-        ? tv.stations.table
+        ? { pos: V(3.02, 1.36, 0.6), target: V(5.8, 0.46, 0.6), look: [0.45, 0.14, 0.06], fov: 48 }
         : k === 2
-          ? { pos: V(2.05, 1.7, 0.6), target: V(6.2, 0.85, 0.6), look: [0.45, 0.16, 0.035], fov: 60 }
-          : k === 3
-            ? { pos: V(1.85, 1.95, 0.6), target: V(6.2, 0.72, 0.6), look: [0.5, 0.16, 0.035], fov: 62 }
-            : // 5-6 seats: the nearest rivals sit beside you, so look from higher and further back.
-              { pos: V(1.7, 2.1, 0.6), target: V(6.2, 0.7, 0.6), look: [0.5, 0.16, 0.035], fov: 64 };
+          ? { pos: V(3.0, 1.4, 0.6), target: V(5.8, 0.46, 0.6), look: [0.55, 0.14, 0.06], fov: 49 }
+          : { pos: V(2.96, 1.45, 0.6), target: V(5.7, 0.46, 0.6), look: [0.62, 0.14, 0.06], fov: 50 };
     this.aimStation =
       k === 1
         ? { pos: V(3.4, 2.05, 0.6), target: V(5.25, 0.82, 0.6), look: [0.06, 0.04], fov: 52 }
@@ -153,7 +153,7 @@ export class MatchScreen implements Screen {
     this.previewEl = h('div', { class: 'preview out' }, this.previewTitle, this.previewImg, this.previewText);
     this.actionEl = h('div', { style: 'position:absolute;left:50%;bottom:6vh;transform:translateX(-50%);' });
     this.countdownEl = h('div', { class: 'countdown' });
-    this.badgeEl = h('div', { class: 'my-badge' });
+    this.badgeEl = h('div', { class: 'status-rack' });
     this.statusEl = h('div', { class: 'status-strip' });
     this.ui = h('div', { class: 'layer' }, this.statusEl, this.hintEl, this.previewEl, this.actionEl, this.countdownEl, this.badgeEl);
     nav.layer.append(this.ui);
@@ -178,6 +178,7 @@ export class MatchScreen implements Screen {
     this.keyHandler = (e) => {
       if (e.key === 'Escape' && this.aiming) this.cancelAim();
       if ((e.key === 'd' || e.key === ' ') && !this.aiming) this.tryDraw();
+      if (this.spectateEl && (e.key === 'ArrowLeft' || e.key === 'ArrowRight')) this.spectateNext(e.key === 'ArrowLeft' ? -1 : 1);
     };
     addEventListener('keydown', this.keyHandler);
     app.gfx.renderer.domElement.addEventListener('contextmenu', this.onContext);
@@ -278,8 +279,7 @@ export class MatchScreen implements Screen {
     const s = this.sync;
     if (!s) return;
     const bits: string[] = [];
-    if (s.lock) bits.push(`<span class="pill lock">⛓ ${CARD_DEFS[s.lock.type].name} shackled · ${s.lock.turns}</span>`);
-    if (s.wards.includes(this.me)) bits.push('<span class="pill ward">🛡 You are warded</span>');
+    this.renderRack();
     const myTeam = this.seats.find((x) => x.id === this.me)?.team;
     if (this.opts.spectate) bits.push('<span class="pill">👁 Spectating</span>');
     if (myTeam != null) bits.push(`<span class="pill team" style="border-color:${TEAM_COLORS[myTeam]}">Team ${myTeam === 0 ? 'Crimson' : 'Azure'}</span>`);
@@ -527,11 +527,46 @@ export class MatchScreen implements Screen {
     this.actionEl.append(b);
   }
 
+  /** Your turns still to take, on the mace beside your hand (0: none). */
   private setBadge(turns: number): void {
-    if (turns > 1) {
-      this.badgeEl.textContent = `Bounty on your head: take ${turns} turns`;
-      this.badgeEl.style.opacity = '1';
-    } else this.badgeEl.style.opacity = '0';
+    this.myTurns = turns;
+    this.renderRack();
+  }
+  private myTurns = 0;
+  private rackKey = '';
+  private shackleEl: HTMLElement | null = null;
+
+  /**
+   * Your status effects at the top right of your hand: the turns you owe (a mace), a shackled card (the card itself,
+   * small, chained over, with the turns the chains still hold) and a ward.
+   */
+  private renderRack(): void {
+    const lock = this.sync?.lock ?? null;
+    const ward = !!this.sync?.wards.includes(this.me) && !this.iAmDead;
+    const turns = this.iAmDead ? 0 : this.myTurns;
+    const key = `${turns}|${lock ? lock.type + lock.turns : ''}|${ward}`;
+    if (key === this.rackKey) return;
+    this.rackKey = key;
+    const items: HTMLElement[] = [];
+    this.shackleEl?.remove();
+    this.shackleEl = null;
+    if (turns > 0) {
+      const c = h('canvas', { class: 'rack-mace', width: '128', height: '128', title: turns === 1 ? '1 turn to take' : `${turns} turns to take` }) as HTMLCanvasElement;
+      drawMace(c.getContext('2d')!, 128, 128, turns);
+      items.push(c);
+    }
+    if (lock) {
+      this.shackleEl = h(
+        'div',
+        { class: 'rack-card shackle', title: `${CARD_DEFS[lock.type].name} is shackled` },
+        h('img', { src: this.app.cards.urls[lock.type], alt: '', draggable: 'false' }),
+        h('div', { class: 'chains', html: CHAINS_SVG }),
+        h('b', {}, String(lock.turns))
+      );
+      this.ui.append(this.shackleEl);
+    }
+    if (ward) items.push(h('div', { class: 'rack-ward', title: 'You are warded', html: WARD_SVG }));
+    this.badgeEl.replaceChildren(...items);
   }
 
   // ==================================================================== affordances & input
@@ -865,31 +900,35 @@ export class MatchScreen implements Screen {
     this.claims = [];
     const slot = this.table.pileSlot();
     let cm: CardMesh;
-    const above = { p: slot.p.clone().add(V(0, 0.06, 0)), q: slot.q, s: 1.06 };
-    const slam = () => this.fly(cm.root, () => ({ p: slot.p, q: slot.q, s: 1 }), 0.09, { ease: ease.inQuad }).then(() => {
+    const above = { p: slot.p.clone().add(V(0, 0.06, 0)), q: slot.q, s: slot.s * 1.06 };
+    const slam = () => this.fly(cm.root, () => ({ p: slot.p, q: slot.q, s: slot.s }), 0.09, { ease: ease.inQuad }).then(() => {
       audio.play('place');
       this.app.rig.shake(0.01);
     });
+    // On everyone's screen the played card rises out of the player's hand to float above the pile, facing you, with
+    // its name beneath it; then it comes down on the pile.
+    const show = (): XForm => ({ p: this.showcasePos(), q: this.app.gfx.camera.quaternion.clone(), s: 1.55 });
+    const name = card.type === 'glass' ? `${CARD_DEFS.glass.name} · ${CARD_DEFS[effect].name}` : CARD_DEFS[card.type].name;
     if (this.isMe(player)) {
-      // From your hand: up, over in an arc, and down hard on the pile.
       cm = this.takeFrom(player, card);
+      cm.setVariant('pile');
       audio.play('swish');
-      await flyCurve(cm.root, () => above, 0.44, { lift: 0.2, roll: 0.5, trail: { fx: this.fx, color: '#ffd08a' } });
-      await slam();
+      await flyCurve(cm.root, show, 0.42, { lift: 0.12, roll: 0.3, trail: { fx: this.fx, color: '#ffd08a' } });
     } else {
-      // A rival lifts that very card out of their row, reaches over, and it turns face up on its way to the middle.
+      // A rival lifts that very card out of their row and it turns face up on its way over.
       const sv = this.table.seat(player);
       cm = this.takeFrom(player, card);
-      cm.setVariant('table');
+      cm.setVariant('pile');
       sv?.figure.setReach(0.75, 'R');
       audio.play('swish');
-      await liftOut(cm.root, this.table.center, 0.18);
-      this.showPreview(card, 1300);
-      await flyCurve(cm.root, () => above, 0.48, { lift: 0.3, roll: 0.45, trail: { fx: this.fx, color: '#ffd08a' } });
+      await liftOut(cm.root, this.table.center, 0.16);
+      await flyCurve(cm.root, show, 0.42, { lift: 0.2, roll: 0.3, trail: { fx: this.fx, color: '#ffd08a' } });
       sv?.figure.setReach(0, 'R');
-      await slam();
-      setTimeout(() => !this.hand.hovered && this.hidePreview(), 700);
     }
+    this.showcaseLabel(name, target ? this.nameOf(target) : null);
+    await this.fly(cm.root, show, 0.55);
+    await flyCurve(cm.root, () => above, 0.2, { lift: 0.02, roll: 0 });
+    await slam();
     this.table.pushPile(cm);
     this.pendingMesh = cm;
     this.impact(slot.p, player);
@@ -900,6 +939,31 @@ export class MatchScreen implements Screen {
     const who = this.nameOf(player);
     if (card.type === 'glass') this.mirrorShimmer(slot.p, effect);
     this.tutorial('play', { player, card, target });
+  }
+
+  /** Where a played card floats for everyone to see: above the pile, toward the viewer. */
+  private showcasePos(): THREE.Vector3 {
+    const cam = this.app.gfx.camera.position;
+    const pile = this.table.pilePos;
+    return pile.clone().add(V(0, 0.36, 0)).lerp(cam, 0.12);
+  }
+
+  /** The played card's name (and its target) under the floating card, facing the viewer; fades after it lands. */
+  private showcaseLabel(name: string, target: string | null): void {
+    if (tweens.instant) return;
+    const cam = this.app.gfx.camera;
+    const t = makeText(target ? `${name}\n→ ${target}` : name, { size: 0.062, color: '#fff3d8', glow: 1.15, font: FONT3D.gothic, outline: 0.006, maxWidth: 1.2 });
+    const up = V(0, 1, 0).applyQuaternion(cam.quaternion);
+    t.position.copy(this.showcasePos()).addScaledVector(up, -(0.224 * 1.55) / 2 - 0.07);
+    t.quaternion.copy(cam.quaternion);
+    t.renderOrder = 40;
+    t.scale.setScalar(0.6);
+    this.fx.group.add(t);
+    void tweens.to(0.25, (k) => t.scale.setScalar(0.6 + 0.4 * ease.outBack(k)));
+    void tweens.to(0.5, (k) => ((t.fillOpacity = 1 - k), (t.outlineOpacity = 0.6 * (1 - k))), { delay: 1.6 }).then(() => {
+      this.fx.group.remove(t);
+      t.dispose();
+    });
   }
 
   /** Card impact on the pile (cosmetic: varies with the player's equipped impact). */
@@ -968,7 +1032,7 @@ export class MatchScreen implements Screen {
     const cm = this.takeFrom(player, card);
     cm.setVariant('table');
     audio.play('swish', { vol: 1.2 });
-    await this.fly(cm.root, () => ({ p: slot.p, q: slot.q, s: 1 }), 0.42, { arc: 0.22, spin: -1.2, ease: ease.inQuad });
+    await this.fly(cm.root, () => ({ p: slot.p, q: slot.q, s: slot.s }), 0.42, { arc: 0.22, spin: -1.2, ease: ease.inQuad });
     const at = slot.p.clone().add(V(0, 0.03, 0));
     if (card.type === 'breath') {
       audio.play('ignite', { vol: 1.4 });
@@ -996,7 +1060,7 @@ export class MatchScreen implements Screen {
     const cm = this.takeFrom(player, card);
     cm.setVariant('table');
     audio.play('whoosh');
-    await this.fly(cm.root, () => ({ p: slot.p, q: slot.q, s: 1 }), 0.4, { arc: 0.2, spin: 2.4 });
+    await this.fly(cm.root, () => ({ p: slot.p, q: slot.q, s: slot.s }), 0.4, { arc: 0.2, spin: 2.4 });
     this.table.pushPile(cm);
     // A streak of violet light from the pile to the new mark.
     const from = slot.p.clone().add(V(0, 0.05, 0));
@@ -1081,7 +1145,7 @@ export class MatchScreen implements Screen {
     if (claim) {
       claim.mesh.setCard({ id: -2, type: 'privateer' });
       const pt = this.table.pileSlot();
-      void this.fly(claim.mesh.root, () => ({ p: pt.p, q: pt.q, s: 1 }), 0.35).then(() => this.table.pushPile(claim.mesh));
+      void this.fly(claim.mesh.root, () => ({ p: pt.p, q: pt.q, s: pt.s }), 0.35).then(() => this.table.pushPile(claim.mesh));
     }
     const at = { p: this.table.pilePos.clone().add(V(0, 0.08, 0)), q: Q_FACE_PLAYER.clone(), s: 1 };
     const cm = this.newCard(card, at, this.isMe(player) ? 'hand' : 'table');
@@ -1539,7 +1603,7 @@ export class MatchScreen implements Screen {
     if (sv) sv.figure.breathe = 1;
     const slot = this.table.pileSlot();
     angel.setVariant('table');
-    await this.fly(angel.root, () => ({ p: slot.p, q: slot.q, s: 1 }), 0.45, { arc: 0.1 });
+    await this.fly(angel.root, () => ({ p: slot.p, q: slot.q, s: slot.s }), 0.45, { arc: 0.1 });
     audio.play('place');
     this.table.pushPile(angel);
     this.tutorial('rescued', { player });
@@ -1665,6 +1729,7 @@ export class MatchScreen implements Screen {
     await tweens.wait(0.4);
   }
 
+  /** Slain: a gunshot. A rival drops sideways out of the chair with blood at the side of the head; you fall. */
   private async onSlain(player: PlayerId): Promise<void> {
     this.rescueEnd = 0;
     this.hint(null);
@@ -1674,105 +1739,148 @@ export class MatchScreen implements Screen {
     const mine = this.isMe(player);
     if (mine) this.iAmDead = true;
     else if (!this.iAmDead) this.outlasted++;
-    const seat = this.seats.find((s) => s.id === player)!;
-    const all = [...tv.tableCandleFlames, ...tv.chandelierFlames, ...tv.sign.flames];
-    all.forEach((f, i) => setTimeout(() => tv.flames.setLit(f, 0), (i / all.length) * 900));
-    for (let i = 0; i < 4; i++) audio.play('snuff', { at: i * 0.25, vol: 0.6 });
-    await tweens.to(1.1, (k) => tv.setLightLevel(0.55 * (1 - k) + 0.05 * k));
-    await tweens.wait(0.45);
-    audio.play('slash');
-    app.gfx.grade.u('uHoly').value = 0.5;
-    void tweens.to(0.25, (k) => (app.gfx.grade.u('uHoly').value = 0.5 * (1 - k)));
-    app.rig.shake(mine ? 0.12 : 0.05);
+    this.renderRack();
     const sv = this.table.seat(player);
+    await tweens.wait(0.35);
+    audio.play('gunshot');
+    app.rig.shake(mine ? 0.1 : 0.04);
     if (mine) {
-      // Your own hand scatters and your view falls to the floor.
+      // Your hand drops, the room tips over as you fall, and it all goes dark.
       this.hand.cards.splice(0).forEach((c) => {
         this.unregister(c);
         this.app.gfx.scene.attach(c.root);
         c.setVariant('table');
         const p = this.table.center.clone().add(V(-0.6 + Math.random() * 0.3, 0.003, (Math.random() - 0.5) * 0.8));
         const q = Q_FLAT_UP.clone().multiply(new THREE.Quaternion().setFromAxisAngle(V(0, 0, 1), Math.random() * 6));
-        void this.fly(c.root, () => ({ p, q, s: 1 }), 0.6 + Math.random() * 0.3, { arc: 0.2 });
+        void this.fly(c.root, () => ({ p, q, s: 1 }), 0.5 + Math.random() * 0.3, { arc: 0.2 });
       });
-      void tweens.to(1.0, (k) => {
-        app.rig.offset.set(-0.4 * k, -1.05 * ease.inQuad(k), 0.25 * k);
-        app.rig.targetOffset.set(0, -1.6 * k, 1.2 * k);
-      }, { ease: ease.inCubic });
-      audio.play('thud', { at: 0.85 });
-      void tweens.to(1.6, (k) => (app.gfx.grade.u('uFade').value = k * 0.9), { delay: 0.5 });
-      await tweens.wait(1.3);
+      app.gfx.grade.u('uDanger').value = 1;
+      await tweens.to(0.45, (k) => {
+        app.rig.offset.set(0, -0.7 * k, 0.35 * k);
+        app.rig.targetOffset.set(0, -0.6 * k, 1.4 * k);
+      }, { ease: ease.inQuad });
+      audio.play('thud');
+      app.rig.shake(0.05);
+      await tweens.to(0.9, (k) => (app.gfx.grade.u('uFade').value = k * 0.95));
+      await tweens.wait(0.4);
     } else if (sv) {
       const f = sv.figure;
-      const r0 = f.root.position.clone();
-      const q0 = f.root.quaternion.clone();
-      const c0 = sv.chair.position.clone();
-      const cq = sv.chair.quaternion.clone();
+      // Which way the body goes: shot from one side, it drops to the other.
+      const dirSign = Math.random() < 0.5 ? -1 : 1;
+      const side = new THREE.Vector3(-sv.out.z, 0, sv.out.x).multiplyScalar(dirSign);
+      const head = this.seatHead(player);
+      this.fx.burst({ at: head.clone().addScaledVector(side, 0.13), dir: side, count: 26, color: '#6e0808', kind: 'blood', speed: 1.3, up: 0.15, life: 0.9, size: 0.022, gravity: -4, drag: 0.6 });
+      this.fx.burst({ at: head.clone().addScaledVector(side, 0.1), dir: side.clone().add(V(0, -0.5, 0)), count: 10, color: '#4a0404', kind: 'blood', speed: 0.5, life: 1.2, size: 0.016, gravity: -5, drag: 0.4 });
+      f.addBloodMark(dirSign);
+      f.eyesOn = 0;
       sv.hand.splice(0).forEach((c, i) => {
         c.setCard(null);
-        const p = this.table.center.clone().addScaledVector(sv.out, 0.4 + Math.random() * 0.25).add(V((Math.random() - 0.5) * 0.3, 0.002 + i * 0.001, (Math.random() - 0.5) * 0.3));
+        const p = sv.pos.clone().addScaledVector(sv.out, -0.15).addScaledVector(side, 0.2 + Math.random() * 0.3).add(V(0, 0.004 + i * 0.0015, 0));
         const q = Q_FLAT_DOWN.clone().multiply(new THREE.Quaternion().setFromAxisAngle(V(0, 0, 1), Math.random() * 6));
-        void this.fly(c.root, () => ({ p, q, s: 1 }), 0.5 + Math.random() * 0.3, { arc: 0.15 });
+        void this.fly(c.root, () => ({ p, q, s: 1 }), 0.45 + Math.random() * 0.25, { arc: 0.08 });
       });
-      const axis = new THREE.Vector3(-sv.out.z, 0, sv.out.x);
-      await tweens.to(0.75, (k) => {
-        f.root.position.copy(r0).addScaledVector(sv.out, 1.25 * k).add(V(0, Math.sin(k * Math.PI) * 0.45 - 0.5 * ease.inQuad(k), 0));
-        f.root.quaternion.copy(q0).premultiply(new THREE.Quaternion().setFromAxisAngle(axis, 1.65 * ease.outCubic(k)));
-        f.eyesOn = 1 - k;
-        sv.chair.position.copy(c0).addScaledVector(sv.out, 0.35 * k);
-        sv.chair.quaternion.copy(cq).premultiply(new THREE.Quaternion().setFromAxisAngle(axis, 1.4 * ease.inQuad(k)));
-      }, { ease: ease.outQuad });
+      // The body drops abruptly to one side, slumped over in the chair (still in view over the table).
+      const r0 = f.root.position.clone();
+      const q0 = f.root.quaternion.clone();
+      const axis = sv.out.clone().multiplyScalar(-dirSign);
+      await tweens.to(0.26, (k) => {
+        f.root.position.copy(r0).addScaledVector(side, 0.12 * k).add(V(0, -0.07 * k, 0));
+        f.root.quaternion.copy(q0).premultiply(new THREE.Quaternion().setFromAxisAngle(axis, 1.0 * k));
+      }, { ease: ease.inQuad });
       audio.play('thud');
-      app.rig.shake(0.06);
-      f.root.visible = false;
-      this.allLook(sv.pos.clone().add(V(0, 0.8, 0)), player, 0.3);
-      setTimeout(() => this.allLook(null), 2600);
+      app.rig.shake(0.03);
+      const q1 = f.root.quaternion.clone();
+      await tweens.to(0.18, (k) => f.root.quaternion.copy(q1).premultiply(new THREE.Quaternion().setFromAxisAngle(axis, -Math.sin(k * Math.PI) * 0.08)));
+      this.allLook(sv.pos.clone().add(V(0, 0.4, 0)), player, 0.2);
+      setTimeout(() => this.allLook(null), 2200);
       sv.alive = false;
       sv.name.visible = false;
       sv.badge.visible = false;
       sv.wardOn = false;
+      if (this.spectating === player) this.spectateNext(1);
     }
-    all.forEach((f, i) => setTimeout(() => tv.flames.setLit(f, tv.sign.flames.includes(f) ? 0 : 1), 300 + (i / all.length) * 900));
-    audio.play('ignite', { at: 0.3 });
-    if (!mine) void tweens.to(1.2, (k) => tv.setLightLevel(0.05 + k * 0.75));
-    await tweens.wait(0.6);
-    const poster = h(
-      'div',
-      { class: 'poster' },
-      h('h2', {}, 'Missing!'),
-      h('div', {
-        class: 'photo',
-        html: `<svg viewBox="0 0 100 110"><path d="M54 8C38 14 26 34 26 54c0 14 6 22 12 26h24c6-4 12-12 12-26 0-20-10-36-20-46z" fill="${seat.cloak}" opacity=".9"/><path d="M14 110c4-18 16-28 30-30h12c14 2 26 12 30 30z" fill="${seat.cloak}" opacity=".9"/><ellipse cx="50" cy="55" rx="14" ry="17" fill="#1a0e06"/><circle cx="45" cy="54" r="2" fill="#ffb347"/><circle cx="55" cy="54" r="2" fill="#ffb347"/></svg>`,
-      }),
-      h('div', { class: 'name' }, seat.name),
-      h('div', { class: 'epithet' }, seat.epithet),
-      h('div', { class: 'seen' }, 'Last seen near the Hooded Hand tavern'),
-      h('div', { class: 'stamp' }, mine ? 'You' : 'Slain')
-    );
-    if (!tweens.instant) this.ui.append(poster);
-    audio.play('paper');
-    audio.play('thud', { vol: 0.4, at: 0.05 });
-    const left = this.sync?.alive.length ?? 0;
-    await tweens.wait(left > 1 && !mine ? 2.4 : 3.0);
-    poster.style.transition = 'opacity .5s';
-    poster.style.opacity = '0';
-    setTimeout(() => poster.remove(), 600);
+    // The doom red drains away.
     tv.flames.uniforms.uTint.value.setRGB(1, 1, 1);
+    const left = this.sync?.alive.length ?? 0;
     void tweens.to(0.6, (k) => {
       app.gfx.grade.u('uDanger').value *= 1 - k;
       app.gfx.chroma.offset.set(0, 0);
     });
+    tv.setLightLevel(1);
     if (!mine && left > 1) audio.startMusic();
     if (mine && left > 1) {
-      // Keep watching as a ghost.
-      void tweens.to(1.2, (k) => {
-        app.rig.offset.multiplyScalar(1 - k);
-        app.rig.targetOffset.multiplyScalar(1 - k);
-        app.gfx.grade.u('uFade').value = 0.9 * (1 - k) + 0.2 * k;
-      });
-      this.hint('You are slain. Watch how the rest of the night unfolds…', 3000);
+      // Watch the rest of the night from the others' seats.
+      app.rig.offset.set(0, 0, 0);
+      app.rig.targetOffset.set(0, 0, 0);
+      this.enterSpectate();
+      await tweens.to(0.8, (k) => (app.gfx.grade.u('uFade').value = 0.95 * (1 - k)));
+      audio.startMusic();
     }
-    await tweens.wait(0.5);
+    await tweens.wait(0.3);
+  }
+
+  // ==================================================================== spectating
+
+  /** The player whose seat you watch from (after you are slain, or watching a table). */
+  private spectating: PlayerId | null = null;
+  private spectateEl: HTMLElement | null = null;
+
+  /** Watch from the living players' seats; arrows (or the arrow keys) switch between them. */
+  private enterSpectate(): void {
+    if (this.spectateEl) return;
+    const prev = h('button', { class: 'spec-arrow', 'aria-label': 'Previous player' }, '‹');
+    const next = h('button', { class: 'spec-arrow', 'aria-label': 'Next player' }, '›');
+    const name = h('b', { class: 'spec-name' });
+    prev.addEventListener('click', () => this.spectateNext(-1));
+    next.addEventListener('click', () => this.spectateNext(1));
+    this.spectateEl = h('div', { class: 'spectate-bar' }, prev, name, next);
+    this.ui.append(this.spectateEl);
+    this.hand.lowered = 1;
+    this.spectateNext(1);
+  }
+
+  private spectateNext(dir: 1 | -1): void {
+    const order = this.seats.filter((s) => !this.isMe(s.id) && this.table.seat(s.id)?.alive).map((s) => s.id);
+    if (!order.length || !this.spectateEl) return;
+    const i = this.spectating ? order.indexOf(this.spectating) : -1;
+    const to = order[(((i < 0 ? (dir > 0 ? -1 : 0) : i) + dir) % order.length + order.length) % order.length];
+    this.watchFrom(to);
+  }
+
+  /** Sit in a player's chair: their figure steps aside for the camera, their held cards wear a brown film. */
+  private watchFrom(id: PlayerId): void {
+    const old = this.spectating ? this.table.seat(this.spectating) : null;
+    if (old) {
+      old.figure.root.visible = true;
+      for (const c of old.hand) this.film(c, false);
+    }
+    this.spectating = id;
+    const sv = this.table.seat(id);
+    if (!sv) return;
+    sv.figure.root.visible = false;
+    const name = this.spectateEl?.querySelector('.spec-name');
+    if (name) name.textContent = this.nameOf(id);
+    const c = this.table.center;
+    const station: Station = {
+      pos: c.clone().addScaledVector(sv.out, 1.28).setY(1.38),
+      target: c.clone().addScaledVector(sv.out, -1.5).setY(0.46),
+      look: [0.55, 0.14, 0.06],
+      fov: 49,
+    };
+    void this.app.rig.glide(station, 0.9, 0.15);
+    audio.play('whoosh', { vol: 0.5 });
+  }
+
+  /** A held card seen from its holder's chair: covered in a plain brown film (no peeking at their hand). */
+  private film(c: CardMesh, on: boolean): void {
+    const ud = c.root.userData as { film?: THREE.Material[] };
+    if (on && !ud.film) {
+      ud.film = [c.face.material as THREE.Material, c.back.material as THREE.Material, c.edge.material as THREE.Material];
+      c.face.material = c.back.material = c.edge.material = FILM_MAT;
+    } else if (!on && ud.film) {
+      [c.face.material, c.back.material, c.edge.material] = ud.film as [THREE.Material, THREE.Material, THREE.Material];
+      delete ud.film;
+    }
   }
 
   private onOver(winner: PlayerId | null, winners: PlayerId[], stats: Record<PlayerId, PlayerStats>): void {
@@ -1897,6 +2005,8 @@ export class MatchScreen implements Screen {
   update(t: number, dt: number): void {
     this.table.update(t, dt);
     this.hand.update(dt);
+    // Cards the watched player picks up get the film too.
+    if (this.spectating) for (const c of this.table.seat(this.spectating)?.hand ?? []) this.film(c, true);
     this.fx.update(dt);
     const now = performance.now();
     if (this.windowEnd > now) this.table.setRing((this.windowEnd - now) / this.windowLen, 1);
@@ -1972,3 +2082,26 @@ export class MatchScreen implements Screen {
   }
 }
 
+
+/** Two thick light-grey chains crossing a card (the shackle status). viewBox 0 0 100 140. */
+const CHAINS_SVG = (() => {
+  const link = (x: number, y: number, a: number) => {
+    const t = `transform="rotate(${a.toFixed(1)} ${x.toFixed(1)} ${y.toFixed(1)})"`;
+    return (
+      `<ellipse cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" rx="10" ry="5.6" ${t} fill="none" stroke="#3a3632" stroke-width="7.5"/>` +
+      `<ellipse cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" rx="10" ry="5.6" ${t} fill="none" stroke="#dedad2" stroke-width="4.4"/>`
+    );
+  };
+  const chain = (x0: number, y0: number, x1: number, y1: number) => {
+    const n = 10;
+    const a = (Math.atan2(y1 - y0, x1 - x0) * 180) / Math.PI;
+    return Array.from({ length: n }, (_, i) => link(x0 + ((x1 - x0) * i) / (n - 1), y0 + ((y1 - y0) * i) / (n - 1), a + (i % 2 ? 90 : 0))).join('');
+  };
+  return `<svg viewBox="0 0 100 140">${chain(-6, 10, 106, 130)}${chain(106, 10, -6, 130)}</svg>`;
+})();
+
+/** The plain brown film over the held cards of the player you watch from. */
+const FILM_MAT = new THREE.MeshStandardMaterial({ color: '#5a3a22', roughness: 1, emissive: new THREE.Color(0.08, 0.05, 0.03) });
+
+/** A golden ward shield (warded status). */
+const WARD_SVG = `<svg viewBox="0 0 100 110"><path d="M50 6 L88 20 L84 62 C80 84 66 96 50 104 C34 96 20 84 16 62 L12 20 Z" fill="#f0c860" stroke="#3a2208" stroke-width="5" stroke-linejoin="round"/><path d="M50 18 L76 28 L73 60 C70 76 61 86 50 92 Z" fill="#fff2c4" opacity="0.65"/></svg>`;

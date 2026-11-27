@@ -221,6 +221,8 @@ const tube = (pts: THREE.Vector3[], r: number, mat: THREE.Material, seg = 32, cl
  * gloved hands, a void where the face should be and two ember eyes, plus one accessory of their own.
  * Rig: root > body (breathes) > head (looks around) / armL / armR (reach for cards).
  */
+let bloodTex: THREE.CanvasTexture | null = null;
+
 export class Figure {
   readonly root = new THREE.Group();
   readonly body = new THREE.Group();
@@ -741,6 +743,43 @@ export class Figure {
   }
 
   /** A sharp startled jerk backwards. */
+  /** Shot: a dark blood mark at the side of the hood (`side` -1 left / +1 right of the figure), with a run below it. */
+  addBloodMark(side: number): void {
+    if (!bloodTex) {
+      const c = document.createElement('canvas');
+      c.width = 128;
+      c.height = 192;
+      const x = c.getContext('2d')!;
+      x.fillStyle = '#5a0606';
+      x.beginPath();
+      for (let i = 0; i <= 20; i++) {
+        const a = (i / 20) * Math.PI * 2;
+        const r = 30 + Math.sin(i * 2.7) * 9 + Math.cos(i * 5.1) * 6;
+        x.lineTo(64 + Math.cos(a) * r, 62 + Math.sin(a) * r * 0.85);
+      }
+      x.fill();
+      for (const [dx, len, w] of [[-14, 96, 9], [6, 120, 7], [20, 70, 6]]) {
+        x.fillRect(64 + dx - w / 2, 62, w, len);
+        x.beginPath();
+        x.arc(64 + dx, 62 + len, w * 0.8, 0, Math.PI * 2);
+        x.fill();
+      }
+      x.fillStyle = 'rgba(150,20,20,0.6)';
+      x.beginPath();
+      x.arc(56, 54, 12, 0, Math.PI * 2);
+      x.fill();
+      bloodTex = new THREE.CanvasTexture(c);
+      bloodTex.colorSpace = THREE.SRGBColorSpace;
+    }
+    const m = new THREE.Mesh(
+      new THREE.PlaneGeometry(0.11, 0.165),
+      new THREE.MeshStandardMaterial({ map: bloodTex, transparent: true, roughness: 0.35, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -2 })
+    );
+    m.position.set(side * 0.172, 0.1, 0.03);
+    m.rotation.y = side * Math.PI * 0.5;
+    this.head.add(m);
+  }
+
   flinch(): void {
     this.flinchT = 1;
   }

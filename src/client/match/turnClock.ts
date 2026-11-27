@@ -9,8 +9,8 @@ import { FONT3D } from '../world/fonts3d';
 
 /** Radius of the ring the clock travels around the table (between the seats and the deck). */
 const RING = 0.6;
-/** In front of you it comes a little nearer the middle so it stays above your hand. */
-const RING_ME = 0.56;
+/** In front of you it stands well in toward the middle: you sit close to the table, and it must stay above your hand. */
+const RING_ME = 0.36;
 const FACE_R = 0.1;
 
 /**
@@ -137,7 +137,7 @@ export class TurnClock {
     // One draw call per material for everything that doesn't move on its own (the clock had 31 meshes).
     mergeLocal(this.body, [...this.hands, ...this.bells, this.medal]);
     this.root.add(this.body);
-    this.root.scale.setScalar(1.3);
+    this.root.scale.setScalar(1.0);
     this.place(this.angle);
   }
 

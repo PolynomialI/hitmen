@@ -11,7 +11,8 @@ function badge(kind: 'instant' | 'target', color: string, D: string): string {
   const cy = 90;
   const icon =
     kind === 'instant'
-      ? `<path d="M ${cx + 6},${cy - 26} L ${cx - 15},${cy + 5} L ${cx - 1},${cy + 5} L ${cx - 7},${cy + 27} L ${cx + 16},${cy - 5} L ${cx + 2},${cy - 5} Z" fill="${color}" stroke="${color}" stroke-width="4" stroke-linejoin="round"/>`
+      ? // Playable at any time: an orange-gold lightning bolt.
+        `<path d="M ${cx + 8},${cy - 30} L ${cx - 17},${cy + 6} L ${cx - 1},${cy + 6} L ${cx - 9},${cy + 31} L ${cx + 18},${cy - 6} L ${cx + 2},${cy - 6} Z" fill="#f7a81e" stroke="#e0601a" stroke-width="5" stroke-linejoin="round"/>`
       : `<circle cx="${cx}" cy="${cy}" r="20" fill="none" stroke="${color}" stroke-width="8"/>
          <circle cx="${cx}" cy="${cy}" r="7" fill="${color}"/>
          <path d="M ${cx},${cy - 31} L ${cx},${cy - 19} M ${cx},${cy + 19} L ${cx},${cy + 31} M ${cx - 31},${cy} L ${cx - 19},${cy} M ${cx + 19},${cy} L ${cx + 31},${cy}" stroke="${color}" stroke-width="7" stroke-linecap="round"/>`;
