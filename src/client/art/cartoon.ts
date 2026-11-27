@@ -140,17 +140,27 @@ function scry(p: Pal): string {
 }
 
 function bounty(p: Pal): string {
+  // A spiked mace ball: white, outlined in the card's deep orange, hollow drops on its face.
+  const O = mix(p.c, '#7a1a00', 0.55);
+  const cx = 250;
+  const cy = 350;
+  const R = 140;
+  const spikes = Array.from({ length: 10 }, (_, i) => {
+    const a = (i / 10) * Math.PI * 2 - 1.2 + (i % 3) * 0.06;
+    const half = 0.2;
+    const base = R * 0.9;
+    const tip = R * (i % 2 ? 1.42 : 1.55);
+    const pt = (ang: number, r: number) => `${(cx + Math.cos(ang) * r).toFixed(1)},${(cy + Math.sin(ang) * r).toFixed(1)}`;
+    return `<path d="M ${pt(a - half, base)} L ${pt(a, tip)} L ${pt(a + half, base)} Z" fill="${W}" stroke="${O}" stroke-width="11" stroke-linejoin="round"/>`;
+  }).join('');
+  const drop = (x: number, y: number, s: number, rot: number) =>
+    `<path transform="translate(${x},${y}) rotate(${rot}) scale(${s})" d="M 0,-30 C 22,-8 24,20 0,26 C -24,20 -22,-8 0,-30 Z" fill="none" stroke="${O}" stroke-width="${(12 / s).toFixed(1)}" stroke-linejoin="round"/>`;
   return `
-    <circle cx="250" cy="352" r="134" fill="${G}"/>
-    <circle cx="244" cy="344" r="128" fill="${W}"/>
-    <circle cx="244" cy="344" r="100" fill="${p.D}"/>
-    <circle cx="244" cy="344" r="72" fill="${W}"/>
-    <circle cx="244" cy="344" r="44" fill="${p.D}"/>
-    <circle cx="244" cy="344" r="17" fill="${W}"/>
-    <path d="M 256,332 L 392,196" stroke="${mix(p.D, '#000000', 0.25)}" stroke-width="16" stroke-linecap="round"/>
-    <path d="M 376,212 L 430,206 L 414,166 Z" fill="${W}"/>
-    <path d="M 376,212 L 382,158 L 422,174 Z" fill="${G}"/>
-    <path d="M 214,300 L 196,282 M 290,300 L 306,282 M 214,388 L 196,406" stroke="${W}" stroke-width="10" stroke-linecap="round" opacity="0.8"/>`;
+    ${spikes}
+    <circle cx="${cx}" cy="${cy}" r="${R}" fill="${W}" stroke="${O}" stroke-width="13"/>
+    ${drop(196, 312, 1.5, -35)}
+    ${drop(306, 380, 1.3, 145)}
+    ${drop(292, 286, 0.95, 40)}`;
 }
 
 function slip(p: Pal): string {

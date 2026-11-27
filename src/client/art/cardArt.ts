@@ -6,28 +6,35 @@ export const CARD_W = 500;
 export const CARD_H = 700;
 
 
-function badge(kind: 'instant' | 'target', color: string, D: string): string {
-  const cx = 412;
-  const cy = 90;
-  const icon =
-    kind === 'instant'
-      ? // Playable at any time: an orange-gold lightning bolt.
-        `<path d="M ${cx + 8},${cy - 30} L ${cx - 17},${cy + 6} L ${cx - 1},${cy + 6} L ${cx - 9},${cy + 31} L ${cx + 18},${cy - 6} L ${cx + 2},${cy - 6} Z" fill="#f7a81e" stroke="#e0601a" stroke-width="5" stroke-linejoin="round"/>`
-      : `<circle cx="${cx}" cy="${cy}" r="20" fill="none" stroke="${color}" stroke-width="8"/>
-         <circle cx="${cx}" cy="${cy}" r="7" fill="${color}"/>
-         <path d="M ${cx},${cy - 31} L ${cx},${cy - 19} M ${cx},${cy + 19} L ${cx},${cy + 31} M ${cx - 31},${cy} L ${cx - 19},${cy} M ${cx + 19},${cy} L ${cx + 31},${cy}" stroke="${color}" stroke-width="7" stroke-linecap="round"/>`;
-  return `<g filter="url(#kdrop)">
-      <circle cx="${cx}" cy="${cy}" r="44" fill="${W}"/>
-      <circle cx="${cx}" cy="${cy}" r="44" fill="none" stroke="${D}" stroke-width="4" opacity="0.35"/>
-      ${icon}
-    </g>`;
+/**
+ * Corner badge: a plain white disc over the top-right corner, spilling past the card's rounded edge, with an
+ * orange-gold lightning bolt (playable at any time) or a red target and dart (aimed at a player).
+ */
+function badge(kind: 'instant' | 'target'): string {
+  const cx = 436;
+  const cy = 64;
+  const disc = `<circle cx="${cx}" cy="${cy}" r="64" fill="#fbf9f4"/>`;
+  if (kind === 'instant')
+    return `<g filter="url(#kdrop)">${disc}
+      <path d="M ${cx + 12},${cy - 44} L ${cx - 26},${cy + 9} L ${cx - 2},${cy + 9} L ${cx - 14},${cy + 46} L ${cx + 28},${cy - 9} L ${cx + 4},${cy - 9} Z" fill="#f5a316"/>
+      <path d="M ${cx + 12},${cy - 44} L ${cx - 26},${cy + 9} L ${cx - 2},${cy + 9} L ${cx + 2},${cy - 4} Z" fill="#fbc34a"/></g>`;
+  const red = '#d6261a';
+  const tx = cx - 6;
+  const ty = cy + 6;
+  return `<g filter="url(#kdrop)">${disc}
+    <circle cx="${tx}" cy="${ty}" r="40" fill="${red}"/>
+    <circle cx="${tx}" cy="${ty}" r="28" fill="#fbf9f4"/>
+    <circle cx="${tx}" cy="${ty}" r="16" fill="${red}"/>
+    <path d="M ${tx},${ty} L ${tx + 40},${ty - 40}" stroke="#5a1a0e" stroke-width="7" stroke-linecap="round"/>
+    <path d="M ${tx + 34},${ty - 46} L ${tx + 52},${ty - 50} L ${tx + 46},${ty - 34} Z" fill="${red}"/>
+    <path d="M ${tx + 28},${ty - 40} L ${tx + 46},${ty - 58} L ${tx + 40},${ty - 34} Z" fill="${red}" opacity="0.8"/></g>`;
 }
 
 export function cardFaceSVG(type: CardType): string {
   const d = CARD_DEFS[type];
   const D = mix(d.color, d.shade, 0.62);
   const pal = { c: d.color, D, L: mix(d.color, '#ffffff', 0.5) };
-  const badgeSvg = d.instant ? badge('instant', mix(d.color, d.shade, 0.25), D) : d.targeted ? badge('target', mix(d.color, d.shade, 0.25), D) : '';
+  const badgeSvg = d.instant ? badge('instant') : d.targeted ? badge('target') : '';
   const frame = { color: d.color, shade: d.shade };
   return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${CARD_W} ${CARD_H}" width="${CARD_W}" height="${CARD_H}">
     <defs>${frameDefs(frame)}</defs>
