@@ -1,5 +1,4 @@
 import { Bot } from './bot';
-import { BOT_EMOTE_COOLDOWN_MS, botReaction, type EmoteId } from './emotes';
 import { Engine, filterFor, type Setup } from './engine';
 import type { Action, GameConfig, GameEvent, PlayerId, PlayResult, SeatInfo } from './types';
 
@@ -17,10 +16,6 @@ export class Host {
   /** Every event so far (unfiltered), for late joiners / reconnects. */
   readonly log: GameEvent[] = [];
   started = false;
-  /** Tavern regulars' emotes (cosmetic; delivered outside the event stream). */
-  onEmote: ((from: PlayerId, id: EmoteId) => void) | null = null;
-  private emotes: Array<{ from: PlayerId; id: EmoteId; at: number }> = [];
-  private lastEmote = new Map<PlayerId, number>();
 
   constructor(cfg: GameConfig, seats: SeatInfo[], setup: Setup = {}, bots: Bot[] = []) {
     this.engine = new Engine(cfg, seats, setup);
@@ -55,11 +50,6 @@ export class Host {
     if (!this.started) return;
     this.engine.update(now);
     this.flush(now);
-    if (this.emotes.length && this.onEmote) {
-      const due = this.emotes.filter((e) => e.at <= now);
-      this.emotes = this.emotes.filter((e) => e.at > now);
-      for (const e of due) this.onEmote(e.from, e.id);
-    }
     for (const bot of this.bots.values()) {
       const p = this.engine.player(bot.id);
       if (!p || !p.alive) continue;
@@ -72,16 +62,6 @@ export class Host {
     }
   }
 
-  private maybeEmote(bot: PlayerId, ev: GameEvent, now: number): void {
-    const alive = this.engine.player(bot)?.alive;
-    if (!alive && ev.e !== 'over') return;
-    if (now - (this.lastEmote.get(bot) ?? -Infinity) < BOT_EMOTE_COOLDOWN_MS) return;
-    const r = botReaction(ev, bot);
-    if (!r) return;
-    this.lastEmote.set(bot, now);
-    this.emotes.push({ from: bot, id: r.id, at: now + r.delay });
-  }
-
   leave(pid: PlayerId, now: number): void {
     this.engine.forfeit(pid, now);
     this.flush(now);
@@ -91,10 +71,7 @@ export class Host {
     const evs = this.engine.drain();
     for (const ev of evs) {
       this.log.push(ev);
-      for (const bot of this.bots.values()) {
-        bot.observe(filterFor(ev, bot.id));
-        if (this.onEmote) this.maybeEmote(bot.id, ev, now);
-      }
+      for (const bot of this.bots.values()) bot.observe(filterFor(ev, bot.id));
       for (const [pid, set] of this.listeners) {
         const f = filterFor(ev, pid);
         for (const fn of set) fn(f);

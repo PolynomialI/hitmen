@@ -157,20 +157,23 @@ export class TurnClock {
     this.root.rotation.y = Math.atan2(fx, fz);
   }
 
-  /** Travel around the table to `target` (an angle), in the direction of play (+1 = clockwise from above). */
-  async goTo(target: number, dir: 1 | -1, turnsLeft: number): Promise<void> {
+  /**
+   * Travel around the table to `target` (an angle), in the direction of play (+1 = clockwise from above).
+   * `quiet`: no swish or bells (arriving at your own place: your turn has no sound of its own).
+   */
+  async goTo(target: number, dir: 1 | -1, turnsLeft: number, quiet = false): Promise<void> {
     const TWO = Math.PI * 2;
     let delta = (((target - this.angle) % TWO) + TWO) % TWO; // 0..2π clockwise
     if (dir < 0 && delta > 0) delta -= TWO;
     this.setTurns(turnsLeft);
     if (Math.abs(delta) < 0.01) {
-      this.ringBells();
+      this.ringBells(quiet);
       return;
     }
     const a0 = this.angle;
     const dur = 0.55 + (Math.abs(delta) / Math.PI) * 0.45;
     this.moving = true;
-    audio.play('swish', { vol: 0.35 });
+    if (!quiet) audio.play('swish', { vol: 0.35 });
     await tweens.to(
       dur,
       (k, raw) => {
@@ -186,7 +189,7 @@ export class TurnClock {
     this.place(this.angle);
     this.body.rotation.z = 0;
     this.moving = false;
-    this.ringBells();
+    this.ringBells(quiet);
   }
 
   /** Jump straight to a player (match start). */
@@ -209,9 +212,9 @@ export class TurnClock {
       .then(() => (this.medal.visible = this.medal.scale.x > 0.001));
   }
 
-  private ringBells(): void {
+  private ringBells(quiet = false): void {
     this.ring = 1;
-    audio.play('chime', { vol: 0.5 });
+    if (!quiet) audio.play('chime', { vol: 0.5 });
   }
 
   update(t: number, dt: number): void {

@@ -3,6 +3,7 @@
 import type { App } from '../app';
 import { audio } from '../audio/audio';
 import { QUALITIES } from '../core/gfx';
+import { openCodex } from './codex';
 import { h } from '../ui/dom';
 import { profile, saveProfile } from '../ui/profile';
 import { saveSettings, settings, type QualityChoice, type ResolutionChoice } from '../ui/settings';
@@ -68,6 +69,12 @@ export function openSettings(layer: HTMLElement, app: App): void {
       close();
     }
   };
+  const codex = h('button', { class: 'btn-text codex-btn' }, 'Card Codex');
+  codex.addEventListener('click', () => {
+    audio.play('click');
+    close();
+    openCodex(layer, app);
+  });
   const done = h('button', { class: 'btn-text' }, 'Close');
   done.addEventListener('click', () => {
     audio.play('click');
@@ -118,7 +125,7 @@ export function openSettings(layer: HTMLElement, app: App): void {
     line('Music', slider('music')),
     line('Effects', slider('effects')),
     line('Ambience', slider('ambience')),
-    h('div', { class: 'row' }, h('span'), done)
+    h('div', { class: 'row' }, codex, done)
   );
   const scrim = h('div', { class: 'scrim' }, panel);
   scrim.addEventListener('click', (e) => e.target === scrim && close());

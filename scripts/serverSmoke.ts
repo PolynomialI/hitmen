@@ -24,7 +24,6 @@ class Player {
   start: (GameEvent & { e: 'start' }) | null = null;
   errors: string[] = [];
   historyFrom = -1;
-  emotes: Array<{ from: string; id: string }> = [];
   private hand: { id: number; type: string }[] = [];
   private seq = 0;
   private waiters: Array<() => void> = [];
@@ -68,7 +67,6 @@ class Player {
     if (m.t === 'welcome') Object.assign(this, { me: m.you, token: m.token, room: m.room });
     else if (m.t === 'lobby') this.lobby = m.lobby;
     else if (m.t === 'error') this.errors.push(m.message);
-    else if (m.t === 'emote') this.emotes.push({ from: m.from, id: m.id });
     else if (m.t === 'result' && !m.result.ok) setTimeout(() => this.auto && this.act({ t: 'draw' }), 300);
     else if (m.t === 'history') {
       this.historyFrom = m.from;
@@ -161,13 +159,6 @@ async function main(): Promise<void> {
   assert(a.start!.seats.length === 3 && a.start!.seats.filter((s) => s.isBot).length === 1, 'a bot fills the empty seat');
   assert(a.start!.seats.find((s) => s.id === a.me)?.look?.seat === 'throne', 'seat look carried');
   assert(!(await getJson<RoomSummary[]>('/api/rooms')).some((r) => r.code === a.room), 'playing table no longer listed');
-
-  // Emotes reach the others at the table (not the sender); unknown ones are dropped.
-  b.send({ t: 'emote', id: 'nonsense' });
-  b.send({ t: 'emote', id: 'gg' });
-  await a.until(() => a.emotes.some((x) => x.from === b.me), 'emote relayed');
-  assert(a.emotes.every((x) => x.id !== 'nonsense'), 'unknown emote dropped');
-  assert(!b.emotes.some((x) => x.from === b.me), 'sender does not get its own emote back');
 
   // Drop B's connection mid-match, then resume: only the missed events come back.
   await b.until(() => b.events >= 25, 'B 25 events', 60_000);

@@ -9,7 +9,6 @@ import { createServer, type IncomingMessage, type ServerResponse } from 'node:ht
 import { extname, join, normalize, resolve } from 'node:path';
 import { WebSocketServer, type WebSocket } from 'ws';
 import type { Host } from '../src/shared/host';
-import { EMOTE_COOLDOWN_MS, isEmote } from '../src/shared/emotes';
 import { createTableMatch } from '../src/shared/match';
 import { normalizeCode, ONLINE_MODES, ROOM_CODE, seatOptions, type ClientMsg, type LobbyInfo, type Look, type OnlineMode, type RoomSummary, type ServerMsg } from '../src/shared/online';
 import { cleanName, NAME_MAX } from '../src/shared/text';
@@ -88,7 +87,6 @@ interface Client {
   ws: WebSocket | null;
   team: number;
   grace: NodeJS.Timeout | null;
-  lastEmote: number;
 }
 
 class Room {
@@ -142,7 +140,7 @@ class Room {
     const taken = new Set(this.clients.map((x) => x.name));
     const numerals = ['II', 'III', 'IV', 'V', 'VI'];
     for (let k = 0; taken.has(name) && k < numerals.length; k++) name = `${name.replace(/ (II|III|IV|V|VI)$/, '').slice(0, NAME_MAX - 1 - numerals[k].length)} ${numerals[k]}`;
-    const c: Client = { pid: 'p' + this.nextPid++, name, look, token: randomBytes(18).toString('base64url'), ws, team: teamCount[0] <= teamCount[1] ? 0 : 1, grace: null, lastEmote: 0 };
+    const c: Client = { pid: 'p' + this.nextPid++, name, look, token: randomBytes(18).toString('base64url'), ws, team: teamCount[0] <= teamCount[1] ? 0 : 1, grace: null };
     this.clients.push(c);
     if (!this.hostPid) this.hostPid = c.pid;
     send(ws, { t: 'welcome', you: c.pid, token: c.token, room: this.code });
@@ -187,7 +185,6 @@ class Room {
     const humans = this.clients.map((x) => ({ id: x.pid, name: x.name, look: x.look, team: this.mode === 'teams' ? x.team : undefined }));
     const { host } = createTableMatch({ mode: this.mode, size: this.size, humans, seed: (Math.random() * 2 ** 31) | 0 });
     for (const x of this.clients) host.listen(x.pid, (ev: GameEvent) => x.ws && send(x.ws, { t: 'event', ev }));
-    host.onEmote = (from, id) => this.broadcast({ t: 'emote', from, id });
     this.host = host;
     this.status = 'playing';
     this.round++;
@@ -243,15 +240,6 @@ class Room {
       send(ws, { t: 'error', message: 'The host has asked you to leave the table.', fatal: true });
       ws.close(4001, 'kicked');
     }
-  }
-
-  /** A phrase across the table: to everyone else at it (the sender shows its own). */
-  emote(c: Client, id: unknown): void {
-    if (this.status !== 'playing' || !isEmote(id)) return;
-    const now = Date.now();
-    if (now - c.lastEmote < EMOTE_COOLDOWN_MS) return;
-    c.lastEmote = now;
-    for (const x of this.clients) if (x !== c && x.ws) send(x.ws, { t: 'emote', from: c.pid, id });
   }
 
   /** The socket closed: keep the seat for a while so the player can come back. */
@@ -399,8 +387,6 @@ wss.on('connection', (ws) => {
         return room.start(me);
       case 'again':
         return room.again();
-      case 'emote':
-        return room.emote(me, msg.id);
       case 'kick':
         return room.kick(me, String(msg.id ?? ''));
       case 'leave':

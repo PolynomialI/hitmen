@@ -167,13 +167,8 @@ export class HandView {
       c.root.position.lerp(sl.p, k);
       const q = new THREE.Quaternion().setFromEuler(sl.r);
       c.root.quaternion.slerp(q, k);
-      let sc = sl.s;
-      if (c.card && this.highlight.has(c.card.id)) {
-        const pulse = 0.5 + 0.5 * Math.sin(this.t * 7);
-        const amp = this.softHighlight ? 0.012 : 0.06;
-        sc *= 1 + pulse * amp;
-        c.root.position.y += pulse * (this.softHighlight ? 0.001 : 0.004);
-      }
+      // Cards hold still (no pulsing or bobbing): only the one under the pointer lifts.
+      const sc = sl.s;
       c.root.scale.setScalar(c.root.scale.x + (sc - c.root.scale.x) * k);
     }
   }

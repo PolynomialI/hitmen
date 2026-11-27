@@ -26,7 +26,9 @@ type Sfx =
   | 'tick'
   | 'whoosh'
   | 'win'
-  | 'lose';
+  | 'lose'
+  | 'blessing'
+  | 'gunshot';
 
 const midiHz = (m: number) => 440 * Math.pow(2, (m - 69) / 12);
 
@@ -191,13 +193,14 @@ class AudioEngine {
     const v = opts.vol ?? 1;
     const at = opts.at ?? 0;
     switch (name) {
+      // Menu sounds: quiet and short, a fingertip on parchment and a soft knock on oak.
       case 'hover':
-        this.tone('sine', 740, 690, 0.06, 0.05 * v, at);
-        this.filteredNoise('bandpass', 2400, 1800, 2, 0.04, 0.03 * v, at);
+        this.filteredNoise('bandpass', 3600, 2600, 1.6, 0.03, 0.012 * v, at, 0.004);
         break;
       case 'click':
-        this.tone('triangle', 260, 140, 0.12, 0.22 * v, at);
-        this.filteredNoise('lowpass', 1800, 400, 1, 0.08, 0.12 * v, at);
+        this.tone('sine', 380, 250, 0.05, 0.06 * v, at, 0.002);
+        this.tone('sine', 760, 520, 0.03, 0.015 * v, at, 0.002);
+        this.filteredNoise('bandpass', 2200, 1400, 1.2, 0.025, 0.025 * v, at, 0.002);
         break;
       case 'swish':
         this.filteredNoise('bandpass', 900, 3800, 1.4, 0.22, 0.16 * v, at, 0.04);
@@ -228,7 +231,8 @@ class AudioEngine {
         this.filteredNoise('lowpass', 300, 2600, 0.7, 0.35, 0.12 * v, at, 0.08);
         break;
       case 'tick':
-        this.tone('square', 1800, 1700, 0.02, 0.03 * v, at);
+        this.tone('sine', 1250, 1100, 0.025, 0.02 * v, at, 0.002);
+        this.filteredNoise('highpass', 3000, 4000, 0.7, 0.015, 0.012 * v, at, 0.001);
         break;
       case 'parry':
         this.metal(620, [1, 2.4, 3.9, 5.6, 7.7], 1.1, 0.16 * v, at);
@@ -332,9 +336,22 @@ class AudioEngine {
         this.filteredNoise('lowpass', 1600, 200, 0.6, 0.3, 0.12 * v, at, 0.01);
         break;
       case 'paper':
-        this.filteredNoise('bandpass', 3000, 1600, 0.8, 0.25, 0.14 * v, at, 0.01);
-        this.filteredNoise('lowpass', 600, 200, 0.6, 0.12, 0.3 * v, at + 0.2);
+        this.filteredNoise('bandpass', 3000, 1800, 0.8, 0.18, 0.05 * v, at, 0.02);
+        this.filteredNoise('lowpass', 500, 200, 0.6, 0.08, 0.08 * v, at + 0.15);
         break;
+      case 'blessing':
+        // A happy rising chime: soft bells up a major arpeggio, the top note held.
+        [72, 76, 79, 84].forEach((m, i) => this.metal(midiHz(m), [1, 2.0, 3.01], i === 3 ? 1.8 : 0.9, (i === 3 ? 0.07 : 0.055) * v, at + i * 0.09));
+        this.metal(midiHz(88), [1, 2.0], 1.4, 0.025 * v, at + 0.36);
+        break;
+      case 'gunshot': {
+        // A sharp crack, the body of the blast and a short room tail.
+        this.filteredNoise('highpass', 2500, 1200, 0.5, 0.05, 0.55 * v, at, 0.001);
+        this.filteredNoise('lowpass', 3200, 180, 0.7, 0.35, 0.6 * v, at, 0.001);
+        this.tone('sine', 140, 40, 0.22, 0.55 * v, at, 0.001);
+        this.filteredNoise('bandpass', 900, 300, 0.8, 0.9, 0.08 * v, at + 0.05, 0.02);
+        break;
+      }
       case 'whoosh':
         this.filteredNoise('bandpass', 300, 1800, 0.9, 0.5, 0.14 * v, at, 0.2);
         break;

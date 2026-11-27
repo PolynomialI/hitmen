@@ -368,7 +368,6 @@ export class PlayMenu implements Screen {
         { class: 'play-bar' },
         pb('Create Table', 'plus', '#d84a3a', () => this.openModes()),
         (this.joinBtn = pb('Join a Table', 'key', '#5a5ad8', () => this.openJoin(), true)),
-        pb('Card Codex', 'book', '#3aa86a', () => this.openCodex()),
         pb('Watch a Table', 'eye', '#8a5ad8', () => nav.startMatch({ mode: 'original', rivals: 4, spectate: true })),
         pb('Leaderboard', 'crown', '#d8a83a', () => this.openLeaderboard())
       ),
@@ -567,42 +566,6 @@ export class PlayMenu implements Screen {
         table,
         h('div', { class: 'row' }, h('span'), close)
       )
-    );
-    this.panel.addEventListener('click', (e) => e.target === this.panel && this.closePanel());
-    this.nav.layer.append(this.panel);
-  }
-
-  private openCodex(): void {
-    this.closePanel();
-    const urls = this.nav.app.cards.urls;
-    const grid = h('div', { class: 'codex-grid' });
-    const setNames: Record<string, string> = { core: 'The Deck', teams: 'Teams only', ranked: 'Ranked only', winter: 'Winter Feast' };
-    let lastSet = '';
-    for (const t of CARD_ORDER) {
-      const d = CARD_DEFS[t];
-      if (d.set !== lastSet) {
-        lastSet = d.set;
-        grid.append(h('div', { class: 'codex-head' }, setNames[d.set]));
-      }
-      grid.append(
-        h(
-          'div',
-          { class: 'codex-card' },
-          h('img', { src: urls[t], alt: d.name, draggable: 'false' }),
-          h('b', {}, d.name),
-          h('p', {}, d.text)
-        )
-      );
-    }
-    const close = h('button', { class: 'btn-text' }, 'Close');
-    close.addEventListener('click', () => {
-      audio.play('click');
-      this.closePanel();
-    });
-    this.panel = h(
-      'div',
-      { class: 'scrim' },
-      h('div', { class: 'panel codex' }, h('h2', {}, 'The Codex'), grid, h('div', { class: 'row' }, h('span'), close))
     );
     this.panel.addEventListener('click', (e) => e.target === this.panel && this.closePanel());
     this.nav.layer.append(this.panel);

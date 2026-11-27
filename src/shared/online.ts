@@ -55,7 +55,6 @@ export type ClientMsg =
   | { t: 'leave' }
   /** Host only, while waiting: ask a player to leave the table. */
   | { t: 'kick'; id: string }
-  | { t: 'emote'; id: string }
   | { t: 'action'; id: number; action: Action };
 
 export type ServerMsg =
@@ -67,7 +66,6 @@ export type ServerMsg =
   | { t: 'result'; id: number; result: PlayResult }
   | { t: 'presence'; id: string; connected: boolean }
   /** A phrase called across the table (by a player or a regular). */
-  | { t: 'emote'; from: string; id: string }
   | { t: 'error'; message: string; fatal?: boolean };
 
 export const ROOM_CODE = /^[A-Z0-9]{4,8}$/;

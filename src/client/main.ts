@@ -67,7 +67,7 @@ document.body.append(loading);
   const picker = new Picker(app.gfx.camera, app.gfx.renderer.domElement);
   app.onUpdate(() => picker.update());
 
-  const nav: Nav = {
+  const nav: Nav = ((window as unknown as { __nav: Nav }).__nav = {
     app,
     hud,
     picker,
@@ -97,7 +97,7 @@ document.body.append(loading);
         picker.enabled = true;
       })();
     },
-  };
+  });
 
   const params = new URLSearchParams(location.search);
   const quick = params.get('start') as GameMode | null;

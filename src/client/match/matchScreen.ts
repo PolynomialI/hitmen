@@ -1,6 +1,5 @@
 import * as THREE from 'three';
 import { CARD_DEFS, type Card, type CardType } from '../../shared/cards';
-import { EMOTE_COOLDOWN_MS, EMOTES, emoteText, type EmoteId } from '../../shared/emotes';
 import type { GameEvent, GameMode, PendingInfo, PlayerId, PlayerStats, SeatInfo, SyncInfo } from '../../shared/types';
 import type { App, Screen } from '../app';
 import { audio } from '../audio/audio';
@@ -77,8 +76,6 @@ export class MatchScreen implements Screen {
   private started = false;
   private restarting = false;
   private offSession: (() => void) | null = null;
-  private emoteReady = 0;
-  private emoteList: HTMLElement | null = null;
   /** What the scene held before this match (anything else is ours to remove on dispose). */
   private sceneBefore: Set<THREE.Object3D>;
   private tableStation: Station;
@@ -181,8 +178,6 @@ export class MatchScreen implements Screen {
     this.keyHandler = (e) => {
       if (e.key === 'Escape' && this.aiming) this.cancelAim();
       if ((e.key === 'd' || e.key === ' ') && !this.aiming) this.tryDraw();
-      if (this.emoteList && e.key >= '1' && e.key <= String(EMOTES.length)) this.sendEmote(EMOTES[Number(e.key) - 1].id);
-      if (e.key === 'Escape') this.emoteList?.classList.add('out');
     };
     addEventListener('keydown', this.keyHandler);
     app.gfx.renderer.domElement.addEventListener('contextmenu', this.onContext);
@@ -208,8 +203,6 @@ export class MatchScreen implements Screen {
       return true;
     });
     if (online) this.watchSession(online);
-    this.t.onEmote((from, id) => this.showEmote(from, id));
-    if (!this.opts.spectate) this.buildEmotes();
 
     void (async () => {
       tv.setLightLevel(1);
@@ -217,55 +210,6 @@ export class MatchScreen implements Screen {
       audio.startMusic();
       this.t.start();
     })();
-  }
-
-  // ==================================================================== emotes
-
-  /** The speech button beside Sound/Leave: a short list of phrases to call across the table (keys 1-6). */
-  private buildEmotes(): void {
-    const list = h('div', { class: 'emote-list out' });
-    EMOTES.forEach((e, i) => {
-      const b = h('button', { class: 'emote-opt' }, h('i', {}, String(i + 1)), e.text);
-      b.addEventListener('pointerenter', () => audio.play('hover', { vol: 0.4 }));
-      b.addEventListener('click', () => {
-        this.sendEmote(e.id);
-        list.classList.add('out');
-      });
-      list.append(b);
-    });
-    const btn = h('button', { class: 'icon-btn emote-btn', title: 'Call across the table (1-6)', 'aria-label': 'Call across the table' }, icon('speech'));
-    btn.addEventListener('click', () => {
-      audio.play('click');
-      list.classList.toggle('out');
-    });
-    this.emoteList = list;
-    this.ui.append(h('div', { class: 'emote-wrap' }, btn, list));
-  }
-
-  private sendEmote(id: EmoteId): void {
-    const now = performance.now();
-    if (now < this.emoteReady) return;
-    this.emoteReady = now + EMOTE_COOLDOWN_MS;
-    this.t.emote(id);
-    this.showEmote(this.me, id);
-  }
-
-  /** A speech scroll over the speaker's head (yours rises above your hand). */
-  showEmote(from: PlayerId, id: EmoteId): void {
-    if (tweens.instant || this.disposed) return;
-    let el: HTMLElement;
-    if (this.isMe(from)) el = h('div', { class: 'emote-bubble mine' }, emoteText(id));
-    else {
-      const v = this.seatHead(from).add(V(0, 0.32, 0)).project(this.app.gfx.camera);
-      if (v.z > 1) return;
-      const x = Math.min(88, Math.max(12, ((v.x + 1) / 2) * 100));
-      const y = Math.max(14, ((1 - v.y) / 2) * 100);
-      el = h('div', { class: 'emote-bubble', style: `left:${x}%;top:${y}%` }, h('b', {}, this.nameOf(from)), emoteText(id));
-    }
-    this.ui.append(el);
-    audio.play('paper', { vol: 0.45 });
-    setTimeout(() => el.classList.add('out'), 2700);
-    setTimeout(() => el.remove(), 3200);
   }
 
   /** Online: connection state, other players dropping out and coming back, the table closing. */
@@ -570,16 +514,6 @@ export class MatchScreen implements Screen {
     const el = h('div', { class: 'banner-title', style: color ? `color:${color};text-shadow:0 0 30px ${color}99,0 4px 0 #1a0a04` : '' }, text);
     this.ui.append(el);
     setTimeout(() => el.remove(), 2600);
-  }
-
-  /** Small floating caption over a 3D point (who did what). */
-  caption(at: THREE.Vector3, text: string, color = '#f6ead0'): void {
-    if (tweens.instant) return;
-    const v = at.clone().project(this.app.gfx.camera);
-    if (v.z > 1) return;
-    const el = h('div', { class: 'caption', style: `left:${((v.x + 1) / 2) * 100}%;top:${((1 - v.y) / 2) * 100}%;color:${color}` }, text);
-    this.ui.append(el);
-    setTimeout(() => el.remove(), 2200);
   }
 
   private action(label: string | null, fn?: () => void): void {
@@ -921,10 +855,6 @@ export class MatchScreen implements Screen {
     this.setBadge(mine ? turnsLeft : 0);
     this.table.clearBadges();
     if (!mine) this.table.setBadge(player, turnsLeft);
-    if (mine && changed) {
-      audio.play('ignite');
-      audio.play('chime', { at: 0.25 });
-    }
     this.tutorial('turn');
     await tweens.wait(0.85);
   }
@@ -968,10 +898,7 @@ export class MatchScreen implements Screen {
       if (target) this.myMarked++;
     }
     const who = this.nameOf(player);
-    if (card.type === 'glass') {
-      this.mirrorShimmer(slot.p, effect);
-      this.caption(slot.p.clone().add(V(0, 0.25, 0)), `${who} copies ${CARD_DEFS[effect].name}`, '#bfe6ff');
-    } else if (target) this.caption(this.seatHead(target).add(V(0, 0.3, 0)), `${CARD_DEFS[card.type].name} → ${this.nameOf(target)}`, '#ffcf8a');
+    if (card.type === 'glass') this.mirrorShimmer(slot.p, effect);
     this.tutorial('play', { player, card, target });
   }
 
@@ -1007,7 +934,6 @@ export class MatchScreen implements Screen {
   private mirrorShimmer(at: THREE.Vector3, effect: CardType): void {
     const ghost = this.newCard({ id: -1, type: effect }, { p: at.clone().add(V(0, 0.04, 0)), q: Q_FACE_PLAYER.clone(), s: 1.1 });
     ghost.tint(0.8, 0.95, 1.1, 0.4);
-    audio.play('scry', { vol: 0.6 });
     const fl = this.fx.flash(at.clone().add(V(0, 0.12, 0)), new THREE.Color(1.4, 2.2, 3), 0.6);
     void tweens.to(1.1, (k) => {
       ghost.root.position.y = at.y + 0.04 + k * 0.22;
@@ -1060,7 +986,6 @@ export class MatchScreen implements Screen {
     this.table.pushPile(cm);
     this.pendingMesh?.tint(cancelled ? 0.45 : 1, cancelled ? (burned ? 0.3 : 0.45) : 1, cancelled ? (burned ? 0.25 : 0.5) : 1);
     if (!this.isMe(player)) this.showPreview(card, 900);
-    this.caption(at.clone().add(V(0, 0.25, 0)), `${this.nameOf(player)}: ${CARD_DEFS[card.type].name}!`, card.type === 'breath' ? '#ff9a5a' : '#bfe0ff');
     this.tutorial('parry', { player, cancelled });
     await tweens.wait(0.3);
   }
@@ -1073,7 +998,6 @@ export class MatchScreen implements Screen {
     audio.play('whoosh');
     await this.fly(cm.root, () => ({ p: slot.p, q: slot.q, s: 1 }), 0.4, { arc: 0.2, spin: 2.4 });
     this.table.pushPile(cm);
-    audio.play('scry', { vol: 0.5 });
     // A streak of violet light from the pile to the new mark.
     const from = slot.p.clone().add(V(0, 0.05, 0));
     const to = this.seatHead(target);
@@ -1087,7 +1011,6 @@ export class MatchScreen implements Screen {
     this.fx.group.remove(orb);
     this.fx.burst({ at: to, count: 20, color: '#d070ff', intensity: 3, speed: 0.6, life: 0.6, size: 0.025, gravity: 0 });
     this.app.rig.shake(0.015);
-    this.caption(to.clone().add(V(0, 0.25, 0)), `${this.nameOf(player)} points at ${this.nameOf(target)}`, '#e0a0ff');
     if (this.isMe(target)) this.hint('It is aimed at you now!', 1600);
   }
 
@@ -1099,7 +1022,6 @@ export class MatchScreen implements Screen {
     await this.fly(cm.root, () => ({ p: spot, q: Q_FACE_PLAYER.clone(), s: 0.85 }), 0.45, { arc: 0.12 });
     audio.play('coins', { vol: 0.4 });
     this.claims.push({ player, mesh: cm });
-    this.caption(spot.clone().add(V(0, 0.2, 0)), `${this.nameOf(player)} sends a Privateer`, '#9ad0ff');
   }
 
   private async onResolve(player: PlayerId, card: Card, effect: CardType, cancelled: boolean): Promise<void> {
@@ -1108,10 +1030,8 @@ export class MatchScreen implements Screen {
     this.phase = 'turn';
     if (cancelled) {
       audio.play('snuff', { vol: 0.8 });
-      if (!this.tut) this.hint(`${CARD_DEFS[card.type].name} was stopped.`, 1500);
     } else if (effect === 'slip') {
       audio.play('whoosh');
-      if (!this.isMe(player) && !this.tut) this.hint(`${this.nameOf(player)} slips away without drawing.`, 1800);
     }
     this.tutorial('resolve', { player, card, cancelled });
     this.pending = null;
@@ -1152,7 +1072,6 @@ export class MatchScreen implements Screen {
     this.app.rig.shake(0.008);
     const flare = this.fx.flash(this.table.deckTopWorld(), new THREE.Color(3, 1.3, 0.4), 0.3);
     void tweens.to(0.5, (k) => ((flare.material as THREE.SpriteMaterial).opacity = 1 - k)).then(() => this.fx.group.remove(flare));
-    this.caption(this.table.deckTopWorld().add(V(0, 0.2, 0)), 'Burned back into the deck', '#ff9a5a');
     cm.dispose();
     this.pendingMesh = null;
   }
@@ -1167,20 +1086,17 @@ export class MatchScreen implements Screen {
     const at = { p: this.table.pilePos.clone().add(V(0, 0.08, 0)), q: Q_FACE_PLAYER.clone(), s: 1 };
     const cm = this.newCard(card, at, this.isMe(player) ? 'hand' : 'table');
     cm.tint(0.8, 0.95, 1.1);
-    audio.play('scry', { vol: 0.5 });
     if (this.isMe(player)) {
       await this.fly(cm.root, () => this.camX(0, 0.02, 0.5, 1.05), 0.5, { arc: 0.12 });
       cm.tint(1, 1, 1);
       await tweens.wait(0.2);
       this.addToHand(cm);
     } else await this.giveToSeat(player, cm, 0.6);
-    this.caption(this.seatHead(player), `${this.nameOf(player)} copies ${CARD_DEFS[card.type].name}`, '#9ad0ff');
   }
 
   private async onPass(from: PlayerId, to: PlayerId, card: Card): Promise<void> {
     const claim = this.claims.find((c) => c.player === from);
     const cm = claim?.mesh ?? this.newCard(card, { p: this.table.pilePos.clone().add(V(0, 0.1, 0)), q: Q_FACE_PLAYER.clone(), s: 1 });
-    this.caption(this.seatHead(from), 'The Privateer is caught!', '#ff8a6a');
     if (this.isMe(to)) {
       cm.setVariant('hand');
       await this.fly(cm.root, () => this.camX(0, 0.02, 0.5, 1.05), 0.5, { arc: 0.12 });
@@ -1191,7 +1107,6 @@ export class MatchScreen implements Screen {
 
   private async onScry(player: PlayerId, cards: Card[] | undefined, ms: number): Promise<void> {
     this.phase = 'scry';
-    audio.play('scry');
     const from = this.deckX();
     this.scryMeshes = [];
     const visible = !!cards;
@@ -1228,7 +1143,6 @@ export class MatchScreen implements Screen {
         dummy.lookAt(sv ? sv.figure.root.position.clone().add(V(0, 0.5, 0)) : p.clone().add(V(1, 0, 0)));
         return rise(cm, i, () => ({ p, q: dummy.quaternion.clone(), s: 0.95 }));
       });
-      if (!this.tut) this.hint(`${this.nameOf(player)} peers into the Scrying Orb…`, Math.min(ms, 3000));
       await Promise.all(jobs);
     }
   }
@@ -1299,7 +1213,6 @@ export class MatchScreen implements Screen {
     packs.flat().forEach((g) => g.dispose());
     sv?.figure.setReach(0, 'L');
     sv?.figure.setReach(0, 'R');
-    if (!this.tut) this.caption(center.clone().add(V(0, 0.2, 0)), `${this.nameOf(by)} shuffles the deck`, '#ffe0a0');
   }
 
   private async onReveal(card: Card): Promise<void> {
@@ -1327,7 +1240,6 @@ export class MatchScreen implements Screen {
       this.hint(`${this.nameOf(to)} demands a card. Click the one you'll hand over.`);
       this.app.rig.shake(0.01);
     } else if (this.isMe(to)) this.hint(`${this.nameOf(from)} is choosing what to give you…`);
-    else this.hint(`${this.nameOf(from)} must hand ${this.nameOf(to)} a card.`, 2000);
     this.refreshAffordances();
   }
 
@@ -1385,11 +1297,9 @@ export class MatchScreen implements Screen {
     this.allLook(this.isMe(player) ? this.app.gfx.camera.position.clone() : this.seatHead(player), player);
     setTimeout(() => this.allLook(null), 1600);
     if (this.isMe(player)) {
-      this.banner(`Bounty! ${turns} turns`, '#ff8a3a');
       this.setBadge(turns);
     } else {
       this.table.setBadge(player, turns);
-      if (!this.tut) this.hint(`${this.nameOf(player)} must take ${turns} turns.`, 1800);
     }
     this.tutorial('owed', { player });
     await tweens.wait(0.55);
@@ -1401,7 +1311,6 @@ export class MatchScreen implements Screen {
     this.table.reverse(dir);
     audio.play('whoosh', { vol: 1.2 });
     audio.play('chime', { at: 0.3, vol: 0.5 });
-    this.banner('The order turns about!', '#7fe0b0');
     await tweens.wait(1.1);
   }
 
@@ -1410,15 +1319,12 @@ export class MatchScreen implements Screen {
     audio.play('parry', { vol: 0.8 });
     audio.play('thud', { at: 0.2, vol: 0.6 });
     this.app.rig.shake(0.02);
-    this.banner(`${CARD_DEFS[type].name}: shackled!`, '#c9c2b6');
-    this.hint(`${this.nameOf(player)} chains every ${CARD_DEFS[type].name} for ${turns} turns.`, 2600);
     await tweens.wait(1.2);
   }
 
   private async onUnlock(type: CardType): Promise<void> {
     this.table.showChains(false);
     audio.play('coins', { vol: 0.5 });
-    this.caption(this.table.pilePos.clone().add(V(0, 0.25, 0)), `${CARD_DEFS[type].name} is free again`, '#e0e0d0');
     await tweens.wait(0.5);
   }
 
@@ -1428,8 +1334,6 @@ export class MatchScreen implements Screen {
     const at = this.isMe(target) ? this.camX(0, -0.05, 0.6).p : this.seatHead(target);
     this.fx.burst({ at, count: 30, color: '#ffe08a', intensity: 3, speed: 0.6, life: 0.9, size: 0.025, gravity: 0 });
     this.table.setWard(target, true);
-    if (this.isMe(target)) this.banner('You are warded', '#ffe08a');
-    else this.caption(at.clone().add(V(0, 0.2, 0)), `${this.nameOf(player)} wards ${this.nameOf(target)}`, '#ffe08a');
     await tweens.wait(1.1);
   }
 
@@ -1440,15 +1344,12 @@ export class MatchScreen implements Screen {
     this.table.setWard(target, false);
     this.pendingMesh?.tint(0.45, 0.45, 0.5);
     this.app.rig.shake(0.02);
-    this.caption(at.clone().add(V(0, 0.2, 0)), `The Aegis holds! ${CARD_DEFS[card.type].name} fizzles.`, '#ffe08a');
     await tweens.wait(1.0);
   }
 
   private async onRetake(player: PlayerId, card: Card): Promise<void> {
     const cm = this.table.takeFromPile(card.id) ?? this.newCard(card, { p: this.table.pilePos.clone(), q: Q_FLAT_DOWN.clone(), s: 1 });
-    audio.play('scry', { vol: 0.5 });
     audio.play('swish');
-    this.caption(this.table.pilePos.clone().add(V(0, 0.22, 0)), `${this.nameOf(player)} turns back the sands: ${CARD_DEFS[card.type].name}`, '#ffe0a0');
     if (this.isMe(player)) {
       cm.setCard(card);
       cm.setVariant('hand');
@@ -1461,7 +1362,6 @@ export class MatchScreen implements Screen {
   private async onSwap(a: PlayerId, b: PlayerId, handA?: Card[], handB?: Card[]): Promise<void> {
     audio.play('whoosh', { vol: 1.2 });
     audio.play('shuffle', { at: 0.2, vol: 0.6 });
-    this.caption(this.table.pilePos.clone().add(V(0, 0.25, 0)), `${this.nameOf(a)} and ${this.nameOf(b)} swap hands`, '#9fe07a');
     const meIn = this.isMe(a) || this.isMe(b);
     const other = this.isMe(a) ? b : a;
     const myNew = this.isMe(a) ? handA : handB;
@@ -1605,7 +1505,7 @@ export class MatchScreen implements Screen {
       const shackled = this.sync?.lock?.type === 'angel';
       if (hasAngel) this.hint(this.tut ? 'Quick! Click your Guardian Angel!' : this.sync?.last === 'angel' && !this.hand.ofType('angel') ? 'Your Looking Glass can copy the Angel. Play it!' : 'Play your Guardian Angel!');
       else this.hint(shackled ? 'Your Angels are in chains…' : 'No angel watches over you…');
-    } else if (!this.tut) this.hint(`${this.nameOf(player)} drew the Hooded Hand!`);
+    }
     this.refreshAffordances();
     this.tutorial('doom', { player });
   }
@@ -1626,44 +1526,15 @@ export class MatchScreen implements Screen {
       const p = doom.root.position.clone().add(V(-0.08, 0.06, -0.1));
       await this.fly(angel.root, () => ({ p, q: doom.root.quaternion.clone(), s: 1.25 }), 0.45, { arc: 0.1 });
     }
-    audio.play('angel');
+    // Saved: a happy chime, the red drains away and the candles come back.
+    audio.play('blessing');
     this.allLook(null, undefined, -0.5);
     setTimeout(() => this.allLook(null, undefined, 0), 1500);
-    const at = angel.root.position.clone();
-    const fl = this.fx.flash(at, new THREE.Color(3, 2.7, 2), 1.4);
-    const ring = this.fx.ring(at, new THREE.Color(3, 2.5, 1.4), app.gfx.camera.quaternion.clone());
-    const ring2 = this.fx.ring(at, new THREE.Color(2.4, 2.2, 1.6), app.gfx.camera.quaternion.clone());
-    this.fx.burst({ at, count: 30, color: '#ffffff', speed: 0.5, up: 0.4, life: 2.2, size: 0.035, gravity: -0.12, drag: 1.2, kind: 'feather', spread: V(0.1, 0.1, 0.1) });
-    this.fx.burst({ at, count: 46, color: '#ffe8b0', intensity: 3, speed: 0.9, life: 1.3, size: 0.02, gravity: 0.1 });
-    // Shafts of light.
-    const rays: THREE.Mesh[] = [];
-    for (let i = 0; i < 9; i++) {
-      const r = new THREE.Mesh(
-        new THREE.PlaneGeometry(0.03, 1.2),
-        new THREE.MeshBasicMaterial({ map: tv.glowTex, color: new THREE.Color(2.4, 2.1, 1.3), transparent: true, opacity: 0, blending: THREE.AdditiveBlending, depthWrite: false })
-      );
-      r.position.copy(at);
-      r.quaternion.copy(app.gfx.camera.quaternion);
-      r.rotateZ((i / 9) * Math.PI * 2);
-      r.translateY(0.6);
-      this.fx.group.add(r);
-      rays.push(r);
-    }
     tv.flames.uniforms.uTint.value.setRGB(1, 1, 1);
-    await tweens.to(1.3, (k) => {
-      const flash = k < 0.2 ? k / 0.2 : 1 - (k - 0.2) / 0.8;
-      app.gfx.grade.u('uHoly').value = flash * 0.65;
+    await tweens.to(1.0, (k) => {
       app.gfx.grade.u('uDanger').value = 1 - k * 0.7;
-      (fl.material as THREE.SpriteMaterial).opacity = flash;
-      fl.scale.setScalar(1.4 + k * 1.2);
-      ring.scale.setScalar(0.05 + k * 0.6);
-      ring2.scale.setScalar(0.05 + Math.max(0, k - 0.15) * 0.9);
-      (ring.material as THREE.MeshBasicMaterial).opacity = 1 - k;
-      (ring2.material as THREE.MeshBasicMaterial).opacity = Math.max(0, 0.8 - k);
-      rays.forEach((r, i) => ((r.material as THREE.MeshBasicMaterial).opacity = flash * (0.5 + 0.5 * Math.sin(i + k * 6))));
       tv.setLightLevel(0.55 + k * 0.35);
     }, { ease: ease.outCubic });
-    this.fx.group.remove(fl, ring, ring2, ...rays);
     const sv = this.table.seat(player);
     if (sv) sv.figure.breathe = 1;
     const slot = this.table.pileSlot();
@@ -1687,7 +1558,6 @@ export class MatchScreen implements Screen {
       dummy.position.copy(p);
       dummy.lookAt(sv ? sv.figure.root.position.clone().add(V(0, 0.5, 0)) : p);
       void this.fly(doom.root, () => ({ p, q: dummy.quaternion.clone(), s: 1.1 }), 0.4, { arc: 0.05 });
-      if (!this.tut) this.hint(`${this.nameOf(player)} is hiding the Hooded Hand…`);
     }
     this.tutorial('hidePrompt', { player });
   }

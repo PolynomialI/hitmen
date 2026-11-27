@@ -493,7 +493,7 @@ export class TableView {
           this.clockPlaced = true;
           this.clock.snapTo(target);
           this.clock.setTurns(turnsLeft);
-        } else void this.clock.goTo(target, this.orderDir, turnsLeft);
+        } else void this.clock.goTo(target, this.orderDir, turnsLeft, id === this.me);
       }
     }
     for (const sv of this.seats.values()) {

@@ -153,11 +153,11 @@ export async function showResults(s: MatchScreen): Promise<void> {
     ? mode === 'tutorial'
       ? 'You know the ways of the Hand now. Go and win some coin.'
       : 'The others will not be playing again tonight.'
-    : `The Hooded Hand always collects. ${s.nameOf(r.winner ?? undefined)} walks out with the pot.`;
+    : '';
   const panel = h(
     'div',
     { class: 'scrim results-wrap' },
-    h('div', { class: 'panel results' }, h('h2', {}, title), h('p', { class: 'lede' }, lede), rankLine, ledger, xpBar, h('div', { class: 'row' }, leave, again)),
+    h('div', { class: 'panel results' }, h('h2', {}, title), lede ? h('p', { class: 'lede' }, lede) : null, rankLine, ledger, xpBar, h('div', { class: 'row' }, leave, again)),
     mode === 'tutorial' ? null : chal
   );
   for (let i = 0; i < lines.length + 1; i++) audio.play('coins', { at: 0.35 + i * 0.16, vol: 0.4 });

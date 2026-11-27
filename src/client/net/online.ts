@@ -1,6 +1,5 @@
 // The browser side of an online table: one WebSocket to the server that served this page (same origin only),
 // with automatic reconnects and resume-after-reload (the seat token lives in sessionStorage).
-import { isEmote, type EmoteId } from '../../shared/emotes';
 import type { ClientMsg, LobbyInfo, Look, OnlineMode, RoomSummary, ServerMsg } from '../../shared/online';
 import type { Action, GameEvent, PlayResult } from '../../shared/types';
 
@@ -16,7 +15,6 @@ export interface SessionHandlers {
   closed?: (message: string | null) => void;
   state?: (s: ConnState) => void;
   presence?: (id: string, connected: boolean) => void;
-  emote?: (from: string, id: EmoteId) => void;
 }
 
 function wsUrl(): string {
@@ -182,8 +180,6 @@ export class OnlineSession {
       case 'presence':
         this.emit('presence', m.id, m.connected);
         return;
-      case 'emote':
-        if (isEmote(m.id)) this.emit('emote', m.from, m.id);
         return;
       case 'error':
         if (m.fatal) this.close(m.message);
@@ -249,9 +245,6 @@ export class OnlineSession {
     this.send({ t: 'again' });
   }
 
-  emote(id: EmoteId): void {
-    this.send({ t: 'emote', id });
-  }
 
   /** Host only, while waiting. */
   kick(id: string): void {
