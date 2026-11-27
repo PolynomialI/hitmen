@@ -161,4 +161,41 @@ for (const mode of ['original', 'scrimmage', 'teams', 'winter', 'ranked'] as Gam
   settle(turnOf('C', 2), 'a fresh bounty after the reset is 2 turns again');
   console.log('rules: attacks stack, the Hand resets owed turns:', turns.join(' '));
 }
+// ---- Rules: a Staged Brawl passes for a Tavern Brawl to everyone else and leaves the deck as it was.
+{
+  const seats: SeatInfo[] = ['A', 'B'].map((id, i) => ({ id, name: id, isBot: false, seat: i, epithet: '', cloak: '#000' }));
+  const host = new Host(
+    { mode: 'original', deck: 'original', seed: 3, ...DEFAULT_TIMERS, turnMs: null, handSize: 5 },
+    seats,
+    { first: 'A', hands: { A: ['feint', 'shackles'], B: ['brawl'] }, deck: ['slip', 'scry', 'hand', 'bounty', 'parry', 'slip', 'slip', 'slip'] }
+  );
+  const seen: Record<string, string[]> = { A: [], B: [] };
+  for (const id of ['A', 'B']) host.listen(id, (e) => ('card' in e && e.card && ['play', 'resolve'].includes(e.e) ? seen[id].push(`${e.e}:${e.card.type}`) : e.e === 'shuffle' && seen[id].push('shuffle')));
+  let now = 0;
+  host.start(now);
+  const E = host.engine;
+  const settle = (ok: () => boolean, label: string) => {
+    for (let i = 0; i < 4000; i++) {
+      if (ok() && !E.view('A', now).busy) return;
+      now += 50;
+      host.tick(now);
+    }
+    throw new Error('staged brawl test stuck: ' + label + ' ' + E.phase);
+  };
+  settle(() => E.phase === 'turn' && E.current.id === 'A', 'A starts');
+  const before = E.deck.map((c) => c.type).join(',');
+  const feint = E.player('A')!.hand.find((c) => c.type === 'feint')!;
+  assert(host.act('A', { t: 'play', cardId: feint.id }, now).ok, 'A plays the Staged Brawl');
+  settle(() => E.phase === 'turn' && seen.A.includes('shuffle'), 'it resolves');
+  assert(E.deck.map((c) => c.type).join(',') === before, 'the deck was not shuffled');
+  assert(seen.B.join(' ') === 'play:brawl resolve:brawl shuffle', 'B sees a Tavern Brawl: ' + seen.B.join(' '));
+  assert(seen.A.join(' ') === 'play:feint resolve:feint shuffle', 'A sees the Staged Brawl: ' + seen.A.join(' '));
+  assert(E.view('B', now).sync.last === 'brawl', 'a Looking Glass would copy a Tavern Brawl');
+  // Chained along with Tavern Brawls (Shackles chains the card beneath it on the pile).
+  assert(host.act('A', { t: 'play', cardId: E.player('A')!.hand.find((c) => c.type === 'shackles')!.id }, now).ok, 'A plays Shackles');
+  settle(() => E.phase === 'turn' && !!E.view('A', now).sync.lock, 'the chains go on');
+  assert(E.view('B', now).sync.lock?.type === 'brawl', 'B sees Tavern Brawls chained');
+  assert(E.isLocked('feint') && E.isLocked('brawl'), 'both kinds are chained');
+  console.log('rules: Staged Brawl', seen.B.join(' '), '(seen by the others)');
+}
 console.log('ALL OK');

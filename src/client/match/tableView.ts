@@ -81,6 +81,12 @@ export interface SeatView {
   mate: boolean;
   /** A spectator is watching from this chair: its own head badges would sit right in front of the camera. */
   watched?: boolean;
+  /** Knocked out and gone from the table (the others have closed up round it). */
+  gone?: boolean;
+  charm?: THREE.Object3D;
+  /** Heights of the name tag and of the mace / card count beside the head. */
+  nameY: number;
+  badgeY: number;
 }
 
 /** Everything physical on and around the card table during a match. */
@@ -313,28 +319,21 @@ export class TableView {
     // Hide the tavern's single display chair; we place our own.
     const oldChair = this.tv.group.children.find((o) => o.position.distanceTo(this.tv.opponentSeat) < 0.01);
     if (oldChair) oldChair.visible = false;
+    this.turnOrder = seats.map((s) => s.id);
     order.forEach((info, i) => {
       // Turn order goes clockwise seen from above: the next player sits on your left (the smallest angle).
       const angle = angles[i];
-      const out = new THREE.Vector3(Math.cos(angle), 0, Math.sin(angle));
-      const pos = this.center.clone().setY(0).addScaledVector(out, SEAT_R);
       const chair = buildSeat(info.look?.seat ?? 'oak', this.tv.mats);
       if (this.tv.isWinter) addChairSnow(chair);
       mergeLocal(chair); // a chair is 6-12 parts: one draw call per material instead
-      chair.position.copy(pos).addScaledVector(out, 0.02);
-      chair.lookAt(this.center.clone().setY(0));
       this.group.add(chair);
+      let charm: THREE.Object3D | undefined;
       if (info.look?.charm && info.look.charm !== 'none') {
-        const ch = buildCharm(info.look.charm, this.tv.mats);
-        mergeLocal(ch, ch.userData.spin ? [ch.userData.spin as THREE.Object3D] : []);
-        const cp = this.center.clone().addScaledVector(out, 0.86).add(new THREE.Vector3(-out.z, 0, out.x).multiplyScalar(0.28));
-        ch.position.set(cp.x, this.tv.tableTop + 0.002, cp.z);
-        ch.lookAt(this.center.x, ch.position.y, this.center.z);
-        this.group.add(ch);
+        charm = buildCharm(info.look.charm, this.tv.mats);
+        mergeLocal(charm, charm.userData.spin ? [charm.userData.spin as THREE.Object3D] : []);
+        this.group.add(charm);
       }
       const f = new Figure({ cloak: info.cloak, eyes: info.team != null ? TEAM_COLORS[info.team] : '#ffb347', seated: true, accessory: accessoryFor(info.name), trim: info.team != null ? TEAM_COLORS[info.team] : undefined, winter: this.tv.isWinter });
-      f.root.position.copy(pos).add(new THREE.Vector3(0, 0.47, 0));
-      f.root.lookAt(this.center.clone().setY(0.47));
       f.holding = true;
       f.setReach(0, 'L');
       f.setReach(0, 'R');
@@ -344,53 +343,47 @@ export class TableView {
       const name = makeText(info.name, { size: 0.07, color: nameColor, glow: 1.1, font: FONT3D.gothic, outline: 0.005 });
       // Just above the top of this figure (hood, hat or accessory). Depth-tested, so cards held up in front of the
       // camera (a drawn Hooded Hand, scried cards) cover it.
+      f.root.position.set(0, 0.47, 0);
       f.root.updateMatrixWorld(true);
       const top = new THREE.Box3().setFromObject(f.root).max.y;
-      name.position.copy(f.root.position).setY(Math.max(top + 0.07, f.root.position.y + 1.2));
       this.group.add(name);
       const badge = new THREE.Sprite(new THREE.SpriteMaterial({ transparent: true, depthWrite: false, depthTest: false }));
       badge.scale.setScalar(0.0001);
-      // The turns mace hangs at neck height to the right of the head (as you see it; you look along +x).
-      badge.position.set(f.root.position.x, Math.max(top - 0.5, f.root.position.y + 0.62), f.root.position.z + 0.44);
+      badge.renderOrder = 26;
+      this.group.add(badge);
       // How many cards they hold: a little card on the other side of the head.
       const count = new THREE.Sprite(new THREE.SpriteMaterial({ transparent: true, depthWrite: false, depthTest: false }));
-      count.position.set(f.root.position.x, badge.position.y, f.root.position.z - 0.42);
       count.scale.set(0.13, 0.173, 1);
       count.renderOrder = 26;
       count.visible = false;
       this.group.add(count);
-      badge.renderOrder = 26;
-      this.group.add(badge);
       const ward = new THREE.Mesh(
         new THREE.SphereGeometry(0.42, 24, 16, 0, Math.PI * 2, 0, Math.PI / 2),
         new THREE.MeshBasicMaterial({ color: new THREE.Color(1.6, 1.3, 0.5), transparent: true, opacity: 0, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide })
       );
-      ward.position.copy(pos).add(new THREE.Vector3(0, 0.5, 0));
       ward.scale.set(1, 1.5, 1);
       this.group.add(ward);
       const marker = this.makeMarker();
-      const mp = this.center.clone().addScaledVector(out, 0.78);
-      marker.position.set(mp.x, this.tv.tableTop + 0.0035, mp.z);
-      marker.rotation.z = -angle - Math.PI / 2;
       this.group.add(marker);
       const glow = new THREE.Mesh(
         new THREE.PlaneGeometry(0.9, 0.5),
         new THREE.MeshBasicMaterial({ map: this.tv.glowTex, color: new THREE.Color(1.6, 1.1, 0.5), transparent: true, opacity: 0, blending: THREE.AdditiveBlending, depthWrite: false })
       );
       glow.rotation.x = -Math.PI / 2;
-      glow.rotation.z = -angle;
-      const gp = this.center.clone().addScaledVector(out, 0.82);
-      glow.position.set(gp.x, this.tv.tableTop + 0.003, gp.z);
       this.group.add(glow);
-      this.seats.set(info.id, {
+      const sv: SeatView = {
         info,
         angle,
-        pos,
-        out,
+        pos: new THREE.Vector3(),
+        out: new THREE.Vector3(),
         figure: f,
         chair,
+        charm,
         hand: [],
         name,
+        // The turns mace hangs at neck height to the right of the head (as you see it; you look along +x).
+        nameY: Math.max(top + 0.07, 0.47 + 1.2),
+        badgeY: Math.max(top - 0.5, 0.47 + 0.62),
         badge,
         badgeTex: null,
         count,
@@ -406,9 +399,115 @@ export class TableView {
         glowK: 0,
         alive: true,
         mate,
-      });
+      };
+      this.placeSeat(sv, angle);
+      this.seats.set(info.id, sv);
     });
   }
+
+  /** Everything belonging to a seat, at a place round the table. */
+  private placeSeat(sv: SeatView, angle: number): void {
+    const out = new THREE.Vector3(Math.cos(angle), 0, Math.sin(angle));
+    const pos = this.center.clone().setY(0).addScaledVector(out, SEAT_R);
+    sv.angle = angle;
+    sv.out.copy(out);
+    sv.pos.copy(pos);
+    const mid = this.center.clone().setY(0);
+    sv.chair.position.copy(pos).addScaledVector(out, 0.02);
+    sv.chair.lookAt(mid);
+    if (sv.charm) {
+      const cp = this.center.clone().addScaledVector(out, 0.86).add(new THREE.Vector3(-out.z, 0, out.x).multiplyScalar(0.28));
+      sv.charm.position.set(cp.x, this.tv.tableTop + 0.002, cp.z);
+      sv.charm.lookAt(this.center.x, sv.charm.position.y, this.center.z);
+    }
+    const f = sv.figure.root;
+    f.position.copy(pos).add(new THREE.Vector3(0, 0.47, 0));
+    f.lookAt(this.center.clone().setY(0.47));
+    sv.name.position.set(f.position.x, sv.nameY, f.position.z);
+    sv.badge.position.set(f.position.x, sv.badgeY, f.position.z + 0.44);
+    sv.count.position.set(f.position.x, sv.badgeY, f.position.z - 0.42);
+    sv.ward.position.copy(pos).add(new THREE.Vector3(0, 0.5, 0));
+    const mp = this.center.clone().addScaledVector(out, 0.78);
+    sv.marker.position.set(mp.x, this.tv.tableTop + 0.0035, mp.z);
+    sv.marker.rotation.z = -angle - Math.PI / 2;
+    const gp = this.center.clone().addScaledVector(out, 0.82);
+    sv.glow.position.set(gp.x, this.tv.tableTop + 0.003, gp.z);
+    sv.glow.rotation.z = -angle;
+  }
+
+  /** Whose chair the camera sits in while you spectate (null: your own place). */
+  viewer: PlayerId | null = null;
+  /** You were knocked out: your place no longer counts when the table closes up. */
+  meGone = false;
+  /** Where the watched player's cards are held: your own hand's places (set by the match screen). */
+  watchedSlot: ((i: number, n: number) => { p: THREE.Vector3; q: THREE.Quaternion; s: number }) | null = null;
+  private turnOrder: PlayerId[] = [];
+  private turnId: PlayerId | null = null;
+  private turnN = 1;
+
+  /**
+   * Space the players still at the table evenly round it, glide everyone to their place. The camera's place is
+   * yours while you play; when you watch, \`viewer\` (the player you watch) takes it, so every view looks at the stage.
+   */
+  async arrange(viewer: PlayerId | null, dur = 0.9): Promise<void> {
+    this.viewer = viewer;
+    const present = this.turnOrder.filter((id) => (id === this.me ? !this.meGone : !!this.seats.get(id) && !this.seats.get(id)!.gone));
+    const cam = viewer ?? (present.includes(this.me) ? this.me : null);
+    let order = present;
+    if (cam) {
+      const k = present.indexOf(cam);
+      order = [...present.slice(k + 1), ...present.slice(0, k)];
+    }
+    const angles = rivalAngles(order.length);
+    const targets = new Map<PlayerId, number>();
+    order.forEach((id, i) => targets.set(id, angles[i]));
+    if (viewer) targets.set(viewer, Math.PI);
+    const moves: Array<{ sv: SeatView; a0: number; d: number }> = [];
+    for (const [id, a] of targets) {
+      const sv = this.seats.get(id);
+      if (!sv) continue;
+      let d = (a - sv.angle) % (Math.PI * 2);
+      if (d > Math.PI) d -= Math.PI * 2;
+      if (d <= -Math.PI) d += Math.PI * 2;
+      if (Math.abs(d) > 1e-4) moves.push({ sv, a0: sv.angle, d });
+    }
+    if (!moves.length) return this.placeClock();
+    await tweens.to(dur, (k) => {
+      for (const { sv, a0, d } of moves) {
+        this.placeSeat(sv, a0 + d * k);
+        // Held cards travel with their holder.
+        sv.hand.forEach((cm, i) => {
+          if (cm.animating) return;
+          const t = this.handSlot(sv.info.id, i, sv.hand.length);
+          cm.root.position.copy(t.p);
+          cm.root.quaternion.copy(t.q);
+        });
+      }
+    }, { ease: ease.inOutCubic });
+    this.placeClock();
+  }
+
+  /** The turn clock back in front of whoever's turn it is (after the seats moved). */
+  private placeClock(): void {
+    if (!this.turnId || !this.clockPlaced) return;
+    const target = this.turnId === this.me || this.turnId === this.viewer ? MY_CLOCK_ANGLE : this.seats.get(this.turnId)?.angle;
+    if (target != null) void this.clock.goTo(target, this.orderDir, this.turnN, true);
+  }
+
+  /** A knocked-out player leaves the table: body, chair and everything of theirs shrink away (no new shaders). */
+  async vanish(id: PlayerId, dur = 0.4): Promise<void> {
+    const sv = this.seats.get(id);
+    if (!sv || sv.gone) return;
+    sv.gone = true;
+    sv.alive = false;
+    for (const o of [sv.name, sv.badge, sv.count, sv.ward, sv.marker, sv.glow]) o.visible = false;
+    const parts: THREE.Object3D[] = [sv.figure.root, sv.chair, ...(sv.charm ? [sv.charm] : []), ...sv.hand.map((c) => c.root)];
+    const s0 = parts.map((p) => p.scale.clone());
+    await tweens.to(dur, (k) => parts.forEach((p, i) => p.scale.copy(s0[i]).multiplyScalar(Math.max(0.001, 1 - k))), { ease: ease.inCubic });
+    for (const p of [...parts, sv.name, sv.badge, sv.count]) p.parent?.remove(p);
+    sv.hand.length = 0;
+  }
+
 
   /** Your own charm, at your place at the table. */
   setMyCharm(model: string | undefined): void {
@@ -432,6 +531,8 @@ export class TableView {
    */
   handSlot(id: PlayerId, i: number, n: number): { p: THREE.Vector3; q: THREE.Quaternion; s: number } {
     const sv = this.seats.get(id)!;
+    // Watching from their chair: their cards are held where yours would be (under a brown film).
+    if (sv.watched && this.watchedSlot) return this.watchedSlot(i, n);
     const d = i - (n - 1) / 2;
     const side = new THREE.Vector3(-sv.out.z, 0, sv.out.x);
     const w = CARD_W * HELD_S;
@@ -495,9 +596,12 @@ export class TableView {
 
   /** Whose turn it is: name glow, gaze, and the clock travels round to them (showing turns still owed). */
   setTurn(id: PlayerId | null, turnsLeft = 1): void {
+    this.turnId = id;
+    this.turnN = turnsLeft;
     if (id) {
-      // On your own turn it stands at your front-right: clear of the pile and of your hand.
-      const target = id === this.me ? MY_CLOCK_ANGLE : this.seats.get(id)?.angle;
+      // On your own turn (or the turn of the player you watch from) it stands at your front-right: clear of the pile
+      // and of your hand.
+      const target = id === this.me || id === this.viewer ? MY_CLOCK_ANGLE : this.seats.get(id)?.angle;
       if (target != null) {
         if (!this.clockPlaced) {
           this.clockPlaced = true;
@@ -512,9 +616,7 @@ export class TableView {
       if (on) sv.figure.lookPitch = 0.25;
       else sv.figure.lookPitch = 0;
     }
-    this.turnId = id;
   }
-  private turnId: PlayerId | null = null;
 
   setMarkers(ids: PlayerId[], self = false): void {
     for (const sv of this.seats.values()) sv.markerOn = ids.includes(sv.info.id) && sv.alive;
@@ -612,6 +714,8 @@ export class TableView {
       sv.count.visible = sv.alive && !sv.watched;
       sv.badge.visible = sv.alive && !sv.watched;
       sv.name.visible = sv.alive && !sv.watched;
+      // The chair you watch from is under the camera.
+      sv.chair.visible = !sv.watched;
       if (!sv.alive || sv.hand.length === sv.countN) continue;
       sv.countN = sv.hand.length;
       const mat = sv.count.material as THREE.SpriteMaterial;
@@ -634,7 +738,7 @@ export class TableView {
       sv.wardK = damp(sv.wardK, sv.wardOn ? 1 : 0, 4, dt);
       (sv.ward.material as THREE.MeshBasicMaterial).opacity = sv.wardK * (0.16 + Math.sin(t * 2.4) * 0.05);
       sv.ward.visible = sv.wardK > 0.01;
-      sv.glowK = damp(sv.glowK, this.turnId === sv.info.id ? 1 : 0, 4, dt);
+      sv.glowK = damp(sv.glowK, this.turnId === sv.info.id && !sv.watched ? 1 : 0, 4, dt);
       (sv.glow.material as THREE.MeshBasicMaterial).opacity = sv.glowK * (0.5 + Math.sin(t * 3) * 0.12);
     }
     this.selfMarkerK = damp(this.selfMarkerK, this.selfMarkerOn ? 1 : 0, 8, dt);

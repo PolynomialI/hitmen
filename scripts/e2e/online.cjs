@@ -132,9 +132,15 @@ const { autoplay, helpers } = require('./autoplay.cjs');
     const before = await state();
     await shot(B, '04_before_reload');
     if (before && before.over) { console.log('match ended before the reload; skipping it'); return; }
+    // Alys is told Bram dropped, with the time he has to come back (a fast reload can be back within a second, so
+    // record the countdown as it appears rather than wait for it).
+    await A.evaluate(() => {
+      window.__away = [];
+      new MutationObserver((ms) => ms.forEach((m) => m.addedNodes.forEach((n) => n.classList && n.classList.contains('away-chip') && window.__away.push(n.textContent)))).observe(document.body, { childList: true, subtree: true });
+    });
     await B.reload();
-    // Alys is told Bram dropped, with the time he has to come back.
-    await A.waitForSelector('.away-chip:has-text("Bram")', { timeout: 15000 }).then(() => shot(A, '05_away')).catch(() => fail('no countdown while Bram was away'));
+    await A.waitForFunction(() => window.__away.some((t) => t.includes('Bram') && /\d+s to return/.test(t)), null, { timeout: 15000 }).catch(() => fail('no countdown while Bram was away'));
+    console.log('Alys saw:', await A.evaluate(() => window.__away[0]));
     await B.waitForSelector('body[data-ready]', { timeout: 120000, state: 'attached' });
     // Two players make a short match: if it ended while Bram was away he is back at the table's lobby instead.
     await B.waitForFunction(() => { const s = window.__app.screen; return (s && s.seats && s.seats.length === 2 && s.queue.length === 0 && !s.processing) || document.querySelector('.panel.lobby .seat.me'); }, null, { timeout: 90000 });

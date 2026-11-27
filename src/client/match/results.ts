@@ -14,7 +14,7 @@ export async function showResults(s: MatchScreen): Promise<void> {
     // Watching an online table: if its players sit down again, the next round shows here by itself.
     const again = s.opts.online ? h('span', { class: 'wait' }, 'Waiting for the next round…') : h('button', { class: 'btn-text' }, 'Watch another');
     if (!s.opts.online) again.addEventListener('click', () => s.nav.startMatch(s.opts));
-    s.ui.append(h('div', { class: 'scrim' }, h('div', { class: 'panel results' }, h('h2', {}, `${s.nameOf(r.winner ?? undefined)} wins the night`), h('p', { class: 'lede' }, 'The Hooded Hand claimed the rest.'), h('div', { class: 'row' }, back, again))));
+    s.ui.append(h('div', { class: 'scrim' }, h('div', { class: 'panel results' }, h('h2', {}, `${s.nameOf(r.winner ?? undefined)} wins the night`), h('div', { class: 'row' }, back, again))));
     audio.play('win');
     return;
   }
@@ -143,11 +143,7 @@ export async function showResults(s: MatchScreen): Promise<void> {
     s.leave();
   });
   const title = won ? (mode === 'tutorial' ? 'Lesson learned' : mode === 'teams' ? 'Your team survives' : 'You survived') : mode === 'teams' ? 'Your team has fallen' : 'You were slain';
-  const lede = won
-    ? mode === 'tutorial'
-      ? 'You know the ways of the Hand now. Go and win some coin.'
-      : 'The others will not be playing again tonight.'
-    : '';
+  const lede = won && mode === 'tutorial' ? 'You know the ways of the Hand now. Go and win some coin.' : '';
   const panel = h(
     'div',
     { class: 'scrim results-wrap' },

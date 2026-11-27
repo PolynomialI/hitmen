@@ -186,7 +186,7 @@ interface Ticket {
   target: number;
 }
 
-function ticketTexture(title: string, sub: string, seats: string, color: string, locked: boolean): THREE.Texture {
+function ticketTexture(title: string, seats: string, color: string, locked: boolean): THREE.Texture {
   return paint(640, 300, (ctx, w, hh) => {
     // Parchment ticket with notched edges.
     ctx.fillStyle = '#e8d5a8';
@@ -249,17 +249,14 @@ function ticketTexture(title: string, sub: string, seats: string, color: string,
     ctx.textBaseline = 'middle';
     ctx.font = `800 ${seats.length > 2 ? 40 : 54}px "Grenze Gotisch"`;
     ctx.fillText(seats, sx, sy + 2);
-    // Title and one line of description, large enough to read from across the room.
+    // The title alone, large enough to read from across the room.
     const cx = (130 + w) / 2;
     ctx.fillStyle = color;
-    ctx.font = '800 96px "Grenze Gotisch"';
-    ctx.textBaseline = 'alphabetic';
-    let size = 96;
+    ctx.font = '800 104px "Grenze Gotisch"';
+    ctx.textBaseline = 'middle';
+    let size = 104;
     while (ctx.measureText(title).width > w - 170 && size > 60) ctx.font = `800 ${(size -= 4)}px "Grenze Gotisch"`;
-    ctx.fillText(title, cx, 150);
-    ctx.fillStyle = 'rgba(50,25,8,0.88)';
-    ctx.font = 'italic 36px "Alegreya"';
-    ctx.fillText(sub, cx, 212);
+    ctx.fillText(title, cx, hh / 2 + 4);
     if (locked) {
       ctx.save();
       ctx.translate(w - 150, hh - 64);
@@ -294,16 +291,16 @@ export class PlayMenu implements Screen {
     nav.hud.showProfile(true);
     const board = tv.board;
     // Real players only: two matchmaking queues and the online tables.
-    const defs: Array<[string, string, string, string, () => void, number, number, number]> = [
-      ['Duel', 'You and one other soul', '1v1', '#7a2a6a', () => this.queue('duel'), -0.86, 0.47, -0.05],
-      ['Teams', 'Two against two', '2v2', '#2f5f9e', () => this.queue('teams'), 0.0, 0.5, 0.03],
-      ['Join Table', 'Sit at an open table', '', '#2f7a4a', () => this.openJoin(), 0.86, 0.46, -0.02],
-      ['Create Table', 'Your own table', '', '#9b2a20', () => this.openModes(), -0.86, -0.36, 0.04],
-      ['Watch Table', 'A match being played', '', '#5e3a1a', () => this.openWatch(), 0.0, -0.4, -0.04],
-      ['Leaderboard', 'The best in the tavern', '', '#9a6a10', () => this.openLeaderboard(), 0.86, -0.38, 0.05],
+    const defs: Array<[string, string, string, () => void, number, number, number]> = [
+      ['Duel', '1v1', '#7a2a6a', () => this.queue('duel'), -0.86, 0.47, -0.05],
+      ['Teams', '2v2', '#2f5f9e', () => this.queue('teams'), 0.0, 0.5, 0.03],
+      ['Join Table', '', '#2f7a4a', () => this.openJoin(), 0.86, 0.46, -0.02],
+      ['Create Table', '', '#9b2a20', () => this.openModes(), -0.86, -0.36, 0.04],
+      ['Watch Table', '', '#5e3a1a', () => this.openWatch(), 0.0, -0.4, -0.04],
+      ['Leaderboard', '', '#9a6a10', () => this.openLeaderboard(), 0.86, -0.38, 0.05],
     ];
-    for (const [title, sub, seats, color, act, x, y, rz] of defs) {
-      const mat = new THREE.MeshStandardMaterial({ map: ticketTexture(title, sub, seats, color, false), roughness: 0.85, transparent: true, alphaTest: 0.5 });
+    for (const [title, seats, color, act, x, y, rz] of defs) {
+      const mat = new THREE.MeshStandardMaterial({ map: ticketTexture(title, seats, color, false), roughness: 0.85, transparent: true, alphaTest: 0.5 });
       const mesh = new THREE.Mesh(new THREE.PlaneGeometry(0.84, 0.395), mat);
       mesh.position.set(x, y, 0.07);
       mesh.rotation.z = rz;
@@ -403,11 +400,11 @@ export class PlayMenu implements Screen {
     let sel: OnlineMode = 'original';
     let seats = 4;
     let open = true;
-    const modes: Array<[string, string, string, OnlineMode]> = [
-      ['Original', 'Everyone for themselves. Last soul standing wins the pot.', 'c-red', 'original'],
-      ['Teams', "Crimson against Azure. Teammates see each other's hands and share visions. Aegis and Warband join the deck.", 'c-blue', 'teams'],
-      ['Scrimmage', 'A relaxed table: long turns, half rewards.', 'c-wine', 'scrimmage'],
-      ['Winter Feast', 'A snowy table with Mistletoe and Yule Logs in the deck.', 'c-green', 'winter'],
+    const modes: Array<[string, string, OnlineMode]> = [
+      ['Original', 'c-red', 'original'],
+      ['Teams', 'c-blue', 'teams'],
+      ['Scrimmage', 'c-wine', 'scrimmage'],
+      ['Winter Feast', 'c-green', 'winter'],
     ];
     const els: HTMLElement[] = [];
     const list = h('div', { class: 'modes' });
@@ -439,8 +436,8 @@ export class PlayMenu implements Screen {
         sizeRow.append(b);
       }
     };
-    for (const [name, desc, cls, mode] of modes) {
-      const b = h('button', { class: `mode ${cls}${mode === sel ? ' sel' : ''}` }, h('b', {}, name), h('span', {}, desc));
+    for (const [name, cls, mode] of modes) {
+      const b = h('button', { class: `mode ${cls}${mode === sel ? ' sel' : ''}` }, h('b', {}, name));
       b.addEventListener('pointerenter', () => audio.play('hover'));
       b.addEventListener('click', () => {
         audio.play('click');

@@ -4,6 +4,7 @@
 
 import type { CardType } from '../../shared/cards';
 import { mix } from './cardFrame';
+import { backdoor, brawl, breath, feint, glass, misdirect, parry, pickpocket, scry, shackles, slip, turnabout } from './refIcons';
 
 export const W = '#fbf9f4';
 export const G = '#d8d1c4';
@@ -15,6 +16,8 @@ export interface Pal {
   D: string;
   /** Light tint of the card colour. */
   L: string;
+  /** The card's innermost band colour (cut-out details on the flat white icons). */
+  B: string;
 }
 
 let uid = 0;
@@ -26,33 +29,6 @@ function solid(d: string, split = 'M 256,0 L 500,0 L 500,700 L 256,700 Z', main 
 
 const RIGHT = (x: number) => `M ${x},0 L 500,0 L 500,700 L ${x},700 Z`;
 const BELOW = (y: number) => `M 0,${y} L 500,${y} L 500,700 L 0,700 Z`;
-
-function star4(x: number, y: number, s: number, fill = W): string {
-  const k = s * 0.22;
-  return `<path d="M ${x},${y - s} Q ${x + k},${y - k} ${x + s},${y} Q ${x + k},${y + k} ${x},${y + s} Q ${x - k},${y + k} ${x - s},${y} Q ${x - k},${y - k} ${x},${y - s} Z" fill="${fill}"/>`;
-}
-
-/** An arc of a circle drawn as a thick stroke ending in an arrowhead (angles in degrees, SVG orientation). */
-function arcArrow(cx: number, cy: number, r: number, a0: number, a1: number, width: number, fill = W): string {
-  const rad = (d: number) => (d * Math.PI) / 180;
-  const p = (a: number) => [cx + Math.cos(rad(a)) * r, cy + Math.sin(rad(a)) * r];
-  const [x0, y0] = p(a0);
-  const [x1, y1] = p(a1);
-  const large = Math.abs(a1 - a0) > 180 ? 1 : 0;
-  const sweep = a1 > a0 ? 1 : 0;
-  const dir = a1 > a0 ? 1 : -1;
-  const tx = -Math.sin(rad(a1)) * dir;
-  const ty = Math.cos(rad(a1)) * dir;
-  const nx = -ty;
-  const ny = tx;
-  const hw = width * 1.05;
-  const tip = [x1 + tx * width * 1.15, y1 + ty * width * 1.15];
-  const b0 = [x1 - tx * 4 + nx * hw, y1 - ty * 4 + ny * hw];
-  const b1 = [x1 - tx * 4 - nx * hw, y1 - ty * 4 - ny * hw];
-  const f = (n: number) => n.toFixed(1);
-  return `<path d="M ${f(x0)},${f(y0)} A ${r},${r} 0 ${large} ${sweep} ${f(x1)},${f(y1)}" fill="none" stroke="${fill}" stroke-width="${width}" stroke-linecap="round"/>
-    <path d="M ${f(tip[0])},${f(tip[1])} L ${f(b0[0])},${f(b0[1])} L ${f(b1[0])},${f(b1[1])} Z" fill="${fill}" stroke="${fill}" stroke-width="10" stroke-linejoin="round"/>`;
-}
 
 // ------------------------------------------------------------------------------------------- icons
 
@@ -99,49 +75,9 @@ function angel(p: Pal): string {
     <ellipse cx="250" cy="170" rx="60" ry="17" fill="none" stroke="${W}" stroke-width="11"/>`;
 }
 
-function parry(p: Pal): string {
-  const sh = 'M 250,165 C 296,186 344,192 382,186 L 378,332 C 368,432 312,494 250,528 C 188,494 132,432 122,332 L 118,186 C 156,192 204,186 250,165 Z';
-  return `
-    ${solid(sh, RIGHT(250))}
-    <path d="${sh}" transform="translate(250,350) scale(0.84) translate(-250,-350)" fill="none" stroke="${G}" stroke-width="10"/>
-    <path d="M 140,352 L 250,286 L 360,352 L 360,408 L 250,342 L 140,408 Z" fill="${p.D}"/>`;
-}
 
-function breath(p: Pal): string {
-  const head =
-    'M 84,474 C 80,400 96,330 128,292 C 150,262 186,246 222,248 L 236,212 L 252,250 C 274,256 292,270 302,290 L 330,300 C 334,312 326,322 312,322 L 296,324 C 300,336 296,346 284,348 C 256,352 232,350 214,360 C 184,376 166,420 164,474 Z';
-  return `
-    <path d="M 176,262 C 160,222 132,204 106,204 C 128,222 140,244 146,274 Z" fill="${G}"/>
-    ${solid(head, BELOW(360))}
-    ${[0, 1, 2, 3].map((i) => `<path d="M ${92 - i * 2},${330 + i * 38} L ${66 - i * 2},${350 + i * 38} L ${90 - i * 2},${362 + i * 38} Z" fill="${G}"/>`).join('')}
-    <ellipse cx="238" cy="284" rx="13" ry="10" fill="${p.D}"/>
-    <circle cx="242" cy="281" r="4" fill="${W}"/>
-    <circle cx="318" cy="309" r="5" fill="${p.D}"/>
-    <path d="M 300,322 C 340,300 360,262 396,248 C 390,276 404,290 430,292 C 410,308 414,326 444,338 C 414,344 404,364 420,390 C 388,378 366,386 350,406 C 342,378 324,356 298,344 Z" fill="#ffd36b"/>
-    <path d="M 308,330 C 338,318 360,300 384,292 C 380,310 392,322 410,328 C 392,336 390,350 398,368 C 378,362 360,366 348,380 C 340,360 326,348 308,340 Z" fill="#fff6d8"/>`;
-}
 
-function misdirect(p: Pal): string {
-  return `
-    <path d="M 150,500 L 236,214" fill="none" stroke="${G}" stroke-width="16" stroke-linecap="round" stroke-dasharray="2 30"/>
-    <path d="M 222,180 L 254,212 M 254,180 L 222,212" stroke="${G}" stroke-width="12" stroke-linecap="round"/>
-    <path d="M 150,500 C 150,350 240,268 340,296" fill="none" stroke="${W}" stroke-width="46" stroke-linecap="round"/>
-    <path d="M 404,322 L 323,345 L 357,255 Z" fill="${W}" stroke="${W}" stroke-width="12" stroke-linejoin="round"/>
-    <circle cx="150" cy="500" r="23" fill="${p.D}"/>`;
-}
 
-function scry(p: Pal): string {
-  return `
-    <path d="M 178,466 L 322,466 L 348,510 L 152,510 Z" fill="${G}"/>
-    <rect x="184" y="448" width="132" height="24" rx="10" fill="${W}"/>
-    <circle cx="250" cy="318" r="130" fill="${G}"/>
-    <circle cx="240" cy="306" r="120" fill="${W}"/>
-    <path d="M 158,320 C 200,262 300,262 342,320 C 300,378 200,378 158,320 Z" fill="#ffffff" stroke="${p.D}" stroke-width="12" stroke-linejoin="round"/>
-    <circle cx="250" cy="320" r="42" fill="${p.D}"/>
-    <circle cx="250" cy="320" r="19" fill="${mix(p.D, '#000000', 0.6)}"/>
-    <circle cx="264" cy="305" r="9" fill="${W}"/>
-    ${star4(140, 196, 20)}${star4(372, 206, 15)}${star4(386, 428, 13)}`;
-}
 
 function bounty(p: Pal): string {
   // A spiked mace ball: white, outlined in the card's deep orange, hollow drops on its face.
@@ -167,94 +103,12 @@ function bounty(p: Pal): string {
     ${drop(292, 286, 0.95, 40)}`;
 }
 
-function slip(p: Pal): string {
-  const boot = 'M 202,190 L 298,190 C 302,250 300,320 302,372 C 348,380 394,396 406,428 C 414,452 400,474 372,474 L 198,474 C 186,474 180,464 182,452 C 190,380 198,280 202,190 Z';
-  return `
-    <path d="M 52,384 L 132,384 M 74,424 L 154,424 M 46,464 L 116,464" stroke="${W}" stroke-width="13" stroke-linecap="round" opacity="0.7"/>
-    <path d="M 204,252 C 164,200 122,188 92,198 C 120,214 152,238 198,274 Z" fill="${W}"/>
-    <path d="M 200,282 C 152,252 108,252 80,270 C 114,278 150,292 198,304 Z" fill="${G}"/>
-    <path d="M 198,308 C 158,300 120,306 98,324 C 134,326 168,328 196,330 Z" fill="${W}"/>
-    ${solid(boot, BELOW(400))}
-    <rect x="190" y="174" width="120" height="42" rx="16" fill="${G}"/>
-    <path d="M 182,452 L 406,452 C 410,468 398,480 372,480 L 194,480 C 182,480 178,468 182,452 Z" fill="${p.D}"/>
-    <path d="M 252,244 L 290,244 M 252,276 L 292,276 M 254,308 L 294,308" stroke="${G}" stroke-width="9" stroke-linecap="round"/>`;
-}
 
-function turnabout(p: Pal): string {
-  return `
-    ${arcArrow(250, 352, 112, 198, 318, 40)}
-    ${arcArrow(250, 352, 112, 18, 138, 40)}
-    <circle cx="250" cy="352" r="34" fill="${p.D}"/>
-    <circle cx="250" cy="352" r="15" fill="${W}"/>`;
-}
 
-function backdoor(p: Pal): string {
-  return `
-    <rect x="112" y="512" width="300" height="18" rx="9" fill="${G}"/>
-    <path d="M 132,520 L 132,286 C 132,196 300,196 300,286 L 300,520 Z" fill="${G}"/>
-    <path d="M 152,520 L 152,290 C 152,220 280,220 280,290 L 280,520 Z" fill="${W}"/>
-    <path d="M 195,238 L 195,520 M 238,238 L 238,520" stroke="${G}" stroke-width="7"/>
-    <rect x="152" y="280" width="54" height="16" rx="6" fill="${p.D}"/>
-    <rect x="152" y="446" width="54" height="16" rx="6" fill="${p.D}"/>
-    <circle cx="260" cy="388" r="12" fill="${p.D}"/>
-    ${solid('M 346,226 L 386,226 L 386,412 L 420,412 L 366,492 L 312,412 L 346,412 Z', RIGHT(366))}`;
-}
 
-function pickpocket(p: Pal): string {
-  const pouch = 'M 250,262 C 196,262 152,306 146,376 C 140,452 188,512 250,512 C 312,512 360,452 354,376 C 348,306 304,262 250,262 Z';
-  return `
-    ${solid(pouch, RIGHT(272))}
-    <path d="M 210,264 C 194,232 214,206 236,220 C 244,198 258,198 266,220 C 288,206 308,232 290,264 Z" fill="${W}"/>
-    <rect x="198" y="252" width="104" height="22" rx="11" fill="${p.D}"/>
-    <circle cx="250" cy="398" r="34" fill="none" stroke="${p.D}" stroke-width="9" opacity="0.55"/>
-    ${star4(250, 398, 17, p.D)}
-    <circle cx="352" cy="196" r="31" fill="#ffd25e"/><circle cx="352" cy="196" r="21" fill="none" stroke="#e0a630" stroke-width="6"/>
-    <circle cx="398" cy="262" r="24" fill="#ffd25e"/><circle cx="398" cy="262" r="15" fill="none" stroke="#e0a630" stroke-width="5"/>
-    <path d="M 300,236 C 310,214 320,206 328,200 M 330,276 C 348,270 362,268 376,268" stroke="${W}" stroke-width="8" stroke-linecap="round" opacity="0.7" fill="none"/>`;
-}
 
-function brawl(p: Pal): string {
-  const mug = (x: number, rot: number, flip: boolean) => {
-    const body = 'M -62,-72 L 62,-72 L 62,82 C 62,94 54,100 44,100 L -44,100 C -54,100 -62,94 -62,82 Z';
-    return `<g transform="translate(${x},372) rotate(${rot}) ${flip ? 'scale(-1,1)' : ''}">
-      <path d="M 58,-34 C 116,-36 116,58 58,56" fill="none" stroke="${W}" stroke-width="24" stroke-linecap="round"/>
-      ${solid(body, 'M 24,-200 L 200,-200 L 200,200 L 24,200 Z')}
-      <rect x="-62" y="-40" width="124" height="14" rx="6" fill="${p.D}" opacity="0.7"/>
-      <rect x="-62" y="56" width="124" height="14" rx="6" fill="${p.D}" opacity="0.7"/>
-      <path d="M -74,-70 C -86,-104 -54,-126 -32,-108 C -20,-140 22,-140 30,-110 C 54,-128 88,-104 74,-70 Z" fill="#ffffff"/>
-      <path d="M -66,-74 C -20,-66 20,-66 66,-74" fill="none" stroke="${G}" stroke-width="6" stroke-linecap="round"/>
-    </g>`;
-  };
-  return `${mug(172, -16, false)}${mug(328, 16, true)}
-    <circle cx="250" cy="206" r="13" fill="#ffffff"/><circle cx="218" cy="182" r="8" fill="#ffffff"/><circle cx="284" cy="178" r="9" fill="#ffffff"/><circle cx="252" cy="160" r="6" fill="#ffffff"/>`;
-}
 
-function glass(p: Pal): string {
-  return `
-    <path d="M 234,418 L 266,418 L 272,512 C 272,530 228,530 228,512 Z" fill="${W}"/>
-    <circle cx="250" cy="532" r="16" fill="${G}"/>
-    ${solid('M 250,164 C 312,164 362,224 362,300 C 362,376 312,436 250,436 C 188,436 138,376 138,300 C 138,224 188,164 250,164 Z', RIGHT(268))}
-    <clipPath id="gl"><ellipse cx="250" cy="300" rx="88" ry="110"/></clipPath>
-    <ellipse cx="250" cy="300" rx="88" ry="110" fill="${mix(p.L, '#ffffff', 0.55)}"/>
-    <g clip-path="url(#gl)">
-      <path d="M 168,276 L 236,196 L 262,206 L 182,302 Z" fill="#ffffff" opacity="0.85"/>
-      <path d="M 196,318 L 270,230 L 282,236 L 206,330 Z" fill="#ffffff" opacity="0.6"/>
-    </g>
-    <circle cx="250" cy="168" r="11" fill="${p.D}"/><circle cx="250" cy="432" r="11" fill="${p.D}"/>`;
-}
 
-function shackles(p: Pal): string {
-  const links = [96, 138, 362, 404]
-    .map((x, i) => (i % 2 ? `<rect x="${x - 26}" y="${328}" width="52" height="12" rx="6" fill="${G}"/>` : `<ellipse cx="${x}" cy="334" rx="28" ry="17" fill="none" stroke="${G}" stroke-width="11"/>`))
-    .join('');
-  return `
-    ${links}
-    <path d="M 190,330 L 190,272 C 190,196 310,196 310,272 L 310,330" fill="none" stroke="${G}" stroke-width="36"/>
-    <path d="M 190,330 L 190,272 C 190,206 300,200 304,262" fill="none" stroke="${W}" stroke-width="22"/>
-    ${solid('M 180,318 L 320,318 C 338,318 352,332 352,350 L 352,476 C 352,494 338,508 320,508 L 180,508 C 162,508 148,494 148,476 L 148,350 C 148,332 162,318 180,318 Z', RIGHT(268))}
-    <circle cx="250" cy="396" r="21" fill="${p.D}"/>
-    <rect x="240" y="402" width="20" height="50" rx="8" fill="${p.D}"/>`;
-}
 
 function aegis(p: Pal): string {
   const rays = Array.from({ length: 12 }, (_, i) => {
@@ -369,6 +223,7 @@ export const CARTOON: Record<CardType, (p: Pal) => string> = {
   backdoor,
   pickpocket,
   brawl,
+  feint,
   glass,
   shackles,
   aegis,

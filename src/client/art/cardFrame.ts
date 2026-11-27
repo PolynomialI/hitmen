@@ -17,6 +17,8 @@ export interface FrameOpts {
   shade: string;
   /** Border colour. Defaults to leather brown. */
   rim?: string;
+  /** The innermost band's colour (the bands step evenly from \`color\` to it). Default: a little darker than \`color\`. */
+  inner?: string;
   /** Optional pattern fill id painted over the card's colour (e.g. a sleeve's motif). */
   patternId?: string;
   /** Prefix for ids so several frames can live in one document. */
@@ -58,11 +60,15 @@ const BANDS: Array<[number, number]> = [
   [146, 16],
 ];
 
+/** Colour of band k (0 = outermost of the four inner bands). */
+export function bandColor(o: { color: string; inner?: string }, k: number): string {
+  return o.inner ? mix(o.color, o.inner, (k + 1) / BANDS.length) : mix(o.color, mix(o.color, '#000000', 0.55), 0.11 * (k + 1));
+}
+
 /** The card's colour edge to edge, in flat concentric bands darkening toward the middle (no border). */
 export function frameBody(o: FrameOpts): string {
   const whole = `x="0" y="0" width="500" height="700" rx="${RIM_RX}"`;
-  const dark = mix(o.color, '#000000', 0.55);
-  const bands = BANDS.map(([i, rx], k) => `<rect x="${i}" y="${i}" width="${500 - 2 * i}" height="${700 - 2 * i}" rx="${rx}" fill="${mix(o.color, dark, 0.11 * (k + 1))}"/>`).join('');
+  const bands = BANDS.map(([i, rx], k) => `<rect x="${i}" y="${i}" width="${500 - 2 * i}" height="${700 - 2 * i}" rx="${rx}" fill="${bandColor(o, k)}"/>`).join('');
   return `
     <rect ${whole} fill="${o.color}"/>
     ${bands}

@@ -1,4 +1,4 @@
-import { type Card, type CardType, DECK_PER_PLAYER, def, poolFor } from './cards';
+import { type Card, type CardType, DECK_PER_PLAYER, def, faceOf, poolFor } from './cards';
 import { Rng } from './rng';
 import { DRAW_HAND, DUR } from './timing';
 import type {
@@ -169,7 +169,13 @@ export class Engine {
   }
 
   isLocked(t: CardType): boolean {
-    return !!this.lock && this.lock.type === t;
+    return !!this.lock && (this.lock.type === t || this.lock.type === faceOf(t));
+  }
+
+  /** An event that shows `card` (as `effect`): what everyone sees, with the truth for its player and teammates. */
+  private shownCard(pid: PlayerId, card: Card, effect: CardType): { card: Card; effect: CardType; secret?: Record<PlayerId, Partial<EventBody>> } {
+    if (faceOf(card.type) === card.type) return { card, effect };
+    return { card: { id: card.id, type: faceOf(card.type) }, effect: faceOf(effect), secret: this.sec([[pid, { card, effect } as Partial<EventBody>]]) };
   }
 
   /** Can this player save themselves from the Hooded Hand right now? */
@@ -315,8 +321,8 @@ export class Engine {
         removeCard(p.hand, card.id);
         this.discard.push(card);
         p.stats.played++;
-        if (card.type !== 'glass') this.lastPlayed = card.type;
-        this.emit({ e: 'play', player: pid, card, effect, target });
+        if (card.type !== 'glass') this.lastPlayed = faceOf(card.type);
+        this.emit({ e: 'play', player: pid, ...this.shownCard(pid, card, effect), target });
         this.pending = { player: pid, card, effect, target, cancelled: false, burned: false, privateers: [] };
         this.openWindow();
         return ok();
@@ -422,7 +428,7 @@ export class Engine {
   private resolvePending(): void {
     const pend = this.pending!;
     const p = this.player(pend.player)!;
-    this.emit({ e: 'resolve', player: pend.player, card: pend.card, effect: pend.effect, target: pend.target, cancelled: pend.cancelled });
+    this.emit({ e: 'resolve', player: pend.player, ...this.shownCard(pend.player, pend.card, pend.effect), target: pend.target, cancelled: pend.cancelled });
     // Privateers: copy the card, or lose the Privateer to its owner if the card was cancelled.
     for (const claim of pend.privateers) {
       const cp = this.player(claim.player);
@@ -434,7 +440,7 @@ export class Engine {
         } else this.discard.push(claim.card);
       } else {
         this.discard.push(claim.card);
-        const copy = this.card(pend.card.type);
+        const copy = this.card(faceOf(pend.card.type));
         cp.hand.push(copy);
         this.emit({ e: 'copy', player: cp.id, card: copy, from: p.id });
       }
@@ -445,7 +451,8 @@ export class Engine {
         removeCard(this.discard, pend.card.id);
         const pos = this.rng.int(this.deck.length + 1);
         this.deck.splice(pos, 0, pend.card);
-        this.emit({ e: 'burn', card: pend.card });
+        const shown = this.shownCard(pend.player, pend.card, pend.effect);
+        this.emit({ e: 'burn', card: shown.card, secret: shown.secret });
       }
       this.resumeTurn();
       return;
@@ -494,6 +501,11 @@ export class Engine {
         this.emit({ e: 'shuffle', by: p.id });
         this.resumeTurn();
         return;
+      case 'feint':
+        // The same shuffle for every eye, and not a card moved.
+        this.emit({ e: 'shuffle', by: p.id });
+        this.resumeTurn();
+        return;
       case 'yule':
         this.rng.shuffle(this.deck);
         this.emit({ e: 'shuffle', by: p.id });
@@ -520,8 +532,8 @@ export class Engine {
         // The card beneath this one on the pile gets chained.
         const under = this.discard[this.discard.length - 2];
         if (under && under.type !== 'hand' && under.type !== 'shackles') {
-          this.lock = { type: under.type, turns: 3 };
-          this.emit({ e: 'lock', player: p.id, type: under.type, turns: 3 });
+          this.lock = { type: faceOf(under.type), turns: 3 };
+          this.emit({ e: 'lock', player: p.id, type: faceOf(under.type), turns: 3 });
         }
         this.resumeTurn();
         return;

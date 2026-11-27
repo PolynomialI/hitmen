@@ -1,6 +1,6 @@
 // Auto-plays the human seat of a match page by clicking real 3D objects, until the match is over (or `stop()`).
 // Shared by match.cjs (bot tables) and online.cjs (online tables, where the player id is not 'you').
-const PLAY = ['scry', 'bounty', 'slip', 'brawl', 'pickpocket', 'backdoor', 'glass', 'shackles', 'turnabout', 'aegis', 'warband', 'sands', 'mistletoe', 'yule'];
+const PLAY = ['scry', 'bounty', 'slip', 'brawl', 'feint', 'pickpocket', 'backdoor', 'glass', 'shackles', 'turnabout', 'aegis', 'warband', 'sands', 'mistletoe', 'yule'];
 
 function helpers(page) {
   const S = (fn, a) => page.evaluate(fn, a);

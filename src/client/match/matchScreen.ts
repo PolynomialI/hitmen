@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { CARD_DEFS, type Card, type CardType } from '../../shared/cards';
+import { CARD_DEFS, faceOf, type Card, type CardType } from '../../shared/cards';
 import type { Action, GameEvent, GameMode, PendingInfo, PlayerId, PlayerStats, PlayResult, SeatInfo, SyncInfo } from '../../shared/types';
 import type { App, Screen } from '../app';
 import { audio } from '../audio/audio';
@@ -13,6 +13,7 @@ import { toast } from '../ui/hud';
 import { profile } from '../ui/profile';
 import { lookFromProfile } from '../cosmetics/apply';
 import { makeText, type Station } from '../world/tavern';
+import { paint } from '../gfx/textures';
 import { FONT3D } from '../world/fonts3d';
 import { CardMesh } from './cardMesh';
 import { Fx } from './fx';
@@ -625,7 +626,8 @@ export class MatchScreen implements Screen {
   }
 
   private locked(t: CardType): boolean {
-    return this.sync?.lock?.type === t;
+    // A Staged Brawl is chained along with the Tavern Brawl it passes for.
+    return this.sync?.lock?.type === faceOf(t);
   }
 
   private canReact(): boolean {
@@ -1806,7 +1808,9 @@ export class MatchScreen implements Screen {
     app.rig.shake(mine ? 0.1 : 0.04);
     if (mine) {
       // Your hand drops, the room tips over as you fall, and it all goes dark.
-      this.hand.cards.splice(0).forEach((c) => {
+      const myCards = this.hand.cards.splice(0);
+      setTimeout(() => myCards.forEach((c) => void tweens.to(0.4, (k) => c.root.scale.setScalar(Math.max(0.001, 1 - k)), { ease: ease.inCubic }).then(() => c.dispose())), 1600);
+      myCards.forEach((c) => {
         this.unregister(c);
         this.app.gfx.scene.attach(c.root);
         c.setVariant('table');
@@ -1815,49 +1819,72 @@ export class MatchScreen implements Screen {
         void this.fly(c.root, () => ({ p, q, s: 1 }), 0.5 + Math.random() * 0.3, { arc: 0.2 });
       });
       app.gfx.grade.u('uDanger').value = 1;
-      await tweens.to(0.45, (k) => {
-        app.rig.offset.set(0, -0.7 * k, 0.35 * k);
-        app.rig.targetOffset.set(0, -0.6 * k, 1.4 * k);
+      this.table.meGone = true;
+      await tweens.to(0.24, (k) => {
+        app.rig.offset.set(0, -0.95 * k, 0.45 * k);
+        app.rig.targetOffset.set(0, -0.8 * k, 1.7 * k);
       }, { ease: ease.inQuad });
-      audio.play('thud');
-      app.rig.shake(0.05);
+      audio.play('thud', { vol: 1.3 });
+      app.rig.shake(0.08);
       await tweens.to(0.9, (k) => (app.gfx.grade.u('uFade').value = k * 0.95));
       await tweens.wait(0.4);
     } else if (sv) {
       const f = sv.figure;
-      // Which way the body goes: shot from one side, it drops to the other.
+      // Shot from one side, thrown to the other.
       const dirSign = Math.random() < 0.5 ? -1 : 1;
       const side = new THREE.Vector3(-sv.out.z, 0, sv.out.x).multiplyScalar(dirSign);
       const head = this.seatHead(player);
-      this.fx.burst({ at: head.clone().addScaledVector(side, 0.13), dir: side, count: 26, color: '#6e0808', kind: 'blood', speed: 1.3, up: 0.15, life: 0.9, size: 0.022, gravity: -4, drag: 0.6 });
-      this.fx.burst({ at: head.clone().addScaledVector(side, 0.1), dir: side.clone().add(V(0, -0.5, 0)), count: 10, color: '#4a0404', kind: 'blood', speed: 0.5, life: 1.2, size: 0.016, gravity: -5, drag: 0.4 });
+      // The shot: a flash at the head and a heavy spray out of the far side.
+      const flash = this.fx.flash(head.clone().addScaledVector(side, -0.1), new THREE.Color(4, 2.6, 1.4), 0.32);
+      void tweens.to(0.14, (k) => ((flash.material as THREE.SpriteMaterial).opacity = 1 - k)).then(() => this.fx.group.remove(flash));
+      this.fx.burst({ at: head.clone().addScaledVector(side, 0.13), dir: side, count: 48, color: '#7a0606', kind: 'blood', speed: 2.4, up: 0.25, life: 1.0, size: 0.026, gravity: -5, drag: 0.5 });
+      this.fx.burst({ at: head.clone().addScaledVector(side, 0.1), dir: side.clone().add(V(0, -0.6, 0)), count: 18, color: '#4a0404', kind: 'blood', speed: 0.9, life: 1.3, size: 0.02, gravity: -6, drag: 0.4 });
       f.addBloodMark(dirSign);
       f.eyesOn = 0;
-      sv.hand.splice(0).forEach((c, i) => {
+      app.rig.shake(0.07);
+      const dropped = sv.hand.splice(0);
+      dropped.forEach((c, i) => {
         c.setCard(null);
-        const p = sv.pos.clone().addScaledVector(sv.out, -0.15).addScaledVector(side, 0.2 + Math.random() * 0.3).add(V(0, 0.004 + i * 0.0015, 0));
+        const p = sv.pos.clone().addScaledVector(sv.out, 0.1).addScaledVector(side, 0.3 + Math.random() * 0.4).add(V(0, 0.004 + i * 0.0015, 0));
         const q = Q_FLAT_DOWN.clone().multiply(new THREE.Quaternion().setFromAxisAngle(V(0, 0, 1), Math.random() * 6));
-        void this.fly(c.root, () => ({ p, q, s: 1 }), 0.45 + Math.random() * 0.25, { arc: 0.08 });
+        void this.fly(c.root, () => ({ p, q, s: 1 }), 0.3 + Math.random() * 0.2, { arc: 0.16 });
       });
-      // The body drops abruptly to one side, slumped over in the chair (still in view over the table).
+      // Thrown out of the chair: the head snaps over, then the whole body slams to the floor.
       const r0 = f.root.position.clone();
       const q0 = f.root.quaternion.clone();
       const axis = sv.out.clone().multiplyScalar(-dirSign);
-      await tweens.to(0.26, (k) => {
-        f.root.position.copy(r0).addScaledVector(side, 0.12 * k).add(V(0, -0.07 * k, 0));
-        f.root.quaternion.copy(q0).premultiply(new THREE.Quaternion().setFromAxisAngle(axis, 1.0 * k));
+      const turn = new THREE.Quaternion();
+      await tweens.to(0.07, (k) => {
+        f.root.position.copy(r0).addScaledVector(side, 0.1 * k).add(V(0, 0.04 * k, 0));
+        f.root.quaternion.copy(q0).premultiply(turn.setFromAxisAngle(axis, 0.35 * k));
+      }, { ease: ease.outQuad });
+      const r1 = f.root.position.clone();
+      await tweens.to(0.22, (k) => {
+        f.root.position.copy(r1).addScaledVector(side, 0.45 * k).addScaledVector(sv.out, 0.12 * k).setY(r1.y + (0.28 - r1.y) * k);
+        f.root.quaternion.copy(q0).premultiply(turn.setFromAxisAngle(axis, 0.35 + 1.22 * k));
       }, { ease: ease.inQuad });
-      audio.play('thud');
-      app.rig.shake(0.03);
+      audio.play('thud', { vol: 1.3 });
+      app.rig.shake(0.05);
+      this.fx.burst({ at: f.root.position.clone().setY(0.05), count: 16, color: '#9a8a74', kind: 'blood', speed: 0.5, up: 0.4, life: 0.8, size: 0.05, gravity: 0.2 });
+      // The chair rocks back from the blow.
+      const c0 = sv.chair.quaternion.clone();
+      void tweens.to(0.35, (k) => sv.chair.quaternion.copy(c0).premultiply(turn.setFromAxisAngle(axis, -Math.sin(k * Math.PI) * 0.18)));
       const q1 = f.root.quaternion.clone();
-      await tweens.to(0.18, (k) => f.root.quaternion.copy(q1).premultiply(new THREE.Quaternion().setFromAxisAngle(axis, -Math.sin(k * Math.PI) * 0.08)));
-      this.allLook(sv.pos.clone().add(V(0, 0.4, 0)), player, 0.2);
-      setTimeout(() => this.allLook(null), 2200);
+      await tweens.to(0.16, (k) => f.root.quaternion.copy(q1).premultiply(turn.setFromAxisAngle(axis, -Math.sin(k * Math.PI) * 0.1)));
+      this.allLook(sv.pos.clone().setY(0.2), player, 0.2);
       sv.alive = false;
       sv.name.visible = false;
       sv.badge.visible = false;
       sv.wardOn = false;
-      if (this.spectating === player) this.spectateNext(1);
+      // A beat on the floor, then they are gone and the table closes up round the living.
+      await tweens.wait(0.85);
+      this.allLook(null);
+      await Promise.all([this.table.vanish(player), ...dropped.map((c) => tweens.to(0.4, (k) => c.root.scale.setScalar(Math.max(0.001, 1 - k)), { ease: ease.inCubic }))]);
+      dropped.forEach((c) => c.dispose());
+      if (this.spectating === player) {
+        this.spectating = null;
+        this.spectateNext(1);
+      } else await this.table.arrange(this.table.viewer);
     }
     // The doom red drains away.
     tv.flames.uniforms.uTint.value.setRGB(1, 1, 1);
@@ -1895,7 +1922,9 @@ export class MatchScreen implements Screen {
     next.addEventListener('click', () => this.spectateNext(1));
     this.spectateEl = h('div', { class: 'spectate-bar' }, prev, name, next);
     this.ui.append(this.spectateEl);
-    this.hand.lowered = 1;
+    // Your own hand is empty now; its places hold the watched player's (filmed) cards.
+    this.hand.lowered = 0;
+    this.table.watchedSlot = (i, n) => this.hand.slotWorld(i, n);
     this.spectateNext(1);
   }
 
@@ -1922,14 +1951,11 @@ export class MatchScreen implements Screen {
     sv.watched = true;
     const name = this.spectateEl?.querySelector('.spec-name');
     if (name) name.textContent = this.nameOf(id);
-    const c = this.table.center;
-    const station: Station = {
-      pos: c.clone().addScaledVector(sv.out, 1.28).setY(1.38),
-      target: c.clone().addScaledVector(sv.out, -1.5).setY(0.46),
-      look: [0.55, 0.14, 0.06],
-      fov: 51,
-    };
-    void this.app.rig.glide(station, 0.9, 0.15);
+    // The table turns so they sit where the camera is: every view looks across the table at the stage.
+    this.app.rig.offset.set(0, 0, 0);
+    this.app.rig.targetOffset.set(0, 0, 0);
+    void this.app.rig.glide(this.tableStation, 0.6, 0.1);
+    void this.table.arrange(id, 0.8);
     audio.play('whoosh', { vol: 0.5 });
   }
 
@@ -1938,7 +1964,8 @@ export class MatchScreen implements Screen {
     const ud = c.root.userData as { film?: THREE.Material[] };
     if (on && !ud.film) {
       ud.film = [c.face.material as THREE.Material, c.back.material as THREE.Material, c.edge.material as THREE.Material];
-      c.face.material = c.back.material = c.edge.material = FILM_MAT;
+      c.face.material = c.back.material = FILM_MAT;
+      c.edge.material = FILM_EDGE;
     } else if (!on && ud.film) {
       [c.face.material, c.back.material, c.edge.material] = ud.film as [THREE.Material, THREE.Material, THREE.Material];
       delete ud.film;
@@ -2068,8 +2095,19 @@ export class MatchScreen implements Screen {
     this.table.update(t, dt);
     this.hand.turnLit = this.isMe(this.current) && !this.iAmDead && this.phase !== 'over' ? 1 : 0;
     this.hand.update(dt);
-    // Cards the watched player picks up get the film too.
-    if (this.spectating) for (const c of this.table.seat(this.spectating)?.hand ?? []) this.film(c, true);
+    // The watched player's cards: under the film, held where your own hand would be (following the camera).
+    if (this.spectating) {
+      const held = this.table.seat(this.spectating)?.hand ?? [];
+      const k = 1 - Math.exp(-14 * dt);
+      held.forEach((c, i) => {
+        this.film(c, true);
+        if (c.animating) return;
+        const t = this.table.handSlot(this.spectating!, i, held.length);
+        c.root.position.lerp(t.p, k);
+        c.root.quaternion.slerp(t.q, k);
+        c.root.scale.setScalar(c.root.scale.x + (t.s - c.root.scale.x) * k);
+      });
+    }
     this.fx.update(dt);
     const now = performance.now();
     if (this.windowEnd > now) this.table.setRing((this.windowEnd - now) / this.windowLen, 1);
@@ -2165,7 +2203,25 @@ const CHAINS_SVG = (() => {
 })();
 
 /** The plain brown film over the held cards of the player you watch from. */
-const FILM_MAT = new THREE.MeshStandardMaterial({ color: '#5a3a22', roughness: 1, emissive: new THREE.Color(0.08, 0.05, 0.03) });
+/** The brown film over a watched player's cards: a darker rim so each card in the fan reads on its own. */
+const FILM_MAT = new THREE.MeshBasicMaterial({
+  map: paint(128, 180, (ctx, w, h) => {
+    ctx.fillStyle = '#140b05';
+    ctx.fillRect(0, 0, w, h);
+    ctx.fillStyle = '#5c3a20';
+    ctx.beginPath();
+    ctx.roundRect(9, 9, w - 18, h - 18, 12);
+    ctx.fill();
+    ctx.strokeStyle = '#3a2412';
+    ctx.lineWidth = 4;
+    ctx.beginPath();
+    ctx.roundRect(22, 22, w - 44, h - 44, 8);
+    ctx.stroke();
+  }),
+  // Unlit: the same brown whatever the lamps do.
+  color: new THREE.Color(0.85, 0.85, 0.85),
+});
+const FILM_EDGE = new THREE.MeshBasicMaterial({ color: '#140b05' });
 
 /** A golden ward shield (warded status). */
 const WARD_SVG = `<svg viewBox="0 0 100 110"><path d="M50 6 L88 20 L84 62 C80 84 66 96 50 104 C34 96 20 84 16 62 L12 20 Z" fill="#f0c860" stroke="#3a2208" stroke-width="5" stroke-linejoin="round"/><path d="M50 18 L76 28 L73 60 C70 76 61 86 50 92 Z" fill="#fff2c4" opacity="0.65"/></svg>`;

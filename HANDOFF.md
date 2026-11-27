@@ -138,6 +138,7 @@ Catalogue: `src/shared/cards.ts` (`CARD_DEFS`, deck mixes in `DECKS`, pool size 
 | Back Door | backdoor | core | turn | End turn by drawing from the bottom |
 | Pickpocket | pickpocket | core | turn | The mark hands you a card of *their* choosing (random on timeout) |
 | Tavern Brawl | brawl | core | quick | Shuffle the deck, any time, even on others' turns |
+| Staged Brawl | feint | core | quick | A fake shuffle: everyone else sees a Tavern Brawl played and the shuffle, but the deck is not shuffled (the engine shows it as `brawl` to all but its player and teammates, `faceOf`; it is chained along with Tavern Brawls). Not in Winter Feast |
 | Looking Glass | glass | core | turn | Copy the last played card; if that was an Angel it can save you |
 | Shackles | shackles | core | turn | Chain the top discard's card type: nobody may play it for 3 turns |
 | Aegis | aegis | teams | turn | Ward a player; the next card that marks them fizzles |
@@ -151,6 +152,17 @@ Rules: each player starts with 1 Angel + action cards; the deck holds the rest o
 spare Angels: about 15 cards per player once the hands are dealt (`DECK_PER_PLAYER`: 30 in a duel, 45 at three,
 60 at four). Play any number of cards, then draw to end your turn. After every played card there is a 1.8 s reaction
 window (any player may react; "hold" extends it once per player). Death's odds = Hands in deck / cards in deck.
+
+Card art (`art/refIcons.ts`): Shackles, Parry, Tavern/Staged Brawl, Dragon's Breath, Slip Away, Looking Glass,
+Pickpocket, Scrying Orb, Misdirection, Turnabout and Back Door are drawn after the owner's screenshots (flat white icons,
+the card's bands stepping to an inner colour, `inner` in the card definition). Corner badges: a bolt for cards played any
+time, a target for cards that mark a player; Misdirection shows both.
+
+Knockouts: a gunshot throws the player out of the chair to the floor in a fraction of a second (flash, blood spray, the
+chair rocks), a beat on the floor, then the body, chair and cards shrink away and the living close up round the table,
+evenly spaced (`TableView.arrange`: three players → two exactly opposite). Spectating turns the table instead of moving the
+camera: the watched player takes the camera's chair (their chair and figure hidden, their cards held like your hand under
+a brown film), so every player and watcher always looks across the table at the stage.
 
 Pace (`src/shared/timing.ts`): passing the turn is near instant (a plain draw 90 ms + the turn 40 ms, so two players
 clicking the deck as fast as they can get through well over four draws a second online); drawing the Hooded Hand keeps

@@ -10,6 +10,7 @@ export type CardType =
   | 'bounty'
   | 'slip'
   | 'brawl'
+  | 'feint'
   | 'pickpocket'
   | 'backdoor'
   | 'breath'
@@ -49,6 +50,8 @@ export interface CardDef {
   text: string;
   flavour: string;
   color: string;
+  /** The innermost of the card's bands (they step from \`color\` to this); default: a darker \`color\`. */
+  inner?: string;
   shade: string;
   timing: Timing;
   /** Shows the spark badge (playable outside your turn). */
@@ -88,8 +91,9 @@ export const CARD_DEFS: Record<CardType, CardDef> = {
     name: 'Scrying Orb',
     text: 'Secretly view the top 3 cards of the deck.',
     flavour: 'The glass shows what is coming. It never says when.',
-    color: '#6a2fa0',
-    shade: '#2a0f45',
+    color: '#bb52e8',
+    inner: '#8a1fbc',
+    shade: '#320a48',
     timing: 'turn',
     set: 'core',
     playable: true,
@@ -99,8 +103,9 @@ export const CARD_DEFS: Record<CardType, CardDef> = {
     name: 'Parry',
     text: 'When a card is played, cancel its effect. Play it at any time.',
     flavour: 'Steel meets steel. Nothing happens. Everyone breathes again.',
-    color: '#2f5f9e',
-    shade: '#0f2443',
+    color: '#ea4b4b',
+    inner: '#b4252a',
+    shade: '#4a0a0c',
     timing: 'reaction',
     instant: true,
     set: 'core',
@@ -123,8 +128,9 @@ export const CARD_DEFS: Record<CardType, CardDef> = {
     name: 'Slip Away',
     text: 'End your turn without drawing.',
     flavour: 'A loose shutter, a dark alley, and a very convenient excuse.',
-    color: '#6f9a1e',
-    shade: '#263a06',
+    color: '#88e652',
+    inner: '#4db61c',
+    shade: '#1a4a06',
     timing: 'turn',
     set: 'core',
     playable: true,
@@ -134,8 +140,22 @@ export const CARD_DEFS: Record<CardType, CardDef> = {
     name: 'Tavern Brawl',
     text: 'Shuffle the deck. Play it at any time, even on another player\'s turn.',
     flavour: 'Somebody threw a stool. Now nobody knows where anything is.',
-    color: '#b48a16',
-    shade: '#4a3604',
+    color: '#7f8be6',
+    inner: '#4a59d6',
+    shade: '#141c5a',
+    timing: 'quick',
+    instant: true,
+    set: 'core',
+    playable: true,
+  },
+  feint: {
+    type: 'feint',
+    name: 'Staged Brawl',
+    text: 'Everyone else sees a Tavern Brawl, but the deck is not shuffled. Play it at any time.',
+    flavour: 'Plenty of shouting, one overturned stool, and not a single card out of place.',
+    color: '#5c5c64',
+    inner: '#1e1e24',
+    shade: '#0a0a0c',
     timing: 'quick',
     instant: true,
     set: 'core',
@@ -146,8 +166,9 @@ export const CARD_DEFS: Record<CardType, CardDef> = {
     name: 'Pickpocket',
     text: 'The player you mark must hand you a card of their choosing.',
     flavour: 'Light fingers, heavy purse.',
-    color: '#1d7a78',
-    shade: '#08302f',
+    color: '#f9b821',
+    inner: '#cc8a00',
+    shade: '#4a3000',
     timing: 'turn',
     targeted: true,
     set: 'core',
@@ -158,8 +179,9 @@ export const CARD_DEFS: Record<CardType, CardDef> = {
     name: 'Back Door',
     text: 'End your turn by drawing from the bottom of the deck.',
     flavour: 'Every tavern has one. The wise know where it is before they sit down.',
-    color: '#7a4a26',
-    shade: '#2c180a',
+    color: '#5c50f0',
+    inner: '#3522c2',
+    shade: '#120a4a',
     timing: 'turn',
     set: 'core',
     playable: true,
@@ -169,8 +191,9 @@ export const CARD_DEFS: Record<CardType, CardDef> = {
     name: "Dragon's Breath",
     text: 'When a card is played, burn it: its effect is cancelled and it is shuffled back into the deck.',
     flavour: 'Some arguments are settled with steel. Others with fire.',
-    color: '#d0401a',
-    shade: '#4a0d02',
+    color: '#3d0c0f',
+    inner: '#d8431c',
+    shade: '#1a0406',
     timing: 'reaction',
     instant: true,
     set: 'core',
@@ -181,8 +204,9 @@ export const CARD_DEFS: Record<CardType, CardDef> = {
     name: 'Looking Glass',
     text: 'Copy the last card played. If it was a Guardian Angel, it can save you from the Hooded Hand.',
     flavour: 'The reflection does exactly what you did. Only faster.',
-    color: '#3a8fb0',
-    shade: '#0d3040',
+    color: '#b8b8b8',
+    inner: '#565656',
+    shade: '#1e1e1e',
     timing: 'turn',
     set: 'core',
     playable: true,
@@ -192,8 +216,9 @@ export const CARD_DEFS: Record<CardType, CardDef> = {
     name: 'Shackles',
     text: 'Chain the top card of the discard pile: nobody may play that kind of card for 3 turns.',
     flavour: 'Iron does not care what you meant to do.',
-    color: '#5b5f66',
-    shade: '#1c1e22',
+    color: '#c6c6c6',
+    inner: '#7a7a7a',
+    shade: '#2a2a2a',
     timing: 'turn',
     set: 'core',
     playable: true,
@@ -203,8 +228,9 @@ export const CARD_DEFS: Record<CardType, CardDef> = {
     name: 'Misdirection',
     text: 'When a card that marks a player is played, choose a new mark for it. Play it at any time.',
     flavour: '"Him. He did it." Works more often than it should.',
-    color: '#8e2f7a',
-    shade: '#320a2a',
+    color: '#34e07c',
+    inner: '#159648',
+    shade: '#063a1a',
     timing: 'reaction',
     instant: true,
     targeted: true,
@@ -216,8 +242,9 @@ export const CARD_DEFS: Record<CardType, CardDef> = {
     name: 'Turnabout',
     text: 'End your turn without drawing and reverse the order of play.',
     flavour: 'The wheel turns. Mind your fingers.',
-    color: '#2a8a6a',
-    shade: '#0a3326',
+    color: '#68f0de',
+    inner: '#3bd2ba',
+    shade: '#0a4a40',
     timing: 'turn',
     set: 'core',
     playable: true,
@@ -327,6 +354,7 @@ const BASE: Partial<Record<CardType, number>> = {
   bounty: 4,
   slip: 4,
   brawl: 2,
+  feint: 1,
   pickpocket: 3,
   backdoor: 2,
   breath: 2,
@@ -341,7 +369,7 @@ export const DECKS: Record<DeckKind, Partial<Record<CardType, number>>> = {
   tutorial: BASE,
   teams: { ...BASE, aegis: 3, warband: 2 },
   ranked: { ...BASE, privateer: 2, sands: 2, misdirect: 1, turnabout: 1 },
-  winter: { ...BASE, brawl: 0, mistletoe: 3, yule: 3 },
+  winter: { ...BASE, brawl: 0, feint: 0, mistletoe: 3, yule: 3 },
 };
 
 /** Cards left in the deck per player once the hands are dealt: 45 at a table of three, 30 in a duel. */
@@ -359,6 +387,14 @@ export function poolFor(kind: DeckKind, n: number, target = 10 + 8 * n): CardTyp
   const rest = quotas.sort((a, b) => (b.q % 1) - (a.q % 1));
   for (let i = 0; out.length < target && i < rest.length * 3; i++) out.push(rest[i % rest.length].t);
   return out;
+}
+
+/**
+ * What a card passes for to everyone but its player (and teammates): a Staged Brawl is played, chained, burned and
+ * copied as a Tavern Brawl.
+ */
+export function faceOf(t: CardType): CardType {
+  return t === 'feint' ? 'brawl' : t;
 }
 
 export function def(t: CardType): CardDef {

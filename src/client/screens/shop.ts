@@ -3,7 +3,7 @@ import { audio } from '../audio/audio';
 import { tweens } from '../core/tween';
 import { impactIconSVG, charmIconSVG, seatIconSVG, sleeveCanvas, svgCanvas, bannerSVG, swatchURL, svgURL } from '../cosmetics/art';
 import { applyCosmetics, mutOf, updateDisplay, bannerTexture } from '../cosmetics/apply';
-import { CATEGORY, dailyWares, featured, ITEMS, item, MUTATIONS, RARITY, rollMutation, rubyWares, type Category, type Item, type Mutation } from '../cosmetics/catalog';
+import { CATEGORY, dailyWares, featured, ITEMS, item, MUTATIONS, rollMutation, rubyWares, type Category, type Item, type Mutation } from '../cosmetics/catalog';
 import { h } from '../ui/dom';
 import { toast } from '../ui/hud';
 import { profile, saveProfile } from '../ui/profile';
@@ -265,9 +265,7 @@ export class ShopScreen implements Screen {
         h(
           'div',
           { class: 'd-info' },
-          h('span', { class: 'rarity', style: `color:${RARITY[it.rarity].color}` }, `${RARITY[it.rarity].name} ${CATEGORY[it.cat].name}`),
           h('h2', {}, it.name),
-          h('p', { class: 'lede' }, it.blurb),
           h('div', { class: 'muts' }, ...(Object.keys(MUTATIONS) as Mutation[]).map((m) => h('span', { style: `color:${MUTATIONS[m].color}` }, `${MUTATIONS[m].name} ${Math.round(MUTATIONS[m].odds * 100)}%`))),
           h('div', { class: 'row' }, close, h('div', {}, equip, buy))
         )

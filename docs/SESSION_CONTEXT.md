@@ -116,6 +116,16 @@ Second chat (continuing from this file):
     past 10 cards the hand's cards get smaller instead of squished; a bigger deck ("in a 3 player game there should be
     around 45 cards, and accordingly"); the mace only when someone has 2 or more turns; no description over the
     Scrying Orb's three cards.
+20. Screenshots of the reference cards to follow (changed slightly): the chain, the "nope" (Parry, a raised hand), the
+    shuffle (two dice), Dragon's Breath (a white flame drake), skip turn (a running figure), mirror, Pickpocket, Scrying
+    Orb, Misdirection ("this one is both target and lightning"), reversal, pull from bottom. Then:
+    > Also add a card that is a black/gray version of the shuffle card but its a fake shuffle card.
+21. > Make the death animation a violent shot. The shot should send the shot player very fast to the ground, and when a
+    > player loses they should play the animation fully and then disppear from the table and the other players should
+    > rearrange themselves. ... in a 3 player game, if one player gets out, then the 2 players get rearranged into being
+    > exactly opposite from each other instead of being on thirds around the table.
+    Also: everyone should see the same background (the stage, curtains, the three boards); remove unnecessary text from
+    all menus (something near the top of the table creation menu).
 
 ## How the requests were interpreted
 
@@ -140,6 +150,12 @@ Second chat (continuing from this file):
   config (1v1 deck) under the name Duel; there is no rating any more.
 - **Their reference images (message 18)**: the owner explicitly asked to follow their screenshots closely (slightly
   changed), which overrides the earlier "keep everything original" for those textures.
+- **"Fake shuffle" (message 20)**: taken as a bluff, the only reading that makes it do something: everyone else sees a
+  Tavern Brawl played and the shuffle animation, but the deck keeps its order; only its player (and teammates) see the
+  grey card. Named Staged Brawl. Shackles keeps no bolt badge (in this game it is a turn card, not playable any time),
+  though the owner's chain screenshot had one.
+- **Same background (message 21)**: players always did (each client seats you in the camera's chair facing the stage);
+  spectating used to move the camera to the watched chair, so now the table turns instead.
 - **Quality bar**: the owner repeatedly asked for nothing "cheap". Every new feature got its own art, animation,
   sound and UI polish, and was checked in a real browser before being pushed.
 
@@ -208,6 +224,12 @@ Second chat:
     local server), the clock's travel interruptible and its chime throttled, everything else ~25% shorter with
     animations a third faster, faster timers; 15 cards per player in the deck; maces only for 2+ turns; hand glow
     by turn; a shrinking hand past 10 cards; FOV +2°; no Scrying Orb caption.
+35. Messages 20-21: eleven cards redrawn after the screenshots (art/refIcons.ts) with screenshot colours; Misdirection
+    with both badges; Staged Brawl (fake shuffle, shown to others as a Tavern Brawl; rules test in the sims). Violent
+    knockout (thrown to the floor in ~0.3 s), then the player vanishes and the table closes up evenly; spectating turns
+    the table so every view faces the stage (it already did for players: each sits in the camera's chair). Removed: the
+    Create Table mode descriptions, the board papers' subtitles, the queue window's line, the results' flavour lines,
+    the Join list's instruction, the shop item window's blurb and rarity line.
 
 ## How work was verified
 

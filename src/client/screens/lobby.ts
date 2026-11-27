@@ -199,7 +199,7 @@ export function joinModal(nav: Nav, onJoin: (s: OnlineSession) => void, onClose:
     if (key === shown) return;
     shown = key;
     list.replaceChildren();
-    if (!rooms.length) list.append(h('p', { class: 'empty' }, 'No open tables right now. Create one and others can join.'));
+    if (!rooms.length) list.append(h('p', { class: 'empty' }, 'No open tables right now.'));
     for (const r of rooms) {
       const row = h(
         'button',
@@ -241,7 +241,7 @@ export function queueModal(nav: Nav, mode: QueueMode, onClose: () => void): Moda
   const el = h(
     'div',
     { class: 'scrim' },
-    h('div', { class: 'panel queue' }, h('h2', {}, mode === 'duel' ? 'Duel' : 'Teams'), h('p', { class: 'lede' }, mode === 'duel' ? 'Looking for a rival…' : 'Gathering four souls…'), dots, count, h('div', { class: 'row' }, h('span'), cancel))
+    h('div', { class: 'panel queue' }, h('h2', {}, mode === 'duel' ? 'Duel' : 'Teams'), dots, count, h('div', { class: 'row' }, h('span'), cancel))
   );
   const off = session.on({
     queued: (waiting, n) => {

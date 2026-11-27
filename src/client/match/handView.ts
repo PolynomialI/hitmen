@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import type { Card } from '../../shared/cards';
+import { faceOf, type Card } from '../../shared/cards';
 import type { CardTexSet } from '../cards/cardTextures';
 import { damp } from '../core/tween';
 import { CARD_H, CARD_W, CardMesh, setHandGlow } from './cardMesh';
@@ -126,7 +126,7 @@ export class HandView {
   }
 
   private applyLock(c: CardMesh): void {
-    const on = !!c.card && c.card.type === this.lockedType;
+    const on = !!c.card && faceOf(c.card.type) === this.lockedType;
     const has = c.root.getObjectByName('lock');
     if (on && !has) {
       if (!this.lockTex) {

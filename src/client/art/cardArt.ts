@@ -1,5 +1,5 @@
 import { CARD_DEFS, type CardType } from '../../shared/cards';
-import { emblemHalo, frameBody, frameDefs, mix } from './cardFrame';
+import { bandColor, emblemHalo, frameBody, frameDefs, mix } from './cardFrame';
 import { CARTOON, cartoonCrest, W } from './cartoon';
 
 export const CARD_W = 500;
@@ -10,32 +10,36 @@ export const CARD_H = 700;
  * Corner badge: a plain white disc over the top-right corner, spilling past the card's rounded edge, with an
  * orange-gold lightning bolt (playable at any time) or a red target and dart (aimed at a player).
  */
-function badge(kind: 'instant' | 'target'): string {
-  const cx = 436;
-  const cy = 64;
-  const disc = `<circle cx="${cx}" cy="${cy}" r="64" fill="#fbf9f4"/>`;
+/** A corner badge's icon centred at (cx, cy): the bolt (playable any time) or the target (marks a player). */
+function badgeIcon(kind: 'instant' | 'target', cx: number, cy: number): string {
   if (kind === 'instant')
-    return `<g filter="url(#kdrop)">${disc}
-      <path d="M ${cx + 12},${cy - 44} L ${cx - 26},${cy + 9} L ${cx - 2},${cy + 9} L ${cx - 14},${cy + 46} L ${cx + 28},${cy - 9} L ${cx + 4},${cy - 9} Z" fill="#f5a316"/>
-      <path d="M ${cx + 12},${cy - 44} L ${cx - 26},${cy + 9} L ${cx - 2},${cy + 9} L ${cx + 2},${cy - 4} Z" fill="#fbc34a"/></g>`;
+    return `<path d="M ${cx + 12},${cy - 44} L ${cx - 26},${cy + 9} L ${cx - 2},${cy + 9} L ${cx - 14},${cy + 46} L ${cx + 28},${cy - 9} L ${cx + 4},${cy - 9} Z" fill="#f5a316"/>
+      <path d="M ${cx + 12},${cy - 44} L ${cx - 26},${cy + 9} L ${cx - 2},${cy + 9} L ${cx + 2},${cy - 4} Z" fill="#fbc34a"/>`;
   const red = '#d6261a';
   const tx = cx - 6;
   const ty = cy + 6;
-  return `<g filter="url(#kdrop)">${disc}
-    <circle cx="${tx}" cy="${ty}" r="40" fill="${red}"/>
+  return `<circle cx="${tx}" cy="${ty}" r="40" fill="${red}"/>
     <circle cx="${tx}" cy="${ty}" r="28" fill="#fbf9f4"/>
     <circle cx="${tx}" cy="${ty}" r="16" fill="${red}"/>
     <path d="M ${tx},${ty} L ${tx + 40},${ty - 40}" stroke="#5a1a0e" stroke-width="7" stroke-linecap="round"/>
     <path d="M ${tx + 34},${ty - 46} L ${tx + 52},${ty - 50} L ${tx + 46},${ty - 34} Z" fill="${red}"/>
-    <path d="M ${tx + 28},${ty - 40} L ${tx + 46},${ty - 58} L ${tx + 40},${ty - 34} Z" fill="${red}" opacity="0.8"/></g>`;
+    <path d="M ${tx + 28},${ty - 40} L ${tx + 46},${ty - 58} L ${tx + 40},${ty - 34} Z" fill="${red}" opacity="0.8"/>`;
+}
+
+/** Badges on a borderless white disc peering off the top-right corner; a card with both gets a pill (bolt, then target). */
+function badges(kinds: Array<'instant' | 'target'>): string {
+  if (!kinds.length) return '';
+  if (kinds.length === 1) return `<g filter="url(#kdrop)"><circle cx="436" cy="64" r="64" fill="#fbf9f4"/>${badgeIcon(kinds[0], 436, 64)}</g>`;
+  return `<g filter="url(#kdrop)"><rect x="252" y="0" width="300" height="128" rx="64" fill="#fbf9f4"/>${badgeIcon(kinds[0], 320, 64)}${badgeIcon(kinds[1], 436, 64)}</g>`;
 }
 
 export function cardFaceSVG(type: CardType): string {
   const d = CARD_DEFS[type];
   const D = mix(d.color, d.shade, 0.62);
-  const pal = { c: d.color, D, L: mix(d.color, '#ffffff', 0.5) };
-  const badgeSvg = d.instant ? badge('instant') : d.targeted ? badge('target') : '';
-  const frame = { color: d.color, shade: d.shade };
+  const frame = { color: d.color, shade: d.shade, inner: d.inner };
+  const pal = { c: d.color, D, L: mix(d.color, '#ffffff', 0.5), B: bandColor(frame, 3) };
+  // A card that both marks a player and can be played any time (Misdirection) shows both.
+  const badgeSvg = badges([...(d.instant ? ['instant' as const] : []), ...(d.targeted ? ['target' as const] : [])]);
   return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${CARD_W} ${CARD_H}" width="${CARD_W}" height="${CARD_H}">
     <defs>${frameDefs(frame)}</defs>
     ${frameBody(frame)}
