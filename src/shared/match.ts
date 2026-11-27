@@ -1,3 +1,4 @@
+import { engineMode, type OnlineMode } from './online';
 import { Bot } from './bot';
 import type { DeckKind } from './cards';
 import { Host } from './host';
@@ -128,32 +129,16 @@ const HUMAN_CLOAKS = ['#5a1a1a', '#2b3b2a', '#3b2a4a', '#4a3322', '#1f2633', '#3
  * An online table (server side): these players plus tavern regulars (bots) up to `size` seats.
  * Teams sit alternately around the table, each player on the side they picked.
  */
-export function createTableMatch(o: { mode: 'original' | 'teams' | 'winter'; size: number; humans: TableHuman[]; seed: number }): { host: Host; seats: SeatInfo[] } {
-  const pool = shuffledRivals(o.seed);
-  const bots: Bot[] = [];
+/** An online match: only the players who sat down (no bots). Teams sit alternately around the table. */
+export function createTableMatch(o: { mode: OnlineMode; humans: TableHuman[]; seed: number }): { host: Host; seats: SeatInfo[] } {
   const human = (x: TableHuman, i: number): SeatInfo => ({ id: x.id, name: x.name, isBot: false, seat: 0, epithet: HUMAN_EPITHETS[i % HUMAN_EPITHETS.length], cloak: HUMAN_CLOAKS[i % HUMAN_CLOAKS.length], look: x.look });
-  const rival = (): SeatInfo => {
-    const i = bots.length;
-    const r = pool[i];
-    const id = 'b' + (i + 1);
-    bots.push(new Bot(id, (o.seed ^ (i * 0x9e3779b9)) >>> 0, r.skill));
-    return { id, name: r.name, isBot: true, seat: 0, epithet: r.epithet, cloak: r.cloak, look: botLook(o.seed, i) };
-  };
-  const humans = o.humans.slice(0, o.size);
   let seats: SeatInfo[];
   if (o.mode === 'teams') {
-    const half = o.size / 2;
     const sides: SeatInfo[][] = [[], []];
-    humans.forEach((x, i) => sides[x.team === 1 ? 1 : 0].push(human(x, i)));
-    // Never more than half the table on one side.
-    for (const [a, b] of [[0, 1], [1, 0]]) while (sides[a].length > half) sides[b].push(sides[a].pop()!);
-    for (const side of sides) while (side.length < half) side.push(rival());
+    o.humans.forEach((x, i) => sides[x.team === 1 ? 1 : 0].push({ ...human(x, i), team: x.team === 1 ? 1 : 0 }));
     seats = [];
-    for (let i = 0; i < half; i++) for (const t of [0, 1]) seats.push({ ...sides[t][i], team: t });
-  } else {
-    seats = humans.map(human);
-    while (seats.length < o.size) seats.push(rival());
-  }
+    for (let i = 0; i < Math.max(sides[0].length, sides[1].length); i++) for (const t of [0, 1]) if (sides[t][i]) seats.push(sides[t][i]);
+  } else seats = o.humans.map(human);
   seats.forEach((st, i) => (st.seat = i));
-  return { host: new Host(configFor(o.mode, o.seed, seats.length), seats, {}, bots), seats };
+  return { host: new Host(configFor(engineMode(o.mode), o.seed, seats.length), seats, {}, []), seats };
 }

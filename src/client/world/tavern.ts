@@ -9,6 +9,7 @@ import { TIERS, type Quality, type Tier } from '../core/gfx';
 import { Figure } from './figure';
 import { FONT3D } from './fonts3d';
 import { LightBudget } from './lightBudget';
+import { buildWinter, type Winter } from './winter';
 import { buildMaterials, type Mats } from './materials';
 import { barrel, bottle, box, candle, chair, chest, coinStack, cyl, dice, drape, lantern, plank, purse, tankard } from './props';
 
@@ -173,7 +174,7 @@ export class Tavern {
     this.stations = {
       intro: { pos: new THREE.Vector3(-0.6, 1.9, 2.6), target: new THREE.Vector3(-2.6, 1.3, -4.6), look: [0.05, 0.03], fov: 50 },
       menu: { pos: new THREE.Vector3(-2.64, 1.62, -1.92), target: new THREE.Vector3(-2.62, 1.3, -4.6), look: [0.16, 0.08], fov: 50 },
-      play: { pos: new THREE.Vector3(-4.25, 1.7, 0.55), target: new THREE.Vector3(-7.9, 1.66, 0.55), look: [0.14, 0.07], fov: 48 },
+      play: { pos: new THREE.Vector3(-4.6, 1.7, 0.55), target: new THREE.Vector3(-7.9, 1.66, 0.55), look: [0.14, 0.07], fov: 48 },
       // Seated back from the table and looking down on it, so the sign, boards, rival, deck and pile all sit above the
       // hand. Barely tilts down: the pointer lives over the hand, and the Your Turn sign must stay in frame.
       table: { pos: new THREE.Vector3(2.1, 1.6, 0.6), target: new THREE.Vector3(6.4, 0.85, 0.6), look: [0.42, 0.16, 0.035], fov: 58 },
@@ -1135,14 +1136,37 @@ export class Tavern {
   }
 
   private festive: THREE.Group | null = null;
-  private snow: THREE.Points | null = null;
+  private winter: Winter | null = null;
+  /** A Winter Feast is laid out (snow on the chairs and the players). */
+  get isWinter(): boolean {
+    return !!this.winter;
+  }
+  private warm: { sky: THREE.Color; ground: THREE.Color; fog: THREE.Color } | null = null;
 
-  /** Winter Feast dressing: pine garlands, holly, baubles, a wreath and snow at the windows. */
+  /** Winter: a cold blue ambient and fog (the candles and the table lamp stay warm). */
+  private setCold(on: boolean): void {
+    const hemi = this.lights.hemi;
+    const fog = (this.group.parent as THREE.Scene | null)?.fog as THREE.FogExp2 | undefined;
+    if (on && !this.warm) {
+      this.warm = { sky: hemi.color.clone(), ground: hemi.groundColor.clone(), fog: fog?.color.clone() ?? new THREE.Color() };
+      hemi.color.set('#8aa2cc');
+      hemi.groundColor.set('#2a3448');
+      fog?.color.set('#0c1220');
+    } else if (!on && this.warm) {
+      hemi.color.copy(this.warm.sky);
+      hemi.groundColor.copy(this.warm.ground);
+      fog?.color.copy(this.warm.fog);
+      this.warm = null;
+    }
+  }
+
+  /** Winter Feast dressing: pine garlands, holly, baubles, a wreath, and the room under snow (see winter.ts). */
   setFestive(on: boolean): void {
     if (!on) {
       if (this.festive) this.group.remove(this.festive);
       this.festive = null;
-      this.snow = null;
+      this.winter = null;
+      this.setCold(false);
       return;
     }
     if (this.festive) return;
@@ -1211,21 +1235,10 @@ export class Tavern {
       b.position.set(this.tableCenter.x + dx, this.tableTop + 0.02, this.tableCenter.z + dz);
       g.add(b);
     }
-    // Snow drifting past the east windows.
-    const N = 220;
-    const pos = new Float32Array(N * 3);
-    for (let i = 0; i < N; i++) {
-      const wc = this.stage.windows[i % 2];
-      const side = wc.z;
-      pos[i * 3] = wc.x + 0.25;
-      pos[i * 3 + 1] = 1.6 + Math.random() * 1.8;
-      pos[i * 3 + 2] = side + (Math.random() - 0.5) * 0.9;
-    }
-    const geo = new THREE.BufferGeometry();
-    geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
-    this.snow = new THREE.Points(geo, new THREE.PointsMaterial({ color: new THREE.Color(1.5, 1.6, 1.8), size: 0.018, transparent: true, opacity: 0.85, depthWrite: false }));
-    this.snow.frustumCulled = false;
-    g.add(this.snow);
+    // The whole den under snow, and a colder light.
+    this.winter = buildWinter({ table: this.tableCenter.clone().setY(0), top: this.tableTop, windows: this.stage.windows, valance: this.stage.valance, flakes: 900 });
+    g.add(this.winter.group);
+    this.setCold(true);
     this.festive = g;
     this.group.add(g);
   }
@@ -1284,16 +1297,7 @@ export class Tavern {
       }
       pos.needsUpdate = true;
     }
-    if (this.snow) {
-      const p = this.snow.geometry.attributes.position as THREE.BufferAttribute;
-      for (let i = 0; i < p.count; i++) {
-        let y = p.getY(i) - dt * (0.18 + (i % 7) * 0.03);
-        if (y < 1.55) y = 3.4;
-        p.setY(i, y);
-        p.setZ(i, p.getZ(i) + Math.sin(t + i) * dt * 0.05);
-      }
-      p.needsUpdate = true;
-    }
+    this.winter?.update(t, dt);
     // Barkeep polishes a tankard.
     this.barkeep.setReach(0.35 + Math.sin(t * 2.2) * 0.12, 'L');
   }

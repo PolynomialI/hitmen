@@ -2439,3 +2439,69 @@ h4 .timer {
   font-size: 26px;
   color: #f6e6c0;
 }
+
+/* Leaderboard: position, name, games, wins. */
+.panel.leaderboard {
+  width: min(560px, 92vw);
+}
+.panel.leaderboard .lrow {
+  grid-template-columns: 34px 1fr auto 90px;
+}
+
+/* Duel / Teams matchmaking: one dot per chair. */
+.panel.queue {
+  width: min(420px, 92vw);
+  text-align: center;
+}
+.q-dots {
+  display: flex;
+  justify-content: center;
+  gap: 14px;
+  margin: 18px 0 8px;
+}
+.q-dots i {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  border: 2px solid #7a5a32;
+  background: transparent;
+  transition: background 0.3s, box-shadow 0.3s;
+}
+.q-dots i.on {
+  background: #c4473a;
+  box-shadow: 0 0 10px rgba(196, 71, 58, 0.6);
+}
+.q-count {
+  display: block;
+  font-family: var(--f-title);
+  font-size: 22px;
+  color: #5a3410;
+  margin-bottom: 6px;
+}
+.panel.results .wait {
+  font-style: italic;
+  color: #6a4a2e;
+}
+
+/* In a match: players who dropped out, counting down to losing their seat. */
+.away-stack {
+  position: absolute;
+  left: 50%;
+  top: 108px;
+  transform: translateX(-50%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  pointer-events: none;
+}
+.away-chip {
+  padding: 7px 15px;
+  border-radius: 16px;
+  font-family: var(--f-label);
+  font-size: 15px;
+  color: #ffe0b0;
+  background: rgba(40, 18, 10, 0.86);
+  border: 1px solid rgba(255, 170, 90, 0.45);
+  white-space: nowrap;
+}

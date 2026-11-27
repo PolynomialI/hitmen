@@ -63,8 +63,7 @@ function mutationLayer(m: Mutation, w: number, h: number, rx: number): string {
     case 'gilded':
       return `<defs><linearGradient id="gild" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#fff6c0" stop-opacity="0"/><stop offset="0.45" stop-color="#fff6c0" stop-opacity="0"/><stop offset="0.5" stop-color="#fff2b0" stop-opacity="0.55"/><stop offset="0.55" stop-color="#fff6c0" stop-opacity="0"/><stop offset="1" stop-color="#fff6c0" stop-opacity="0"/></linearGradient></defs>
         <rect width="${w}" height="${h}" rx="${rx}" fill="url(#gild)"/>
-        ${Array.from({ length: 70 }, () => `<circle cx="${(Math.random() * w).toFixed(0)}" cy="${(Math.random() * h).toFixed(0)}" r="${(0.8 + Math.random() * 2).toFixed(1)}" fill="#ffe7a0" opacity="${(0.4 + Math.random() * 0.5).toFixed(2)}"/>`).join('')}
-        <rect x="8" y="8" width="${w - 16}" height="${h - 16}" rx="${rx - 6}" fill="none" stroke="#f6d270" stroke-width="6"/>`;
+        ${Array.from({ length: 70 }, () => `<circle cx="${(Math.random() * w).toFixed(0)}" cy="${(Math.random() * h).toFixed(0)}" r="${(0.8 + Math.random() * 2).toFixed(1)}" fill="#ffe7a0" opacity="${(0.4 + Math.random() * 0.5).toFixed(2)}"/>`).join('')}`;
     case 'mosaic': {
       const cells: string[] = [];
       const cols = ['#e05a4a', '#4a8ae0', '#e0c04a', '#5ac06a', '#a05ae0', '#e08a3a'];
@@ -80,8 +79,7 @@ function mutationLayer(m: Mutation, w: number, h: number, rx: number): string {
     }
     case 'prismatic':
       return `<defs><linearGradient id="prism" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#ff4a6a"/><stop offset="0.2" stop-color="#ffb84a"/><stop offset="0.4" stop-color="#f6ff6a"/><stop offset="0.6" stop-color="#5aff9a"/><stop offset="0.8" stop-color="#5ab0ff"/><stop offset="1" stop-color="#c05aff"/></linearGradient></defs>
-        <rect width="${w}" height="${h}" rx="${rx}" fill="url(#prism)" opacity="0.34" style="mix-blend-mode:screen"/>
-        <rect x="8" y="8" width="${w - 16}" height="${h - 16}" rx="${rx - 6}" fill="none" stroke="url(#prism)" stroke-width="7"/>`;
+        <rect width="${w}" height="${h}" rx="${rx}" fill="url(#prism)" opacity="0.34" style="mix-blend-mode:screen"/>`;
     default:
       return '';
   }
@@ -394,26 +392,147 @@ export function charmIconSVG(model: string): string {
   const I = '#f6eedb';
   const K = '#1b110b';
   const body: Record<string, string> = {
-    none: `<path d="M 58,104 C 50,72 62,42 80,42 C 98,42 110,72 102,104 Z" fill="none" stroke="#8a6a4a" stroke-width="4" stroke-dasharray="7 6" opacity=".7"/><rect x="40" y="106" width="80" height="16" rx="4" fill="#6a4a2a" stroke="${K}" stroke-width="3"/>`,
-    die: `<rect x="48" y="48" width="64" height="64" rx="12" fill="${I}" stroke="${K}" stroke-width="4"/><circle cx="64" cy="64" r="6" fill="${K}"/><circle cx="96" cy="96" r="6" fill="${K}"/><circle cx="80" cy="80" r="6" fill="${K}"/>`,
+    none: `<path d="M 58,104 C 50,72 62,42 80,42 C 98,42 110,72 102,104 Z" fill="none" stroke="#8a6a4a" stroke-width="2.4" stroke-dasharray="7 6" opacity=".7"/><rect x="40" y="106" width="80" height="16" rx="4" fill="#6a4a2a" stroke="${K}" stroke-width="2"/>`,
+    die: `<rect x="48" y="48" width="64" height="64" rx="12" fill="${I}" stroke="${K}" stroke-width="2.4"/><circle cx="64" cy="64" r="6" fill="${K}"/><circle cx="96" cy="96" r="6" fill="${K}"/><circle cx="80" cy="80" r="6" fill="${K}"/>`,
     horseshoe: `<path d="M 50,40 C 40,100 50,124 80,124 C 110,124 120,100 110,40" fill="none" stroke="#9a948c" stroke-width="16" stroke-linecap="round"/><path d="M 50,40 C 40,100 50,124 80,124 C 110,124 120,100 110,40" fill="none" stroke="${K}" stroke-width="2" stroke-dasharray="4 10"/>`,
-    goblet: `<path d="M 50,36 L 110,36 C 110,70 96,86 80,88 C 64,86 50,70 50,36 Z" fill="#e0b04a" stroke="${K}" stroke-width="4"/><rect x="76" y="88" width="8" height="24" fill="#e0b04a" stroke="${K}" stroke-width="3"/><ellipse cx="80" cy="118" rx="26" ry="8" fill="#e0b04a" stroke="${K}" stroke-width="4"/>`,
-    skull: `<path d="M 50,84 C 44,48 116,48 110,84 C 110,96 100,100 100,110 L 60,110 C 60,100 50,96 50,84 Z" fill="${I}" stroke="${K}" stroke-width="4"/><circle cx="66" cy="82" r="9" fill="${K}"/><circle cx="94" cy="82" r="9" fill="${K}"/><rect x="72" y="32" width="16" height="22" fill="#efe3c4" stroke="${K}" stroke-width="3"/><path d="M 80,14 C 86,22 86,28 80,32 C 74,28 74,22 80,14 Z" fill="#ffb347"/>`,
-    crystal: `<path d="M 80,22 L 108,70 L 92,120 L 68,120 L 52,70 Z" fill="#b48ae0" stroke="${K}" stroke-width="4"/><path d="M 80,22 L 80,120 M 52,70 L 108,70" stroke="#fff" stroke-width="2" opacity=".6"/><rect x="56" y="120" width="48" height="12" rx="4" fill="#6a4a2a" stroke="${K}" stroke-width="3"/>`,
-    raven: `<g transform="translate(80,78) scale(1.18)">${crest('raven', '#1a1a1a')}</g><rect x="56" y="118" width="48" height="12" rx="4" fill="#6a4a2a" stroke="${K}" stroke-width="3"/>`,
+    goblet: `<path d="M 50,36 L 110,36 C 110,70 96,86 80,88 C 64,86 50,70 50,36 Z" fill="#e0b04a" stroke="${K}" stroke-width="2.4"/><rect x="76" y="88" width="8" height="24" fill="#e0b04a" stroke="${K}" stroke-width="2"/><ellipse cx="80" cy="118" rx="26" ry="8" fill="#e0b04a" stroke="${K}" stroke-width="2.4"/>`,
+    skull: `<path d="M 50,84 C 44,48 116,48 110,84 C 110,96 100,100 100,110 L 60,110 C 60,100 50,96 50,84 Z" fill="${I}" stroke="${K}" stroke-width="2.4"/><circle cx="66" cy="82" r="9" fill="${K}"/><circle cx="94" cy="82" r="9" fill="${K}"/><rect x="72" y="32" width="16" height="22" fill="#efe3c4" stroke="${K}" stroke-width="2"/><path d="M 80,14 C 86,22 86,28 80,32 C 74,28 74,22 80,14 Z" fill="#ffb347"/>`,
+    crystal: `<path d="M 80,22 L 108,70 L 92,120 L 68,120 L 52,70 Z" fill="#b48ae0" stroke="${K}" stroke-width="2.4"/><path d="M 80,22 L 80,120 M 52,70 L 108,70" stroke="#fff" stroke-width="2" opacity=".6"/><rect x="56" y="120" width="48" height="12" rx="4" fill="#6a4a2a" stroke="${K}" stroke-width="2"/>`,
+    raven: `<g transform="translate(80,78) scale(1.18)">${crest('raven', '#1a1a1a')}</g><rect x="56" y="118" width="48" height="12" rx="4" fill="#6a4a2a" stroke="${K}" stroke-width="2"/>`,
     dragon: `<g transform="translate(80,80) scale(1.18)">${crest('dragon', '#c8963a')}</g><circle cx="110" cy="56" r="6" fill="#ddd" opacity=".5"/><circle cx="118" cy="44" r="8" fill="#ddd" opacity=".35"/>`,
   };
   return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 160 160">${body[model] ?? body.none}</svg>`;
 }
 
+/** Seat thumbnails: each chair in a three-quarter view, shaded, with a thin outline. */
 export function seatIconSVG(model: string): string {
-  const W: Record<string, string> = { oak: '#8a5a30', stool: '#9a6a3a', velvet: '#5a2a6a', iron: '#5a5a62', bone: '#e0d6c0', throne: '#d8a840' };
-  const c = W[model] ?? '#8a5a30';
   const K = '#1b110b';
-  if (model === 'stool')
-    return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 160 160"><ellipse cx="80" cy="74" rx="40" ry="12" fill="${c}" stroke="${K}" stroke-width="4"/><path d="M 52,80 L 40,130 M 108,80 L 120,130 M 80,84 L 80,134" stroke="${K}" stroke-width="8" stroke-linecap="round"/></svg>`;
-  const tall = model === 'throne' ? 20 : 40;
-  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 160 160"><rect x="44" y="${tall}" width="72" height="${86 - tall}" rx="6" fill="${c}" stroke="${K}" stroke-width="4"/>${model === 'throne' ? `<path d="M 44,${tall} L 50,6 L 60,${tall} L 80,0 L 100,${tall} L 110,6 L 116,${tall}" fill="${c}" stroke="${K}" stroke-width="3"/>` : ''}${model === 'velvet' || model === 'throne' ? `<rect x="52" y="${tall + 8}" width="56" height="${74 - tall}" rx="8" fill="#7a1a2a" opacity=".85"/>` : ''}<rect x="36" y="86" width="88" height="16" rx="4" fill="${c}" stroke="${K}" stroke-width="4"/><path d="M 44,102 L 44,140 M 116,102 L 116,140" stroke="${K}" stroke-width="8" stroke-linecap="round"/>${model === 'bone' ? '<circle cx="44" cy="34" r="8" fill="#fff" stroke="#1b110b" stroke-width="3"/><circle cx="116" cy="34" r="8" fill="#fff" stroke="#1b110b" stroke-width="3"/>' : ''}</svg>`;
+  const o = `stroke="${K}" stroke-width="2.2" stroke-linejoin="round" stroke-linecap="round"`;
+  const id = `seat-${model}`;
+  const lg = (name: string, a: string, b: string, x2 = 0, y2 = 1) =>
+    `<linearGradient id="${id}-${name}" x1="0" y1="0" x2="${x2}" y2="${y2}"><stop offset="0" stop-color="${a}"/><stop offset="1" stop-color="${b}"/></linearGradient>`;
+  const u = (name: string) => `url(#${id}-${name})`;
+  const svg = (defs: string, body: string) => `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 160 160"><defs>${defs}</defs>${body}</svg>`;
+  /** Shapes drawn with a clean outline round their joint silhouette (no lines where parts meet). */
+  const sil = (shapes: string, fill: string) => `<g fill="${K}" stroke="${K}" stroke-width="4.4" stroke-linejoin="round" stroke-linecap="round">${shapes}</g><g fill="${fill}">${shapes}</g>`;
+  // The seat itself: top, front and side aprons.
+  const seatBox = (top: string, front: string, side: string) =>
+    `<path d="M 42,98 L 102,98 L 118,86 L 58,86 Z" fill="${top}" ${o}/><path d="M 42,98 L 102,98 L 102,108 L 42,108 Z" fill="${front}" ${o}/><path d="M 102,98 L 118,86 L 118,96 L 102,108 Z" fill="${side}" ${o}/>`;
+  const leg = (x: number, y0: number, y1: number, w: number, fill: string) => `<rect x="${x}" y="${y0}" width="${w}" height="${y1 - y0}" rx="${(w / 3).toFixed(1)}" fill="${fill}" ${o}/>`;
+  /** A turned (lathe) leg or spindle: a shaft with a bulge. */
+  const turned = (x: number, y0: number, y1: number, w: number, fill: string) =>
+    sil(`<rect x="${x - w / 2}" y="${y0}" width="${w}" height="${y1 - y0}" rx="${w / 2}"/><ellipse cx="${x}" cy="${y0 + (y1 - y0) * 0.42}" rx="${w * 0.78}" ry="${(y1 - y0) * 0.13}"/><ellipse cx="${x}" cy="${y1 - 3}" rx="${w * 0.66}" ry="3"/>`, fill);
+  switch (model) {
+    case 'stool':
+      return svg(
+        lg('w', '#c08850', '#7c4c24') + lg('t', '#d8a468', '#a87038', 1, 0),
+        // Three splayed legs and a stretcher ring, a thick round top with growth rings.
+        `<path d="M 50,124 Q 80,134 110,124" fill="none" stroke="${K}" stroke-width="6.4"/><path d="M 50,124 Q 80,134 110,124" fill="none" stroke="#7c4c24" stroke-width="4"/>` +
+          sil(`<path d="M 56,86 L 62,88 L 46,146 L 39,145 Z"/><path d="M 104,86 L 98,88 L 114,146 L 121,145 Z"/>`, u('w')) +
+          `<path d="M 42,78 L 42,86 A 38 13 0 0 0 118,86 L 118,78 Z" fill="${u('w')}" ${o}/><ellipse cx="80" cy="78" rx="38" ry="13" fill="${u('t')}" ${o}/>` +
+          `<ellipse cx="80" cy="78" rx="26" ry="8.5" fill="none" stroke="#9a6430" stroke-width="1.1" opacity=".7"/><ellipse cx="80" cy="78" rx="14" ry="4.6" fill="none" stroke="#9a6430" stroke-width="1.1" opacity=".7"/><ellipse cx="80" cy="78" rx="4" ry="1.4" fill="#9a6430" opacity=".6"/>` +
+          sil(`<path d="M 77,92 L 83,92 L 84,150 L 76,150 Z"/>`, u('w')) +
+          `<path d="M 58,72 Q 80,67 102,72" fill="none" stroke="#fff3d8" stroke-width="1.6" opacity=".45"/>`
+      );
+    case 'velvet': {
+      const buttons: Array<[number, number]> = [
+        [70, 40], [88, 33], [106, 33], [64, 56], [82, 52], [100, 50], [116, 50], [72, 72], [90, 70], [108, 69],
+      ];
+      return svg(
+        lg('v', '#8a44a0', '#3e1648', 1, 1) + lg('vt', '#9c56b2', '#5e2a70', 1, 0) + lg('w', '#6a3c1c', '#2e180a') + lg('g', '#f6d777', '#a8781e', 1, 1),
+        leg(60, 96, 128, 6, u('w')) +
+          leg(112, 96, 130, 6, u('w')) +
+          `<path d="M 54,90 L 54,42 C 54,16 122,6 122,32 L 122,90 Z" fill="${u('v')}" ${o}/>` +
+          `<path d="M 56,42 C 56,19 120,10 120,32" fill="none" stroke="${u('g')}" stroke-width="2.6"/>` +
+          buttons.map(([x, y]) => `<path d="M ${x - 6},${y - 6} L ${x},${y} L ${x + 6},${y - 6} M ${x - 6},${y + 6} L ${x},${y} L ${x + 6},${y + 6}" stroke="#2a0a32" stroke-width="1" opacity=".55" fill="none"/><circle cx="${x}" cy="${y}" r="1.9" fill="#f0c860" stroke="#2a0a32" stroke-width=".8"/>`).join('') +
+          seatBox(u('vt'), u('v'), '#3e1648') +
+          `<path d="M 43,107 L 101,107" stroke="${u('g')}" stroke-width="2.4"/>` +
+          [48, 56, 64, 72, 80, 88, 96].map((x) => `<circle cx="${x}" cy="102.5" r="1.4" fill="#f0c860"/>`).join('') +
+          // Rolled, padded arms on wooden supports.
+          sil(`<rect x="34" y="86" width="6" height="16" rx="2"/>`, u('w')) +
+          sil(`<rect x="104" y="76" width="5" height="16" rx="2"/>`, u('w')) +
+          `<rect x="30" y="68" width="36" height="14" rx="7" transform="rotate(-24 47 75)" fill="${u('v')}" ${o}/><circle cx="36" cy="83" r="7" fill="${u('vt')}" ${o}/><path d="M 36,79 A 3.5 3.5 0 1 1 33,84" fill="none" stroke="#2a0a32" stroke-width="1.1"/>` +
+          `<rect x="100" y="59" width="32" height="13" rx="6.5" transform="rotate(-34 116 65.5)" fill="${u('v')}" ${o}/><circle cx="105.5" cy="74" r="6.3" fill="${u('vt')}" ${o}/><path d="M 105.5,70.5 A 3 3 0 1 1 103,75" fill="none" stroke="#2a0a32" stroke-width="1.1"/>` +
+          sil(`<path d="M 43,108 C 39,120 50,128 44,142 L 51,142 C 56,128 47,119 52,108 Z"/><path d="M 93,108 C 89,120 100,128 94,142 L 101,142 C 106,128 97,119 102,108 Z"/>`, u('w')) +
+          `<ellipse cx="47.5" cy="144" rx="5" ry="2.6" fill="${u('g')}" ${o}/><ellipse cx="97.5" cy="144" rx="5" ry="2.6" fill="${u('g')}" ${o}/>`
+      );
+    }
+    case 'iron': {
+      const rivet = (x: number, y: number) => `<circle cx="${x}" cy="${y}" r="1.6" fill="#d4d8e0" stroke="${K}" stroke-width=".8"/>`;
+      const bar = (x1: number, y1: number, x2: number, y2: number, w: number, c: string) =>
+        `<path d="M ${x1},${y1} L ${x2},${y2}" stroke="${K}" stroke-width="${w + 2.4}" stroke-linecap="round"/><path d="M ${x1},${y1} L ${x2},${y2}" stroke="${c}" stroke-width="${w}" stroke-linecap="round"/>`;
+      return svg(
+        lg('i', '#8c909a', '#3c3e46', 1, 1) + lg('it', '#a4a8b2', '#62656e', 1, 0) + lg('d', '#55575f', '#26272c'),
+        leg(59, 90, 136, 5, u('d')) +
+          leg(113, 90, 138, 5, u('d')) +
+          [68, 78, 88, 98, 108].map((x) => bar(x, 34, x, 86, 3.4, '#6c7078')).join('') +
+          `<rect x="57" y="22" width="6" height="66" rx="1.5" fill="${u('i')}" ${o}/><rect x="113" y="22" width="6" height="66" rx="1.5" fill="${u('i')}" ${o}/>` +
+          `<path d="M 57,30 Q 88,12 119,30 L 119,38 Q 88,22 57,38 Z" fill="${u('i')}" ${o}/><rect x="57" y="72" width="62" height="6" rx="1.5" fill="${u('i')}" ${o}/>` +
+          `<circle cx="88" cy="17" r="7" fill="none" stroke="${K}" stroke-width="5"/><circle cx="88" cy="17" r="7" fill="none" stroke="#8c909a" stroke-width="2.6"/>` +
+          [rivet(60, 33), rivet(116, 33), rivet(60, 75), rivet(116, 75), rivet(88, 26)].join('') +
+          seatBox(u('it'), u('i'), u('d')) +
+          `<path d="M 52,92 L 106,92 M 56,89 L 110,89 M 48,95 L 102,95" stroke="#5c5f68" stroke-width=".9" opacity=".6"/>` +
+          [rivet(49, 96), rivet(96, 96), rivet(63, 88), rivet(110, 88)].join('') +
+          bar(48, 116, 98, 142, 2.6, '#55575f') +
+          bar(98, 116, 48, 142, 2.6, '#55575f') +
+          leg(43, 108, 148, 5, u('i')) +
+          leg(96, 108, 148, 5, u('i')) +
+          `<rect x="40" y="146" width="11" height="4" rx="1" fill="#3c3e46" ${o}/><rect x="93" y="146" width="11" height="4" rx="1" fill="#3c3e46" ${o}/>`
+      );
+    }
+    case 'bone': {
+      // A bone: a shaft with a pair of knuckles at each end.
+      const boneV = (x: number, y0: number, y1: number, w: number) =>
+        `<rect x="${x - w / 2}" y="${y0}" width="${w}" height="${y1 - y0}" rx="${w / 2}"/>` +
+        [y0, y1].map((y) => `<circle cx="${x - w * 0.45}" cy="${y}" r="${w * 0.55}"/><circle cx="${x + w * 0.45}" cy="${y}" r="${w * 0.55}"/>`).join('');
+      const rib = (y: number, bow: number) => `<path d="M 62,${y} Q 88,${y + bow} 114,${y}" fill="none" stroke="${K}" stroke-width="7"/><path d="M 62,${y} Q 88,${y + bow} 114,${y}" fill="none" stroke="#ece2c8" stroke-width="4.6"/>`;
+      return svg(
+        lg('b', '#f6efdc', '#c4b08a', 1, 1) + lg('bt', '#fbf5e6', '#d6c6a2', 1, 0),
+        sil(boneV(61, 94, 134, 5) + boneV(115, 94, 136, 5), '#d8caa6') +
+          rib(36, -8) + rib(50, 8) + rib(62, 8) + rib(74, 8) +
+          sil(boneV(60, 32, 86, 6) + boneV(116, 32, 86, 6), u('b')) +
+          // A skull crowning the back.
+          sil(`<path d="M 75,20 C 75,4 101,4 101,20 C 101,26 97,28 97,32 L 79,32 C 79,28 75,26 75,20 Z"/>`, u('b')) +
+          `<ellipse cx="83" cy="19" rx="3.6" ry="4" fill="${K}"/><ellipse cx="93" cy="19" rx="3.6" ry="4" fill="${K}"/><path d="M 88,23 L 86,27 L 90,27 Z" fill="${K}"/><path d="M 82,32 L 82,29 M 86,32 L 86,29 M 90,32 L 90,29 M 94,32 L 94,29" stroke="${K}" stroke-width="1"/>` +
+          seatBox(u('bt'), u('b'), '#b8a47a') +
+          `<path d="M 47,94.5 L 107,94.5 M 52,90.5 L 112,90.5" stroke="#a8956c" stroke-width="1.1"/>` +
+          sil(boneV(46, 110, 146, 6) + boneV(99, 110, 146, 6), u('b'))
+      );
+    }
+    case 'throne':
+      return svg(
+        lg('g', '#fbe08a', '#b07e1c', 1, 1) + lg('gd', '#c8962e', '#7a5212') + lg('r', '#b8222e', '#5a0c16', 1, 1) + lg('rt', '#cc3242', '#7a1422', 1, 0),
+        leg(60, 94, 132, 7, u('gd')) +
+          leg(112, 94, 134, 7, u('gd')) +
+          `<path d="M 54,90 L 54,34 Q 54,26 62,18 Q 66,28 75,28 Q 83,22 88,12 Q 93,22 101,28 Q 110,28 114,18 Q 122,26 122,34 L 122,90 Z" fill="${u('g')}" ${o}/>` +
+          `<path d="M 62,86 L 62,42 Q 62,34 70,34 Q 80,33 88,25 Q 96,33 106,34 Q 114,34 114,42 L 114,86 Z" fill="${u('r')}" ${o}/>` +
+          `<g transform="translate(88,60) scale(0.26)">${crest('crown', '#f6d270')}</g>` +
+          `<circle cx="62" cy="16" r="3.6" fill="${u('g')}" ${o}/><circle cx="88" cy="9.5" r="4.2" fill="${u('g')}" ${o}/><circle cx="114" cy="16" r="3.6" fill="${u('g')}" ${o}/>` +
+          `<ellipse cx="88" cy="39" rx="3" ry="4" fill="#e8303a" stroke="${K}" stroke-width="1"/><circle cx="58" cy="52" r="2.4" fill="#3a7ae0" stroke="${K}" stroke-width="1"/><circle cx="118" cy="52" r="2.4" fill="#3a7ae0" stroke="${K}" stroke-width="1"/>` +
+          seatBox(u('rt'), u('g'), u('gd')) +
+          [50, 62, 74, 86, 98].map((x, i) => `<circle cx="${x - 2}" cy="103" r="1.9" fill="${i % 2 ? '#3a7ae0' : '#e8303a'}" stroke="${K}" stroke-width=".8"/>`).join('') +
+          `<path d="M 56,70 L 40,80 C 34,84 34,92 40,94 L 47,94 L 47,87 L 58,79 Z" fill="${u('g')}" ${o}/><path d="M 121,63 L 106,73 C 102,76 102,83 106,85 L 111,85 L 111,79 L 122,71 Z" fill="${u('g')}" ${o}/>` +
+          leg(42, 108, 142, 9, u('g')) +
+          leg(94, 108, 142, 9, u('g')) +
+          `<path d="M 39,146 Q 46.5,138 54,146 Z" fill="${u('gd')}" ${o}/><path d="M 91,146 Q 98.5,138 106,146 Z" fill="${u('gd')}" ${o}/>`
+      );
+    case 'oak':
+    default:
+      return svg(
+        lg('w', '#b07a42', '#74461f', 1, 1) + lg('wt', '#cc945a', '#9a6430', 1, 0) + lg('d', '#7a4a22', '#4a2a12'),
+        leg(59, 90, 134, 6, u('d')) +
+          leg(112, 90, 136, 6, u('d')) +
+          [72, 88, 104].map((x) => turned(x, 34, 88, 5, u('w'))).join('') +
+          `<rect x="57" y="22" width="7" height="66" rx="2" fill="${u('w')}" ${o}/><rect x="112" y="22" width="7" height="66" rx="2" fill="${u('w')}" ${o}/>` +
+          `<circle cx="60.5" cy="19" r="4.5" fill="${u('w')}" ${o}/><circle cx="115.5" cy="19" r="4.5" fill="${u('w')}" ${o}/>` +
+          `<path d="M 62,27 Q 88,15 114,27 L 114,38 Q 88,28 62,38 Z" fill="${u('w')}" ${o}/><path d="M 66,31 Q 88,22 110,31" fill="none" stroke="#e0a868" stroke-width="1.2" opacity=".55"/>` +
+          seatBox(u('wt'), u('w'), u('d')) +
+          `<path d="M 50,95 Q 76,93 108,94 M 58,90 Q 84,88 113,89" fill="none" stroke="#8a5428" stroke-width="1" opacity=".7"/>` +
+          `<rect x="50" y="132" width="46" height="4" rx="2" fill="${u('d')}" ${o}/>` +
+          turned(46.5, 108, 148, 6.5, u('w')) +
+          turned(98.5, 108, 148, 6.5, u('w'))
+      );
+  }
 }
 
 export function svgURL(svg: string): string {

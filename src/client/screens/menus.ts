@@ -10,13 +10,11 @@ import { paint } from '../gfx/textures';
 import { h, icon } from '../ui/dom';
 import { toast, type Hud } from '../ui/hud';
 import { profile, saveProfile } from '../ui/profile';
-import { rankOf } from '../ui/progression';
-import { RIVALS } from '../../shared/match';
-import { ONLINE_MODES, type OnlineMode } from '../../shared/online';
+import { seatOptions, type OnlineMode, type QueueMode } from '../../shared/online';
 import { cleanName } from '../../shared/text';
 import { lookFromProfile } from '../cosmetics/apply';
-import { listRooms, OnlineSession, serverAvailable } from '../net/online';
-import { joinModal, lobbyModal, type Modal } from './lobby';
+import { leaderboard, OnlineSession, serverAvailable } from '../net/online';
+import { joinModal, lobbyModal, queueModal, watchModal, type Modal } from './lobby';
 import { FONT3D } from '../world/fonts3d';
 import { makeText } from '../world/tavern';
 
@@ -169,7 +167,8 @@ export class MainMenu implements Screen {
     this.alive = false;
     for (const u of this.unpick) u();
     const g = this.group;
-    void tweens.to(0.4, (k) => this.items.forEach((it) => (it.text.fillOpacity = 1 - k))).then(() => {
+    // The labels stay on their props while the camera turns away, then fade.
+    void tweens.to(0.4, (k) => this.items.forEach((it) => (it.text.fillOpacity = 1 - k)), { delay: 1.5 }).then(() => {
       this.nav.app.gfx.scene.remove(g);
       this.items.forEach((it) => it.text.dispose());
     });
@@ -179,13 +178,12 @@ export class MainMenu implements Screen {
 // ====================================================================== play menu
 
 interface Ticket {
+  title: string;
   mesh: THREE.Mesh;
   base: THREE.Vector3;
   rot: number;
   hover: number;
   target: number;
-  locked: boolean;
-  mode?: import('../match/matchScreen').MatchOptions;
 }
 
 function ticketTexture(title: string, sub: string, seats: string, color: string, locked: boolean): THREE.Texture {
@@ -295,17 +293,17 @@ export class PlayMenu implements Screen {
     void app.rig.glide(tv.stations.play, 1.9, 0.15);
     nav.hud.showProfile(true);
     const board = tv.board;
-    type Opt = import('../match/matchScreen').MatchOptions;
-    const defs: Array<[string, string, string, string, boolean, Opt | undefined, number, number, number]> = [
-      ['Original', 'Four souls, one Hooded Hand', '4', '#9b2a20', false, { mode: 'original', rivals: 3 }, -0.86, 0.47, -0.05],
-      ['Duel', 'You and one stranger', '1v1', '#7a2a6a', false, { mode: 'original', rivals: 1 }, 0.0, 0.5, 0.03],
-      ['Teams', 'Two against two', '2v2', '#2f5f9e', false, { mode: 'teams', rivals: 3 }, 0.86, 0.46, -0.02],
-      ['Winter Feast', 'Festive cards, cold hearts', '4', '#2f8a3a', false, { mode: 'winter', rivals: 3 }, -0.86, -0.36, 0.04],
-      ['Ranked', 'Duel for renown', '1v1', '#5e1622', false, { mode: 'ranked' }, 0.0, -0.4, -0.04],
-      ['Tutorial', 'Learn the ways of the Hand', '1v1', '#9a6a10', false, { mode: 'tutorial' }, 0.86, -0.38, 0.05],
+    // Real players only: two matchmaking queues and the online tables.
+    const defs: Array<[string, string, string, string, () => void, number, number, number]> = [
+      ['Duel', 'You and one other soul', '1v1', '#7a2a6a', () => this.queue('duel'), -0.86, 0.47, -0.05],
+      ['Teams', 'Two against two', '2v2', '#2f5f9e', () => this.queue('teams'), 0.0, 0.5, 0.03],
+      ['Join Table', 'Sit at an open table', '', '#2f7a4a', () => this.openJoin(), 0.86, 0.46, -0.02],
+      ['Create Table', 'Your own table', '', '#9b2a20', () => this.openModes(), -0.86, -0.36, 0.04],
+      ['Watch Table', 'A match being played', '', '#5e3a1a', () => this.openWatch(), 0.0, -0.4, -0.04],
+      ['Leaderboard', 'The best in the tavern', '', '#9a6a10', () => this.openLeaderboard(), 0.86, -0.38, 0.05],
     ];
-    for (const [title, sub, seats, color, locked, mode, x, y, rz] of defs) {
-      const mat = new THREE.MeshStandardMaterial({ map: ticketTexture(title, sub, seats, color, locked), roughness: 0.85, transparent: true, alphaTest: 0.5 });
+    for (const [title, sub, seats, color, act, x, y, rz] of defs) {
+      const mat = new THREE.MeshStandardMaterial({ map: ticketTexture(title, sub, seats, color, false), roughness: 0.85, transparent: true, alphaTest: 0.5 });
       const mesh = new THREE.Mesh(new THREE.PlaneGeometry(0.84, 0.395), mat);
       mesh.position.set(x, y, 0.07);
       mesh.rotation.z = rz;
@@ -314,7 +312,7 @@ export class PlayMenu implements Screen {
       pin.position.set(0, 0.16, 0.02);
       mesh.add(pin);
       this.group.add(mesh);
-      const t: Ticket = { mesh, base: mesh.position.clone(), rot: rz, hover: 0, target: 0, locked, mode: mode as never };
+      const t: Ticket = { title, mesh, base: mesh.position.clone(), rot: rz, hover: 0, target: 0 };
       this.tickets.push(t);
       this.unpick.push(
         nav.picker.add({
@@ -325,7 +323,8 @@ export class PlayMenu implements Screen {
           },
           onClick: () => {
             audio.play('paper');
-            void tweens.to(0.25, (k) => (t.mesh.position.z = t.base.z + 0.12 + k * 0.1)).then(() => nav.startMatch(mode!));
+            void tweens.to(0.18, (k) => (t.mesh.position.z = t.base.z + 0.1 * Math.sin(k * Math.PI)));
+            act();
           },
         })
       );
@@ -336,16 +335,7 @@ export class PlayMenu implements Screen {
       void tweens.to(0.6, (k) => t.mesh.scale.setScalar(Math.max(0.001, k)), { delay: 1.0 + i * 0.12, ease: ease.outBack }).then(() => i === 0 && audio.play('paper'))
     );
 
-    // ---- HTML: bottom bar, back, name plate.
-    const pb = (label: string, ico: keyof typeof import('../ui/dom').ICONS, color: string, fn: () => void, locked = false) => {
-      const b = h('button', { class: 'pb' + (locked ? ' locked' : '') }, h('span', { class: 'disc', style: `background: radial-gradient(circle at 35% 30%, ${color}, #000 140%)` }, icon(ico)), label);
-      b.addEventListener('click', () => {
-        audio.play('click');
-        fn();
-      });
-      b.addEventListener('pointerenter', () => audio.play('hover'));
-      return b;
-    };
+    // ---- HTML: back and the name plate.
     const nameInput = h('input', { value: profile.name, maxlength: '16', 'aria-label': 'Your name', placeholder: 'Your name' }) as HTMLInputElement;
     nameInput.addEventListener('change', () => {
       const name = cleanName(nameInput.value);
@@ -358,45 +348,13 @@ export class PlayMenu implements Screen {
       audio.play('click');
       nav.toMenu('play');
     });
-    this.ui = h(
-      'div',
-      { class: 'layer' },
-      back,
-      h('label', { class: 'name-plate', title: 'Your name' }, icon('quill'), nameInput),
-      h(
-        'div',
-        { class: 'play-bar' },
-        pb('Create Table', 'plus', '#d84a3a', () => this.openModes()),
-        (this.joinBtn = pb('Join a Table', 'key', '#5a5ad8', () => this.openJoin(), true)),
-        pb('Watch a Table', 'eye', '#8a5ad8', () => nav.startMatch({ mode: 'original', rivals: 4, spectate: true })),
-        pb('Leaderboard', 'crown', '#d8a83a', () => this.openLeaderboard())
-      ),
-      this.renownBadge()
-    );
+    this.ui = h('div', { class: 'layer' }, back, h('label', { class: 'name-plate', title: 'Your name' }, icon('quill'), nameInput));
     nav.layer.append(this.ui);
     if (opts.lobby) {
       this.online = true;
       this.openLobby(opts.lobby);
     }
-    void serverAvailable().then((ok) => ok && this.enableOnline());
-  }
-
-  private joinBtn!: HTMLButtonElement;
-
-  /** Online tables need the game server (Render); on a bare static host they stay locked. */
-  private enableOnline(): void {
-    if (!this.ui.isConnected) return;
-    this.online = true;
-    this.joinBtn.classList.remove('locked');
-    const count = h('span', { class: 'pb-count' });
-    this.joinBtn.append(count);
-    const refresh = async () => {
-      const n = (await listRooms()).length;
-      count.textContent = n ? String(n) : '';
-      count.classList.toggle('on', n > 0);
-    };
-    void refresh();
-    this.roomTimer = window.setInterval(() => void refresh(), 5000);
+    void serverAvailable().then((ok) => (this.online = ok));
   }
 
   private closePanel(): void {
@@ -417,88 +375,67 @@ export class PlayMenu implements Screen {
   }
 
   private openJoin(): void {
-    if (!this.online) {
-      toast(this.nav.layer, 'Online tables need the game server', 'They open once the tavern runs on its own server.');
-      return;
-    }
+    if (!this.needServer()) return;
     this.showModal(joinModal(this.nav, (s) => this.openLobby(s), () => (this.modal = null)));
   }
 
-  private renownBadge(): HTMLElement {
-    const rk = rankOf(profile.ranked.rating);
-    const b = h(
-      'button',
-      { class: 'renown', title: 'Play ranked' },
-      h('div', { class: 'medal', html: rankMedal(rk.index) }),
-      h('b', {}, `${profile.ranked.rating} Renown`),
-      h('span', {}, rk.name),
+  /** Every online action needs the game server; a bare static host has none. */
+  private needServer(): boolean {
+    if (this.online) return true;
+    toast(this.nav.layer, 'The tavern is closed', 'Play needs the game server: open the game from its server address.');
+    return false;
+  }
 
-    );
-    b.addEventListener('click', () => {
-      audio.play('paper');
-      this.nav.startMatch({ mode: 'ranked' });
-    });
-    b.addEventListener('pointerenter', () => audio.play('hover'));
-    return b;
+  /** Duel or Teams: wait for real players, then the match deals itself. */
+  private queue(mode: QueueMode): void {
+    if (!this.needServer()) return;
+    this.showModal(queueModal(this.nav, mode, () => (this.modal = null)));
+  }
+
+  private openWatch(): void {
+    if (!this.needServer()) return;
+    this.showModal(watchModal(this.nav, () => (this.modal = null)));
   }
 
   private openModes(): void {
+    if (!this.needServer()) return;
     this.closePanel();
-    type Opt = import('../match/matchScreen').MatchOptions;
-    let sel: GameMode = 'original';
+    let sel: OnlineMode = 'original';
     let seats = 4;
-    const modes: Array<[string, string, string, GameMode]> = [
+    let open = true;
+    const modes: Array<[string, string, string, OnlineMode]> = [
       ['Original', 'Everyone for themselves. Last soul standing wins the pot.', 'c-red', 'original'],
-      ['Teams', 'Crimson against Azure. Teammates see each other\'s hands and share visions. Aegis and Warband join the deck.', 'c-blue', 'teams'],
-      ['Scrimmage', 'A relaxed table: long turns, gentle rivals, half rewards.', 'c-wine', 'scrimmage'],
-      ['Winter Feast', 'A festive table with Mistletoe and Yule Logs in the deck.', 'c-green', 'winter'],
-      ['Ranked', 'A 1v1 duel against the ladder for Renown. Privateer and Sands of Time join the deck.', 'c-ink', 'ranked'],
-      ['Tutorial', 'Learn to play, step by step.', 'c-gold', 'tutorial'],
+      ['Teams', "Crimson against Azure. Teammates see each other's hands and share visions. Aegis and Warband join the deck.", 'c-blue', 'teams'],
+      ['Scrimmage', 'A relaxed table: long turns, half rewards.', 'c-wine', 'scrimmage'],
+      ['Winter Feast', 'A snowy table with Mistletoe and Yule Logs in the deck.', 'c-green', 'winter'],
     ];
     const els: HTMLElement[] = [];
     const list = h('div', { class: 'modes' });
     const sizeRow = h('div', { class: 'size-row' });
-    // Online: who fills the other chairs.
-    type Who = 'rivals' | 'open' | 'private';
-    let who: Who = 'rivals';
     const whoRow = h('div', { class: 'size-row who-row' });
     const renderWho = () => {
-      whoRow.replaceChildren();
-      if (!this.online) return;
-      const canOnline = ONLINE_MODES.includes(sel as OnlineMode);
-      if (!canOnline) who = 'rivals';
-      whoRow.append(h('span', {}, 'Who sits with you'));
-      const opts: Array<[Who, string, string]> = [
-        ['rivals', 'Tavern regulars', 'Bots only, right now'],
-        ['open', 'Open table', 'Anyone can join from the board'],
-        ['private', 'Private table', 'Only those with the code'],
-      ];
-      for (const [w, label, tip] of opts) {
-        const b = h('button', { class: 'size who' + (w === who ? ' sel' : ''), title: tip, disabled: w !== 'rivals' && !canOnline ? 'true' : null }, label) as HTMLButtonElement;
+      whoRow.replaceChildren(h('span', {}, 'Who may sit'));
+      for (const [o, label] of [[true, 'Open table'], [false, 'Private table']] as Array<[boolean, string]>) {
+        const b = h('button', { class: 'size who' + (o === open ? ' sel' : '') }, label);
         b.addEventListener('click', () => {
           audio.play('tick');
-          who = w;
+          open = o;
           renderWho();
         });
         whoRow.append(b);
       }
     };
-    const sizeBtns: HTMLButtonElement[] = [];
     const renderSizes = () => {
-      sizeRow.replaceChildren();
-      sizeBtns.length = 0;
-      const opts = sel === 'teams' ? [4, 6] : sel === 'ranked' || sel === 'tutorial' ? [2] : [2, 3, 4, 5, 6];
+      sizeRow.replaceChildren(h('span', {}, 'Seats at the table'));
+      const opts = seatOptions(sel);
       if (!opts.includes(seats)) seats = opts.includes(4) ? 4 : opts[0];
-      sizeRow.append(h('span', {}, 'Seats at the table'));
       for (const n of opts) {
-        const b = h('button', { class: 'size' + (n === seats ? ' sel' : '') }, sel === 'teams' ? `${n / 2}v${n / 2}` : String(n)) as HTMLButtonElement;
+        const b = h('button', { class: 'size' + (n === seats ? ' sel' : '') }, sel === 'teams' ? `${n / 2}v${n / 2}` : String(n));
         b.addEventListener('click', () => {
           audio.play('tick');
           seats = n;
-          sizeBtns.forEach((x) => x.classList.remove('sel'));
-          b.classList.add('sel');
+          renderSizes();
         });
-        sizeBtns.push(b);
         sizeRow.append(b);
       }
     };
@@ -511,9 +448,7 @@ export class PlayMenu implements Screen {
         els.forEach((e) => e.classList.remove('sel'));
         b.classList.add('sel');
         renderSizes();
-        renderWho();
       });
-      b.addEventListener('dblclick', () => this.nav.startMatch({ mode, rivals: seats - 1 } as Opt));
       els.push(b);
       list.append(b);
     }
@@ -528,47 +463,42 @@ export class PlayMenu implements Screen {
     choose.addEventListener('click', () => {
       audio.play('paper');
       this.closePanel();
-      if (who !== 'rivals' && ONLINE_MODES.includes(sel as OnlineMode)) {
-        this.openLobby(OnlineSession.create({ name: profile.name, look: lookFromProfile(), mode: sel as OnlineMode, size: seats, public: who === 'open' }));
-        return;
-      }
-      this.nav.startMatch({ mode: sel, rivals: seats - 1 });
+      this.openLobby(OnlineSession.create({ name: profile.name, look: lookFromProfile(), mode: sel, size: seats, public: open }));
     });
     this.panel = h('div', { class: 'scrim' }, h('div', { class: 'panel' }, h('h2', {}, 'Create a Table'), list, sizeRow, whoRow, h('div', { class: 'row' }, close, choose)));
     this.panel.addEventListener('click', (e) => e.target === this.panel && this.closePanel());
     this.nav.layer.append(this.panel);
   }
 
+  /** Server-wide standings: wins and games of everyone who has played here (since the server last started). */
   private openLeaderboard(): void {
+    if (!this.needServer()) return;
     this.closePanel();
-    const rows = RIVALS.map((r) => ({ name: r.name, rating: profile.ranked.ladder[r.name] ?? 1000 + (hashName(r.name) % 600), me: false }));
-    rows.push({ name: profile.name + ' (you)', rating: profile.ranked.rating, me: true });
-    rows.sort((a, b) => b.rating - a.rating);
-    const table = h('div', { class: 'ladder' });
-    rows.forEach((r, i) => {
-      const rk = rankOf(r.rating);
-      table.append(h('div', { class: 'lrow' + (r.me ? ' me' : '') }, h('span', { class: 'pos' }, String(i + 1)), h('span', { class: 'medal small', html: rankMedal(rk.index) }), h('span', { class: 'nm' }, r.name), h('span', { class: 'rk' }, rk.name), h('b', {}, String(r.rating))));
-    });
+    const table = h('div', { class: 'ladder' }, h('p', { class: 'empty' }, 'Reading the ledger…'));
     const close = h('button', { class: 'btn-text' }, 'Close');
     close.addEventListener('click', () => {
       audio.play('click');
       this.closePanel();
     });
-    const stats = profile.stats;
-    this.panel = h(
-      'div',
-      { class: 'scrim' },
-      h(
-        'div',
-        { class: 'panel' },
-        h('h2', {}, 'The Ladder'),
-        h('p', { class: 'lede' }, `Ranked renown among the regulars. Your record: ${stats.wins} wins in ${stats.matches} matches, ${stats.rescues} narrow escapes.`),
-        table,
-        h('div', { class: 'row' }, h('span'), close)
-      )
-    );
+    this.panel = h('div', { class: 'scrim' }, h('div', { class: 'panel leaderboard' }, h('h2', {}, 'Leaderboard'), table, h('div', { class: 'row' }, h('span'), close)));
     this.panel.addEventListener('click', (e) => e.target === this.panel && this.closePanel());
     this.nav.layer.append(this.panel);
+    void leaderboard().then((rows) => {
+      table.replaceChildren();
+      if (!rows.length) table.append(h('p', { class: 'empty' }, 'No matches finished yet tonight.'));
+      rows.forEach((r, i) =>
+        table.append(
+          h(
+            'div',
+            { class: 'lrow' + (r.name === profile.name ? ' me' : '') },
+            h('span', { class: 'pos' }, String(i + 1)),
+            h('span', { class: 'nm' }, r.name),
+            h('span', { class: 'rk' }, `${r.games} played`),
+            h('b', {}, `${r.wins} ${r.wins === 1 ? 'win' : 'wins'}`)
+          )
+        )
+      );
+    });
   }
 
   update(_t: number, dt: number): void {
@@ -586,27 +516,8 @@ export class PlayMenu implements Screen {
     if (this.roomTimer) clearInterval(this.roomTimer);
     this.closePanel();
     this.ui.remove();
+    // The papers stay pinned to the board while the camera turns away from it.
     const g = this.group;
-    void tweens.to(0.35, (k) => this.tickets.forEach((t) => t.mesh.scale.setScalar(Math.max(0.001, 1 - k)))).then(() => {
-      g.parent?.remove(g);
-    });
+    setTimeout(() => g.parent?.remove(g), 2000);
   }
-}
-
-function hashName(s: string): number {
-  let h2 = 2166136261;
-  for (let i = 0; i < s.length; i++) h2 = Math.imul(h2 ^ s.charCodeAt(i), 16777619);
-  return h2 >>> 0;
-}
-
-/** Heraldic medal for a ranked tier (0..6). */
-export function rankMedal(i: number): string {
-  const cols = ['#8a6a4a', '#9aa0a8', '#c0c8d0', '#d8b25a', '#e0c070', '#f0d890', '#c4473a'];
-  const c = cols[Math.min(i, cols.length - 1)];
-  const n = 5 + Math.min(i, 4);
-  const pts = Array.from({ length: n }, (_v, k: number) => {
-    const ang = (k / n) * Math.PI * 2 - Math.PI / 2;
-    return `${(32 + Math.cos(ang) * 26).toFixed(1)},${(32 + Math.sin(ang) * 26).toFixed(1)}`;
-  }).join(' ');
-  return `<svg viewBox="0 0 64 64"><polygon points="${pts}" fill="${c}" stroke="#1b110b" stroke-width="3"/><circle cx="32" cy="32" r="14" fill="#1a0e08" stroke="#1b110b" stroke-width="2"/><path d="M33 22c-5 2-9 8-9 14 0 4 2 6 4 7h8c2-1 4-3 4-7 0-6-3-11-7-14z" fill="${c}"/><circle cx="30" cy="35" r="1.4" fill="#ffcf5a"/><circle cx="34" cy="35" r="1.4" fill="#ffcf5a"/></svg>`;
 }

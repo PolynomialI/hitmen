@@ -81,6 +81,34 @@ Second chat (continuing from this file):
     Chromebooks.
 16. Asked what the "1000 Renown · Peasant" badge is (answered: the local Ranked ladder). Then: remove the title
     screen's "Draw a card. Pray it is not him." line; put the Guardian Angel's head closer to its body on the card.
+17. The big list (two screenshots), in short: "Click to enter" higher; no sound on your turn; **remove playing with
+    bots entirely and switch to player vs player** ("I don't think you should remove support or the algorithm
+    feature of them, I might add them in later"); cards don't bob; seat camera lower, much closer, smaller FOV; larger
+    deck and played card, no glare; status effects on screen (a chained card by your hand for Shackles; a spiked
+    mace with the turn count beside each player's head, at neck height, right of the head); no Scrying Orb sound; no
+    play captions; Angel = a happy chime instead of the explosion; a played card floats up above the pile with its
+    name under it; no Missing poster: a gunshot, the player falls abruptly to one side, a bit of blood from the side
+    of the head; when you die, a spectator view switching between players' chairs with their cards under a brown
+    film; no "The Hooded Hand always collects..." text; remove emotes, Ranked, the tutorial, the Winter Feast paper
+    and the Renown badge; the board is **Duel, Teams (queues), Join Table, Create Table, Watch Table, Leaderboard**;
+    no small circle buttons under the board; board camera a bit closer; Card Codex at the bottom of Settings; white
+    Scrimmage/Teams descriptions; no tavern regulars option; **Winter Feast: a full snowy area, snow on the table and
+    chairs, snow-themed player looks**; better, narrower, more detailed seat icons; thinner black outlines on charm/
+    sleeve/seat art; **a player who closes the tab has 30 s to rejoin (everyone is alerted), else knocked out**;
+    board papers must not vanish before the camera has left; Challenges text bigger and better proportioned, "Souls"
+    and "Lv 1" not wrapping; quieter, better menu clicks. Answers to the follow-up questions: Winter Feast in Create
+    Table only; Leaderboard = server-wide wins; >30 s away = knocked out; Original in Create Table only.
+18. Card art, in order (latest wins): thin leather border, single colour; then a slight gradient is fine; then the
+    gradient exactly like their screenshot (flat bands darkening toward the centre); less glare on the pile and the
+    played-card popup; the mace, Angel and Hooded Hand like their screenshots; the played card larger (not the deck);
+    chained card without a lock (two thick light-grey chains) at the far right of the hand, big number, no circle; a
+    card-count icon per player like their screenshot; mace a bit lower; deck count text closer and larger; the pile
+    a tidy stack with random turns; a lightning bolt top right for cards playable any time, on a borderless white
+    disc peering off the card edge, larger; the same with a target for targeted cards; Bounty art = the spiked ball.
+    > Stop cheaping out on the textures, I want you to essentailyl copy the textures I am providing youw tih here,
+    > Change them up slightly obviously ... Especially the icon you currently have for the number of turns you have
+    > to play. Make sure this icon also appears for other players
+    > You know what, remove the full border aroudn eveyr card and every texture that this applies to, like skins.
 
 ## How the requests were interpreted
 
@@ -100,6 +128,11 @@ Second chat (continuing from this file):
   built: online tables (server + UI + reconnect), tested locally with the real server and several browsers.
 - **Chromebook**: everything is procedural (no big asset files), with adaptive resolution, quality tiers
   (`?q=low|medium|high`), static mesh batching and a modest post-processing stack.
+- **Players only (message 17)**: bots are unreachable from the game but the code stays (bot AI, local matches,
+  tutorial); `?start=` opens a bot table on localhost only, for the test scripts. Duel uses the engine's `ranked`
+  config (1v1 deck) under the name Duel; there is no rating any more.
+- **Their reference images (message 18)**: the owner explicitly asked to follow their screenshots closely (slightly
+  changed), which overrides the earlier "keep everything original" for those textures.
 - **Quality bar**: the owner repeatedly asked for nothing "cheap". Every new feature got its own art, animation,
   sound and UI polish, and was checked in a real browser before being pushed.
 
@@ -150,6 +183,18 @@ Second chat:
     (supersampling, 2048 soft shadows, more lights) and Lowest (0.45 MP, no bloom/shadows, one lamp: ~2x Low's frame
     rate on the software GPU).
 28. Title screen without the tagline; Guardian Angel card art with the head resting on the robe.
+29. Message 17, phase A: title/turn sounds, emotes removed, Challenges board, quieter clicks, Codex in Settings.
+30. Phase B: seat camera lower and closer, larger deck/pile without glare, played card floats above the pile with its
+    name, status rack (mace, chained card), mace + card count over every player, gunshot death with a slump and
+    blood, spectating from the players' chairs after you die.
+31. Card frames without borders (flat concentric bands), the mace / Angel / Hooded Hand / Bounty art after the
+    owner's screenshots, corner badges (bolt for any-time cards, target for targeted cards).
+32. Phase C, players only: Duel and Teams matchmaking queues, tables that begin with two players (no regulars),
+    Watch Table (live matches, watch from any chair), a server-wide Leaderboard, 30 s to come back after closing the
+    tab with a countdown for everyone else, then knocked out; resume via localStorage.
+33. Phase D: Winter Feast under snow (world/winter.ts) with frosted players; detailed three-quarter seat icons with
+    thin outlines; thinner charm outlines; no border ring on gilded/prismatic skins; menu labels and board papers stay
+    until the camera has left.
 
 ## How work was verified
 
@@ -157,9 +202,10 @@ Second chat:
   plus a scripted tutorial student. Passes locally and in GitHub Actions.
 - `scripts/e2e/*.cjs`: headless Chromium plays the tutorial, full 4-player original / teams / winter tables and the
   shop buy-equip-spin flow, clicking real 3D objects, with zero page errors. Screenshots were reviewed by eye.
-- `scripts/serverSmoke.ts` (real sockets against the dev or bundled production server) and
-  `scripts/e2e/online.cjs` (three headless browsers: create, list, join by code, start, play, reload mid-match,
-  results, another round) cover online tables.
+- `scripts/serverSmoke.ts` (real sockets against the bundled production server: tables of players only, queues,
+  watching, the 30 s knockout, the leaderboard) and `scripts/e2e/online.cjs` (headless browsers clicking the board's
+  papers: create, Join Table, invite link, Begin, Watch Table, reload mid-match, results, another round, then a Duel
+  from the queue where one player closes the tab) cover online play.
 - **Not verified:** a real Chromebook (only headless SwiftShader), a real Render deployment (the bundled server was
   run locally), whether the managed Chromebook can reach `*.onrender.com`, sound by ear (audio is generated, never
   listened to).
@@ -168,9 +214,10 @@ Second chat:
 
 - **Render:** the owner created an account (Nov 25). Steps are in HANDOFF.md → Deploy (route A via a device where
   GitHub opens, or route B with the public repo URL). Until it is live, the game only runs where someone runs
-  `npm start` (or `npm run dev` for bot tables).
-- Online tables are built and tested locally; they unlock automatically when the page is served by the server.
-- The Leaderboard is the local ranked ladder; a real one needs server-side accounts.
+  `npm start`.
+- Every match is online (players only); the board needs the game server.
+- The Leaderboard counts wins by player name in the server's memory (resets on restart); trusted standings need
+  server-side accounts.
 - Coins/items live in the browser's localStorage (also for online tables); move them server-side if they must be
   trusted.
 

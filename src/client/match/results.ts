@@ -2,17 +2,18 @@ import { audio } from '../audio/audio';
 import { tweens } from '../core/tween';
 import { h } from '../ui/dom';
 import { profile, saveProfile } from '../ui/profile';
-import { addXp, claimChallenge, defOf, levelProgress, progressChallenges, rankedResult, rankOf, refreshChallenges, xpForLevel, type MatchSummary } from '../ui/progression';
+import { addXp, claimChallenge, defOf, levelProgress, progressChallenges, refreshChallenges, xpForLevel, type MatchSummary } from '../ui/progression';
 import type { MatchScreen } from './matchScreen';
 
-/** Victory / defeat ledger with coins, XP, level-ups, ranked rating and challenge progress. */
+/** Victory / defeat ledger with coins, XP, level-ups and challenge progress. */
 export async function showResults(s: MatchScreen): Promise<void> {
   const r = s.result!;
   if (s.opts.spectate) {
     const back = h('button', { class: 'btn-text' }, 'Back to the board');
     back.addEventListener('click', () => s.leave());
-    const again = h('button', { class: 'btn-text' }, 'Watch another');
-    again.addEventListener('click', () => s.nav.startMatch(s.opts));
+    // Watching an online table: if its players sit down again, the next round shows here by itself.
+    const again = s.opts.online ? h('span', { class: 'wait' }, 'Waiting for the next round…') : h('button', { class: 'btn-text' }, 'Watch another');
+    if (!s.opts.online) again.addEventListener('click', () => s.nav.startMatch(s.opts));
     s.ui.append(h('div', { class: 'scrim' }, h('div', { class: 'panel results' }, h('h2', {}, `${s.nameOf(r.winner ?? undefined)} wins the night`), h('p', { class: 'lede' }, 'The Hooded Hand claimed the rest.'), h('div', { class: 'row' }, back, again))));
     audio.play('win');
     return;
@@ -49,13 +50,6 @@ export async function showResults(s: MatchScreen): Promise<void> {
   if (mode !== 'tutorial') {
     if (won) profile.wins++;
     else profile.losses++;
-  }
-  let rankLine: HTMLElement | null = null;
-  if (mode === 'ranked') {
-    const rival = s.seats.find((x) => x.id !== me)!;
-    const delta = rankedResult(rival.name, won);
-    const rk = rankOf(profile.ranked.rating);
-    rankLine = h('div', { class: 'rank-line' }, `Renown ${delta >= 0 ? '+' : ''}${delta} → ${profile.ranked.rating} (${rk.name})`);
   }
   saveProfile({ tutorialDone: profile.tutorialDone || (mode === 'tutorial' && won) });
   refreshChallenges();
@@ -157,7 +151,7 @@ export async function showResults(s: MatchScreen): Promise<void> {
   const panel = h(
     'div',
     { class: 'scrim results-wrap' },
-    h('div', { class: 'panel results' }, h('h2', {}, title), lede ? h('p', { class: 'lede' }, lede) : null, rankLine, ledger, xpBar, h('div', { class: 'row' }, leave, again)),
+    h('div', { class: 'panel results' }, h('h2', {}, title), lede ? h('p', { class: 'lede' }, lede) : null, ledger, xpBar, h('div', { class: 'row' }, leave, again)),
     mode === 'tutorial' ? null : chal
   );
   for (let i = 0; i < lines.length + 1; i++) audio.play('coins', { at: 0.35 + i * 0.16, vol: 0.4 });

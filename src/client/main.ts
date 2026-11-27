@@ -14,7 +14,7 @@ import { h } from './ui/dom';
 import { Hud } from './ui/hud';
 import { profile } from './ui/profile';
 import type { GameMode } from '../shared/types';
-import type { LobbyInfo } from '../shared/online';
+import { engineMode, type LobbyInfo } from '../shared/online';
 import { OnlineSession } from './net/online';
 import { toast } from './ui/hud';
 
@@ -31,6 +31,21 @@ const loading = h(
   h('div', { class: 'inner', html: crest }, h('h1', {}, 'The Hooded Hand'), h('div', { class: 'sub' }, 'A tavern card game'), h('div', { class: 'bar' }, bar), label)
 );
 document.body.append(loading);
+
+const params = new URLSearchParams(location.search);
+// Test hook only: a local match against the bots (kept for later). Never on the hosted game.
+const local = import.meta.env.DEV || location.hostname === 'localhost' || location.hostname === '127.0.0.1';
+const quick = local ? (params.get('start') as GameMode | null) : null;
+const rivals = Number(params.get('rivals')) || 1;
+// Reloaded (or reopened within 30 s) while seated at an online table? Take the seat back at once, before the tavern
+// is built: on a slow machine loading can take a while, and the seat is only held for 30 s.
+let resumed = quick ? null : OnlineSession.resume();
+// An invite link (?join=CODE): sit straight down at that table.
+const invite = !resumed && !quick ? params.get('join') : null;
+if (invite) {
+  history.replaceState(null, '', location.pathname);
+  resumed = OnlineSession.join(invite, profile.name, lookFromProfile());
+}
 
 (async () => {
   try {
@@ -99,19 +114,8 @@ document.body.append(loading);
     },
   });
 
-  const params = new URLSearchParams(location.search);
-  const quick = params.get('start') as GameMode | null;
-  const rivals = Number(params.get('rivals')) || 1;
-  // Reloaded while seated at an online table? Take the seat back.
-  let resumed = quick ? null : OnlineSession.resume();
-  // An invite link (?join=CODE): sit straight down at that table.
-  const invite = !resumed && !quick ? params.get('join') : null;
-  if (invite) {
-    history.replaceState(null, '', location.pathname);
-    resumed = OnlineSession.join(invite, profile.name, lookFromProfile());
-  }
-  let lobby: LobbyInfo | null = null;
-  if (resumed) {
+  let lobby: LobbyInfo | null = resumed?.lobby ?? null;
+  if (resumed && !lobby && resumed.state !== 'closed') {
     label.textContent = 'Returning to your table';
     lobby = await new Promise<LobbyInfo | null>((res) => {
       const done = (l: LobbyInfo | null) => {
@@ -128,7 +132,7 @@ document.body.append(loading);
   setTimeout(() => loading.remove(), 1400);
   if (resumed && lobby?.status === 'playing') {
     app.gfx.grade.u('uFade').value = 1;
-    app.setScreen(new MatchScreen(nav, { mode: lobby.mode, rivals: lobby.size - 1, online: resumed }));
+    app.setScreen(new MatchScreen(nav, { mode: engineMode(lobby.mode), rivals: lobby.seats.length - 1, online: resumed }));
   } else if (resumed && lobby) {
     app.rig.snap(app.tavern.stations.play);
     nav.toPlay({ lobby: resumed });

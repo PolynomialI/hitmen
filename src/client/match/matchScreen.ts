@@ -219,10 +219,11 @@ export class MatchScreen implements Screen {
     this.ui.append(chip);
     this.offSession = s.on({
       state: (st) => chip.classList.toggle('out', st !== 'reconnecting'),
-      presence: (id, connected) => {
+      presence: (id, connected, graceMs) => {
         if (id === this.me || this.phase === 'over') return;
-        const n = this.nameOf(id);
-        toast(this.nav.layer, connected ? `${n} is back` : `${n} lost their connection`, connected ? undefined : 'Their seat is kept for a while.');
+        this.clearAway(id);
+        if (connected) toast(this.nav.layer, `${this.nameOf(id)} is back`);
+        else this.showAway(id, graceMs ?? 30_000);
       },
       error: (m) => toast(this.nav.layer, m),
       closed: (m) => {
@@ -231,6 +232,32 @@ export class MatchScreen implements Screen {
         this.leave();
       },
     });
+  }
+
+  /** Players who dropped out mid-match: a countdown until their seat is forfeited. */
+  private away = new Map<PlayerId, { el: HTMLElement; timer: number }>();
+  private awayEl: HTMLElement | null = null;
+
+  private showAway(id: PlayerId, ms: number): void {
+    if (!this.awayEl) this.ui.append((this.awayEl = h('div', { class: 'away-stack' })));
+    const until = performance.now() + ms;
+    const el = h('div', { class: 'away-chip' });
+    const draw = () => {
+      const s = Math.max(0, Math.ceil((until - performance.now()) / 1000));
+      el.textContent = `${this.nameOf(id)} lost their connection · ${s}s to return`;
+      if (s <= 0) this.clearAway(id);
+    };
+    draw();
+    this.away.set(id, { el, timer: window.setInterval(draw, 250) });
+    this.awayEl.append(el);
+  }
+
+  private clearAway(id: PlayerId): void {
+    const a = this.away.get(id);
+    if (!a) return;
+    clearInterval(a.timer);
+    a.el.remove();
+    this.away.delete(id);
   }
 
   private onContext = (e: Event) => {
@@ -853,6 +880,7 @@ export class MatchScreen implements Screen {
       }, 250 + i * (1400 / Math.max(1, others.length)));
     }
     this.updateStatus();
+    if (this.opts.spectate) this.enterSpectate();
     await tweens.wait(1.6);
   }
 
@@ -1738,6 +1766,7 @@ export class MatchScreen implements Screen {
 
   /** Slain: a gunshot. A rival drops sideways out of the chair with blood at the side of the head; you fall. */
   private async onSlain(player: PlayerId): Promise<void> {
+    this.clearAway(player);
     this.rescueEnd = 0;
     this.hint(null);
     this.hand.highlight.clear();
@@ -1859,12 +1888,14 @@ export class MatchScreen implements Screen {
     const old = this.spectating ? this.table.seat(this.spectating) : null;
     if (old) {
       old.figure.root.visible = true;
+      old.watched = false;
       for (const c of old.hand) this.film(c, false);
     }
     this.spectating = id;
     const sv = this.table.seat(id);
     if (!sv) return;
     sv.figure.root.visible = false;
+    sv.watched = true;
     const name = this.spectateEl?.querySelector('.spec-name');
     if (name) name.textContent = this.nameOf(id);
     const c = this.table.center;
@@ -2055,6 +2086,7 @@ export class MatchScreen implements Screen {
     this.disposed = true;
     this.t.dispose();
     this.offSession?.();
+    for (const id of [...this.away.keys()]) this.clearAway(id);
     tweens.instant = false;
     audio.suppressed = false;
     for (const u of this.picks.values()) u();

@@ -10,7 +10,7 @@ import { extname, join, normalize, resolve } from 'node:path';
 import { WebSocketServer, type WebSocket } from 'ws';
 import type { Host } from '../src/shared/host';
 import { createTableMatch } from '../src/shared/match';
-import { normalizeCode, ONLINE_MODES, ROOM_CODE, seatOptions, type ClientMsg, type LobbyInfo, type Look, type OnlineMode, type RoomSummary, type ServerMsg } from '../src/shared/online';
+import { normalizeCode, QUEUE_SIZE, ROOM_CODE, seatOptions, TABLE_MODES, type ClientMsg, type LeaderRow, type LiveTable, type LobbyInfo, type Look, type OnlineMode, type QueueMode, type RoomSummary, type ServerMsg } from '../src/shared/online';
 import { cleanName, NAME_MAX } from '../src/shared/text';
 import type { Action, GameEvent } from '../src/shared/types';
 
@@ -19,7 +19,8 @@ const DIST = resolve(process.cwd(), 'dist');
 const MAX_ROOMS = 300;
 /** How long a seat is kept for a player whose connection dropped. */
 const GRACE_WAITING_MS = 20_000;
-const GRACE_PLAYING_MS = 90_000;
+/** A player who drops out of a match has this long to come back; then they are knocked out. */
+const GRACE_PLAYING_MS = 30_000;
 /** A finished table with nobody asking for another round closes after this long. */
 const OVER_TTL_MS = 5 * 60_000;
 /** On shutdown (a redeploy), matches in progress may run on this long before the process exits. Render stops a free
@@ -57,6 +58,8 @@ function serve(req: IncomingMessage, res: ServerResponse): void {
   }
   if (url.pathname === '/api/info') return json(res, { online: true, rooms: rooms.size, players: [...rooms.values()].reduce((n, r) => n + r.clients.length, 0) });
   if (url.pathname === '/api/rooms') return json(res, publicRooms());
+  if (url.pathname === '/api/live') return json(res, liveTables());
+  if (url.pathname === '/api/leaderboard') return json(res, leaderboard());
   let p = normalize(join(DIST, decodeURIComponent(url.pathname)));
   if (!p.startsWith(DIST)) {
     res.writeHead(403);
@@ -99,6 +102,11 @@ class Room {
   private overTimer: NodeJS.Timeout | null = null;
   private t0 = Date.now();
   private nextPid = 1;
+  /** Spectators: socket -> stop listening. */
+  readonly watchers = new Map<WebSocket, () => void>();
+  private nextWatcher = 1;
+  /** Names of everyone dealt into the current match (for the standings, even if they leave). */
+  private dealt = new Map<string, string>();
 
   constructor(
     readonly code: string,
@@ -125,6 +133,7 @@ class Room {
 
   broadcast(msg: ServerMsg): void {
     for (const c of this.clients) if (c.ws) send(c.ws, msg);
+    if (msg.t === 'lobby') for (const ws of this.watchers.keys()) send(ws, msg);
   }
 
   broadcastLobby(): void {
@@ -178,12 +187,30 @@ class Room {
 
   start(c: Client): void {
     if (this.status !== 'waiting' || c.pid !== this.hostPid) return;
-    if (this.mode === 'teams' && [0, 1].some((t) => this.clients.filter((x) => x.team === t).length > this.size / 2)) {
-      send(c.ws!, { t: 'error', message: 'Too many players on one team.' });
+    const why = this.cannotStart();
+    if (why) {
+      if (c.ws) send(c.ws, { t: 'error', message: why });
       return;
     }
+    this.begin();
+  }
+
+  /** Why the night cannot begin yet (no bots: real players only), or null. */
+  cannotStart(): string | null {
+    if (this.clients.length < 2) return 'Wait for at least one more player.';
+    if (this.mode === 'teams') {
+      const n = [0, 1].map((t) => this.clients.filter((x) => x.team === t).length);
+      if (n.some((k) => k === 0)) return 'Both teams need a player.';
+      if (n.some((k) => k > this.size / 2)) return 'Too many players on one team.';
+    }
+    return null;
+  }
+
+  /** Deal everyone at the table into a new match. */
+  begin(): void {
     const humans = this.clients.map((x) => ({ id: x.pid, name: x.name, look: x.look, team: this.mode === 'teams' ? x.team : undefined }));
-    const { host } = createTableMatch({ mode: this.mode, size: this.size, humans, seed: (Math.random() * 2 ** 31) | 0 });
+    this.dealt = new Map(this.clients.map((x) => [x.pid, x.name]));
+    const { host } = createTableMatch({ mode: this.mode, humans, seed: (Math.random() * 2 ** 31) | 0 });
     for (const x of this.clients) host.listen(x.pid, (ev: GameEvent) => x.ws && send(x.ws, { t: 'event', ev }));
     this.host = host;
     this.status = 'playing';
@@ -198,6 +225,15 @@ class Room {
   }
 
   private finish(): void {
+    // Server-wide standings: a game for everyone dealt in, a win for the winners.
+    const over = [...(this.host?.log ?? [])].reverse().find((e) => e.e === 'over') as (GameEvent & { e: 'over' }) | undefined;
+    const winners = new Set(over ? (over.winners?.length ? over.winners : over.winner ? [over.winner] : []) : []);
+    for (const [pid, name] of this.dealt) {
+      const row = standings.get(name) ?? { name, wins: 0, games: 0 };
+      row.games++;
+      if (winners.has(pid)) row.wins++;
+      standings.set(name, row);
+    }
     this.status = 'over';
     if (this.timer) clearInterval(this.timer);
     this.timer = null;
@@ -247,7 +283,7 @@ class Room {
     c.ws = null;
     if (c.grace) clearTimeout(c.grace);
     c.grace = setTimeout(() => this.remove(c), this.status === 'playing' ? GRACE_PLAYING_MS : GRACE_WAITING_MS);
-    this.broadcast({ t: 'presence', id: c.pid, connected: false });
+    this.broadcast({ t: 'presence', id: c.pid, connected: false, graceMs: this.status === 'playing' ? GRACE_PLAYING_MS : GRACE_WAITING_MS });
     if (this.status !== 'playing') this.broadcastLobby();
   }
 
@@ -264,7 +300,28 @@ class Room {
     else this.broadcastLobby();
   }
 
+  /** A spectator: the match so far (no hands), then every event as it happens. */
+  watch(ws: WebSocket): string | null {
+    if (!this.host || this.status === 'waiting') return 'That table has not started yet.';
+    const id = 'w' + this.nextWatcher++;
+    send(ws, { t: 'welcome', you: id, token: '', room: this.code });
+    send(ws, { t: 'lobby', lobby: this.lobby() });
+    send(ws, { t: 'history', evs: this.host.history(id), from: 0 });
+    this.watchers.set(ws, this.host.listen(id, (ev: GameEvent) => send(ws, { t: 'event', ev })));
+    return null;
+  }
+
+  unwatch(ws: WebSocket): void {
+    this.watchers.get(ws)?.();
+    this.watchers.delete(ws);
+  }
+
   close(message?: string): void {
+    for (const [ws, off] of this.watchers) {
+      off();
+      if (message) send(ws, { t: 'error', message, fatal: true });
+    }
+    this.watchers.clear();
     if (this.timer) clearInterval(this.timer);
     if (this.overTimer) clearTimeout(this.overTimer);
     this.timer = this.overTimer = null;
@@ -277,6 +334,68 @@ class Room {
 }
 
 const rooms = new Map<string, Room>();
+/** Server-wide standings by player name (kept in memory: they reset when the server restarts). */
+const standings = new Map<string, LeaderRow>();
+
+function leaderboard(): LeaderRow[] {
+  return [...standings.values()].sort((a, b) => b.wins - a.wins || b.wins / Math.max(1, b.games) - a.wins / Math.max(1, a.games) || a.games - b.games).slice(0, 30);
+}
+
+/** Open (and matchmade) matches being played: anyone may watch. */
+function liveTables(): LiveTable[] {
+  const out: LiveTable[] = [];
+  for (const r of rooms.values()) {
+    if (!r.isPublic || r.status !== 'playing' || !r.host) continue;
+    const seats = r.host.engine.players;
+    out.push({ code: r.code, mode: r.mode, players: seats.map((p) => p.name), alive: seats.filter((p) => p.alive).length, watchers: r.watchers.size });
+  }
+  return out.slice(0, 40);
+}
+
+// ------------------------------------------------------------------ matchmaking
+
+interface Waiting {
+  ws: WebSocket;
+  name: string;
+  look?: Look;
+}
+const queues: Record<QueueMode, Waiting[]> = { duel: [], teams: [] };
+
+function queueStatus(mode: QueueMode): void {
+  for (const w of queues[mode]) send(w.ws, { t: 'queued', mode, waiting: queues[mode].length, need: QUEUE_SIZE[mode] });
+}
+
+function unqueue(ws: WebSocket): void {
+  for (const mode of Object.keys(queues) as QueueMode[]) {
+    const i = queues[mode].findIndex((w) => w.ws === ws);
+    if (i >= 0) {
+      queues[mode].splice(i, 1);
+      queueStatus(mode);
+    }
+  }
+}
+
+/** Enough players waiting: seat them at a fresh (watchable) table and deal at once. */
+function matchmake(mode: QueueMode, seated: (ws: WebSocket, room: Room, c: Client) => void): void {
+  const need = QUEUE_SIZE[mode];
+  while (queues[mode].length >= need) {
+    const group = queues[mode].splice(0, need).filter((w) => w.ws.readyState === 1);
+    if (group.length < need) {
+      queues[mode].unshift(...group);
+      break;
+    }
+    const r = new Room(randomCode(), mode === 'duel' ? 'duel' : 'teams', need, true);
+    rooms.set(r.code, r);
+    group.forEach((w, i) => {
+      const c = r.join(w.ws, w.name, w.look);
+      if (typeof c === 'string') return;
+      c.team = i % 2;
+      seated(w.ws, r, c);
+    });
+    r.begin();
+  }
+  queueStatus(mode);
+}
 
 function publicRooms(): RoomSummary[] {
   const out: RoomSummary[] = [];
@@ -316,9 +435,17 @@ function cleanLook(l: unknown): Look | undefined {
 const http = createServer(serve);
 const wss = new WebSocketServer({ server: http, path: '/ws', maxPayload: 16 * 1024 });
 
+/** How matchmaking seats a waiting socket at its new table (each connection registers its own). */
+const binders = new WeakMap<WebSocket, (r: Room, c: Client) => void>();
+
 wss.on('connection', (ws) => {
   let room: Room | null = null;
   let me: Client | null = null;
+  let watching: Room | null = null;
+  binders.set(ws, (r, c) => {
+    room = r;
+    me = c;
+  });
   let alive = true;
   // Simple flood guard: at most 40 messages per 2 seconds.
   let budget = 40;
@@ -346,7 +473,7 @@ wss.on('connection', (ws) => {
         if (room) return;
         if (closing) return fail(UPDATING);
         if (rooms.size >= MAX_ROOMS) return fail('The tavern is full tonight. Try again soon.');
-        const mode = ONLINE_MODES.includes(msg.mode) ? msg.mode : 'original';
+        const mode = TABLE_MODES.includes(msg.mode) ? msg.mode : 'original';
         const size = seatOptions(mode).includes(msg.size) ? msg.size : seatOptions(mode)[0];
         const r = new Room(randomCode(), mode, size, !!msg.public);
         rooms.set(r.code, r);
@@ -366,6 +493,27 @@ wss.on('connection', (ws) => {
         if (typeof c === 'string') return fail(c);
         room = r;
         me = c;
+        return;
+      }
+      case 'queue': {
+        if (room || watching) return;
+        if (closing) return fail(UPDATING);
+        const mode: QueueMode = msg.mode === 'teams' ? 'teams' : 'duel';
+        unqueue(ws);
+        queues[mode].push({ ws, name: cleanName(msg.name), look: cleanLook(msg.look) });
+        matchmake(mode, (w, r, c) => binders.get(w)?.(r, c));
+        return;
+      }
+      case 'unqueue':
+        unqueue(ws);
+        return;
+      case 'watch': {
+        if (room || watching) return;
+        const r = rooms.get(normalizeCode(String(msg.room ?? '')));
+        if (!r) return fail('That table has closed.');
+        const why = r.watch(ws);
+        if (why) return fail(why);
+        watching = r;
         return;
       }
       case 'rejoin': {
@@ -402,6 +550,8 @@ wss.on('connection', (ws) => {
   ws.on('close', () => {
     clearInterval(ping);
     clearInterval(refill);
+    unqueue(ws);
+    watching?.unwatch(ws);
     if (room && me && me.ws === ws) room.dropped(me);
   });
 });

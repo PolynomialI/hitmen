@@ -1,14 +1,14 @@
 // Online tables in the play menu: the waiting room of a table, and the "Join a Table" panel (open tables + code).
-import { normalizeCode, type LobbyInfo, type OnlineMode } from '../../shared/online';
+import { engineMode, normalizeCode, QUEUE_SIZE, type LobbyInfo, type OnlineMode, type QueueMode } from '../../shared/online';
 import { audio } from '../audio/audio';
 import { lookFromProfile } from '../cosmetics/apply';
-import { listRooms, OnlineSession } from '../net/online';
+import { listRooms, liveTables, OnlineSession } from '../net/online';
 import { h } from '../ui/dom';
 import { toast } from '../ui/hud';
 import { profile } from '../ui/profile';
 import type { Nav } from './menus';
 
-export const MODE_NAME: Record<OnlineMode, string> = { original: 'Original', teams: 'Teams', winter: 'Winter Feast' };
+export const MODE_NAME: Record<OnlineMode, string> = { original: 'Original', teams: 'Teams', scrimmage: 'Scrimmage', winter: 'Winter Feast', duel: 'Duel' };
 const TEAM_NAME = ['Crimson', 'Azure'];
 
 export interface Modal {
@@ -41,7 +41,7 @@ export function lobbyModal(nav: Nav, session: OnlineSession, onClose: () => void
   });
   const lede = h('p', { class: 'lede' }, 'Setting the table…');
   const seats = h('ol', { class: 'seats' });
-  const note = h('p', { class: 'note' }, 'Empty chairs are taken by tavern regulars when the night begins.');
+  const note = h('p', { class: 'note' }, 'Waiting for players…');
   const leave = button('btn-text', 'Leave', () => session.leave());
   const right = h('div', { class: 'lobby-go' });
   const el = h(
@@ -56,7 +56,7 @@ export function lobbyModal(nav: Nav, session: OnlineSession, onClose: () => void
     started = true;
     dispose();
     onClose();
-    nav.startMatch({ mode: l.mode, rivals: l.size - 1, online: session });
+    nav.startMatch({ mode: engineMode(l.mode), rivals: l.seats.length - 1, online: session });
   };
 
   const render = (l: LobbyInfo) => {
@@ -108,10 +108,14 @@ export function lobbyModal(nav: Nav, session: OnlineSession, onClose: () => void
     right.replaceChildren();
     if (l.status === 'over') right.append(button('btn-text', 'Another round', () => session.again()));
     else if (iHost) {
-      const filled = l.seats.length;
-      right.append(button('btn-text', filled < l.size ? 'Start the night' : 'Begin', () => session.start()));
+      // Real players only: the night can begin once someone else has sat down (and in Teams, both sides have a player).
+      const sides = [0, 1].map((t) => l.seats.filter((x) => x.team === t).length);
+      const ready = l.seats.length >= 2 && (l.mode !== 'teams' || sides.every((n) => n > 0));
+      const go = button('btn-text', 'Begin', () => session.start());
+      if (!ready) go.setAttribute('disabled', 'true');
+      right.append(go);
     } else right.append(h('span', { class: 'wait' }, `Waiting for ${host?.name ?? 'the host'} to begin…`));
-    note.style.visibility = l.seats.length < l.size ? 'visible' : 'hidden';
+    note.style.visibility = l.seats.length < 2 ? 'visible' : 'hidden';
   };
 
   const off = session.on({
@@ -124,9 +128,12 @@ export function lobbyModal(nav: Nav, session: OnlineSession, onClose: () => void
       onClose();
     },
   });
+  // Leaving the waiting room any other way than into the match (Leave, Back to the menu) gives up the seat: a player
+  // who is not looking at the table must not be dealt in.
   const dispose = () => {
     off();
     el.remove();
+    if (!started && session.state !== 'closed') session.leave();
   };
   if (session.lobby) {
     if (session.lobby.status === 'playing') queueMicrotask(() => go(session.lobby!));
@@ -217,5 +224,114 @@ export function joinModal(nav: Nav, onJoin: (s: OnlineSession) => void, onClose:
     el.remove();
   };
   setTimeout(() => input.focus(), 50);
+  return { el, dispose };
+}
+
+/** Duel / Teams: wait for real players; the server deals as soon as there are enough. */
+export function queueModal(nav: Nav, mode: QueueMode, onClose: () => void): Modal {
+  const need = QUEUE_SIZE[mode];
+  const count = h('b', { class: 'q-count' }, `1 / ${need}`);
+  const dots = h('div', { class: 'q-dots' }, ...Array.from({ length: need }, (_, i) => h('i', { class: i === 0 ? 'on' : '' })));
+  const session = OnlineSession.queue(mode, profile.name, lookFromProfile());
+  let done = false;
+  const cancel = button('btn-text', 'Cancel', () => {
+    dispose();
+    onClose();
+  });
+  const el = h(
+    'div',
+    { class: 'scrim' },
+    h('div', { class: 'panel queue' }, h('h2', {}, mode === 'duel' ? 'Duel' : 'Teams'), h('p', { class: 'lede' }, mode === 'duel' ? 'Looking for a rival…' : 'Gathering four souls…'), dots, count, h('div', { class: 'row' }, h('span'), cancel))
+  );
+  const off = session.on({
+    queued: (waiting, n) => {
+      count.textContent = `${Math.min(waiting, n)} / ${n}`;
+      [...dots.children].forEach((d, i) => d.classList.toggle('on', i < waiting));
+      audio.play('tick');
+    },
+    lobby: (l) => {
+      if (done || l.status !== 'playing') return;
+      done = true;
+      dispose();
+      onClose();
+      audio.play('paper');
+      nav.startMatch({ mode: engineMode(l.mode), rivals: l.seats.length - 1, online: session });
+    },
+    error: (m) => toast(nav.layer, m),
+    closed: (m) => {
+      if (done) return;
+      if (m) toast(nav.layer, m);
+      dispose();
+      onClose();
+    },
+  });
+  // However the window goes away (Cancel, Back, another panel), a player not yet dealt in gives up their place.
+  const dispose = () => {
+    off();
+    el.remove();
+    if (!done) {
+      done = true;
+      session.leave();
+    }
+  };
+  return { el, dispose };
+}
+
+/** Watch Table: matches being played, to watch from the players' chairs (no hands shown). */
+export function watchModal(nav: Nav, onClose: () => void): Modal {
+  const list = h('div', { class: 'open-tables' }, h('p', { class: 'empty' }, 'Looking around the tavern…'));
+  const close = button('btn-text', 'Close', () => {
+    dispose();
+    onClose();
+  });
+  const el = h('div', { class: 'scrim' }, h('div', { class: 'panel join' }, h('h2', {}, 'Watch a Table'), list, h('div', { class: 'row' }, close)));
+  el.addEventListener('click', (e) => {
+    if (e.target === el) {
+      dispose();
+      onClose();
+    }
+  });
+  const watch = (code: string) => {
+    dispose();
+    onClose();
+    const s = OnlineSession.watch(code);
+    const off = s.on({
+      lobby: (l) => {
+        off();
+        nav.startMatch({ mode: engineMode(l.mode), rivals: l.seats.length - 1, online: s, spectate: true });
+      },
+      closed: (m) => {
+        off();
+        if (m) toast(nav.layer, m);
+      },
+    });
+  };
+  let alive = true;
+  let shown = '';
+  const refresh = async () => {
+    const live = await liveTables();
+    if (!alive) return;
+    const key = JSON.stringify(live.map((t) => [t.code, t.alive, t.watchers]));
+    if (key === shown) return;
+    shown = key;
+    list.replaceChildren();
+    if (!live.length) list.append(h('p', { class: 'empty' }, 'No matches being played right now.'));
+    for (const t of live) {
+      const row = h('button', { class: 'open-table' }, h('b', {}, t.players.join(', ')), h('span', {}, `${MODE_NAME[t.mode]} · ${t.alive} left`), h('em', {}, 'Watch'));
+      row.addEventListener('pointerenter', () => audio.play('hover'));
+      row.addEventListener('click', () => {
+        audio.play('paper');
+        watch(t.code);
+      });
+      list.append(row);
+    }
+  };
+  void refresh();
+  const timer = window.setInterval(() => void refresh(), 3000);
+  const dispose = () => {
+    alive = false;
+    clearInterval(timer);
+    el.remove();
+  };
   return { el, dispose };
 }

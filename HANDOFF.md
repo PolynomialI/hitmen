@@ -16,11 +16,13 @@ Decisions the owner made:
 
 - Setting: **medieval tavern**. Name: **The Hooded Hand**.
 - Every card and mode of the reference game has an original equivalent (table below), plus Shop, Inventory,
-  Challenges, levels and ranked.
-- **Online tables are built** (create a table, open-tables list, join by code, waiting room, bots fill empty chairs,
-  reconnect/resume after a reload, another round). They appear whenever the page is served by the game server
-  (`npm start`, i.e. Render); on a bare static host they stay locked and every table is vs bots. The owner will create
-  the Render service from `render.yaml` later.
+  Challenges and levels.
+- **Players only, no bots.** Every match is online against real players: Duel and Teams queues, Create Table, Join
+  Table, Watch Table, a server-wide Leaderboard. The bot AI, the tutorial and local matches are **kept in the code**
+  (the owner may bring bots back) but nothing in the game reaches them; `?start=` opens a local bot table on
+  localhost only, for tests. Ranked, the tutorial, the Renown ladder and emotes were removed from the game.
+- Online play needs the game server (`npm start`, i.e. Render). On a bare static host the board says the tavern is
+  closed.
 - **GitHub is blocked on the owner's managed Chromebook.** Nothing the game loads at runtime may come from GitHub
   (github.com, github.io, raw.githubusercontent) or a CDN that mirrors it: the page is fully self-hosted by whatever
   serves it. A Content-Security-Policy (`index.html`) only allows fetch/WebSocket to the page's own origin, and the
@@ -33,8 +35,8 @@ Decisions the owner made:
 
 ```bash
 npm install
-npm run dev            # client only (bot games), http://localhost:5173
-npm test               # rules simulation: ~560 bot games over every mode/size + scripted tutorial
+npm run dev            # client, http://localhost:5173 (online play also needs `npm run server:dev`)
+npm test               # rules simulation: ~560 bot games over every mode/size + scripted tutorial (engine tests)
 npm run typecheck
 npm run build          # client -> dist/, server -> dist-server/
 npm start              # serves dist/ and the WebSocket game server on :8787 (Render runs this)
@@ -46,7 +48,8 @@ To try online tables locally: `npm run build && npm start`, then open http://loc
 (use a private window for the second player, since the profile lives in localStorage).
 
 Browser end-to-end tests (Playwright + Chromium; with `npm run dev` running in another terminal). They print page
-errors, save screenshots to `e2e-shots/` (gitignored) and exit non-zero on any page error:
+errors, save screenshots to `e2e-shots/` (gitignored) and exit non-zero on any page error. The match, tutorial and
+shop scripts use local bot tables (`?start=`, localhost only), which players can no longer reach:
 
 ```bash
 node scripts/e2e/tutorial.cjs                 # plays the whole tutorial by clicking cards in the 3D scene
@@ -55,8 +58,9 @@ node scripts/e2e/match.cjs teams 3 teams
 node scripts/e2e/match.cjs winter 3 winter
 node scripts/e2e/shop.cjs                     # buys + equips a daily ware, spins Fate's Wheel, checks it in a match
 # Online (needs the game server serving the build: npm run build && npm start):
-BASE=http://localhost:8787 node scripts/e2e/online.cjs   # 3 players: create, open-tables list, join by code,
-                                                         # start, play, reload mid-match, results, another round
+BASE=http://localhost:8787 node scripts/e2e/online.cjs   # create, Join Table, invite link, Begin (2 players),
+                    # Watch Table, reload mid-match, results, another round; then a Duel from the queue where one
+                    # player closes the tab and is knocked out after 30 s
 ```
 
 Tip: the dev server hot-reloads, so editing `src/` while a long e2e run uses it reloads the test's pages. For long
@@ -70,7 +74,7 @@ Useful URL parameters (client):
 
 | Param | Effect |
 |---|---|
-| `?start=<mode>` | Skip menus, jump straight into a match. Modes: `original`, `tutorial`, `teams`, `winter`, `ranked`, `scrimmage` |
+| `?start=<mode>` | Tests only (localhost/dev): a local match against bots. Modes: `original`, `tutorial`, `teams`, `winter`, `ranked`, `scrimmage` |
 | `&rivals=N` | With `start`: number of bot rivals (1–5; teams needs 3 or 5) |
 | `?station=play\|shop\|inventory` | Dev: open straight at that station (after the title card) |
 | `?q=lowest\|low\|medium\|high\|ultra` | Force a quality tier (overrides Settings; otherwise auto-detected and adapted at runtime) |
@@ -149,25 +153,29 @@ window (any player may react; "hold" extends it once per player). Death's odds =
 
 ## Modes (Play menu at the notice board)
 
-| Ticket | Mode | Seats | Notes |
-|---|---|---|---|
-| Original | `original` | 4 (table-size picker: 2–6) | Core deck |
-| Duel | `original`, 1 rival | 2 | |
-| Teams | `teams` | 2v2 (or 3v3) | Teammates' hands face you, team colours, Aegis/Warband, shared win |
-| Winter Feast | `winter` | 4 | Festive tavern decorations (garlands, wreath, snow), Mistletoe/Yule Log |
-| Ranked | `ranked` | 1v1 | Elo "renown" vs named rivals, rank medals, ladder; Privateer/Sands |
-| Tutorial | `tutorial` | 1v1 | Stacked deck, scripted rival (Brother Aldric), hint captions |
-| Watch a Table | spectate | 4 bots | Bottom bar; camera over the table, no hand |
-| (Create Table) | any + `scrimmage` | 2–6 | Scrimmage = half rewards |
+| Paper | What it does |
+|---|---|
+| Duel | Queue: matched with the next player waiting, 1v1 (engine mode `ranked`: Duel deck with Privateer/Sands) |
+| Teams | Queue: four players, dealt 2v2 with the sides alternating round the table |
+| Join Table | Open tables waiting for players (or type a code) |
+| Create Table | Original, Teams, Scrimmage (half rewards) or Winter Feast; 2–6 seats; open or private |
+| Watch Table | Matches being played at open tables: watch from any player's chair (arrows), their cards under a brown film |
+| Leaderboard | Server-wide wins and games by name (in memory: resets when the server restarts) |
 
-Bots: `src/shared/bot.ts` play every card with human-like delays; they only see what a player would see.
+Winter Feast (`world/winter.ts`, Create Table only): the den under snow (floor, drifts, the table's rim and felt,
+every chair, window sills, the stage floor), icicles on the valance, frosted windows, a snowy night painted on the
+stage backdrop, snow falling through the room, a colder ambient light, and every player in a pale frosted cloak with
+white fur trim and collar and snow on the hood and shoulders.
+
+A table can begin once two players sit (in Teams, once both sides have one). Bots (`src/shared/bot.ts`) are kept
+for later but never seated.
 
 ## Progression, Shop and Inventory
 
 - Profile (`src/client/ui/profile.ts`, localStorage `hooded-hand-profile-v2`, migrates v1): coins (start 2500),
   rubies, XP/level (each level: +400 coins, +1 ruby; every 5 levels a Reforge token), stats, ranked rating,
   owned cosmetics with **mutations** (basic / gilded / mosaic / prismatic), equipped loadout.
-- Results ledger (`src/client/match/results.ts`): coins per line item, XP bar with level-ups, ranked renown delta,
+- Results ledger (`src/client/match/results.ts`): coins per line item, XP bar with level-ups,
   daily/weekly challenges (`src/client/ui/progression.ts`) with claim buttons (also on the main menu board).
 - **Shop** — the Peddler's Cart (`src/client/screens/shop.ts`, camera station `shop`): weekly featured bundle, daily
   wares with a refresh countdown, ruby wares, Fate's Wheel (token spin with reel animation and mutation roll), item
@@ -185,16 +193,6 @@ Bots: `src/shared/bot.ts` play every card with human-like delays; they only see 
   sweeps across every card back every few seconds (`backGlint` / `addGlint` in `match/cardMesh.ts`, switched in
   `applyCosmetics`, so shop/inventory previews show it too).
 
-## Emotes
-
-The speech button beside Settings/Leave in a match (or keys 1-6) calls a phrase across the table: *Well played.*,
-*Ha! Ha!*, *Mercy, I beg you!*, *Curses!*, *The Hand is coming for you.*, *A toast to the fallen!*
-(`src/shared/emotes.ts`). It shows as a parchment speech bubble over the speaker's head (yours rises above your hand),
-2.5 s cooldown. Tavern regulars react now and then (marked with a Bounty, drawing the Hand, surviving it, a rival
-slain, winning), timed to land as the animation plays out; this lives in `Host` so bot tables and the server's
-online tables behave the same. Online, emotes go through the server (`emote` message, validated and rate-limited)
-to everyone else at the table. Emotes are cosmetic: never part of the rules or the event log.
-
 ## Architecture
 
 ```
@@ -205,8 +203,8 @@ src/shared/        Pure TypeScript, runs in browser AND on the server
   host.ts          Runs a match: engine + bots + filtered event delivery to listeners
   bot.ts           Bot AI
   tutorial.ts      Stacked deck + scripted rival for the tutorial
-  match.ts         createLocalMatch() for every mode, createTableMatch() for online tables (players + regulars,
-                   teams seated alternately), named RIVALS, seeded bot looks
+  match.ts         createLocalMatch() for every mode (bots, kept for later), createTableMatch() for online
+                   tables (players only, teams seated alternately), named RIVALS, seeded bot looks
   online.ts        Online protocol types (ClientMsg / ServerMsg / LobbyInfo), modes and seat options
   text.ts          safeGlyphs() / cleanName(): 3D text only uses glyphs the bundled fonts have (else troika would
                    fetch fallback fonts from a CDN); names are cleaned to that set on client and server
@@ -230,13 +228,14 @@ src/client/
                    hints, rival body language), tableView.ts (2–6 seats around the table, chairs, hands, name
                    tags, wards, turn glow, order ring, chains, boards, hourglass), handView.ts (3D hand parented to
                    the camera, lock overlay), results.ts, cardMesh.ts, fx.ts
-  screens/         menus.ts (title, main menu, play menu: tickets, table picker incl. "who sits with you", codex,
-                   ladder, spectate), lobby.ts (online waiting room, Join a Table: open tables + code),
-                   shop.ts (Shop, Inventory, Challenges board)
+  screens/         menus.ts (title, main menu, play menu: the six papers, Create Table, Leaderboard),
+                   lobby.ts (waiting room, Join Table, the Duel/Teams queue, Watch Table), settings.ts (+ the Card
+                   Codex button), codex.ts, shop.ts (Shop, Inventory, Challenges board)
   audio/audio.ts   100% procedural WebAudio: lute music + drone, fire ambience, every SFX
   net/transport.ts LocalTransport (in-browser host for bot games), WsTransport (online, over an OnlineSession)
   net/online.ts    OnlineSession: one same-origin WebSocket per table, auto-reconnect, resume after reload
-                   (seat token in sessionStorage), event buffer; serverAvailable() / listRooms() via /api
+                   (seat token in localStorage for 35 s), queue / watch sessions, event buffer; serverAvailable(), listRooms(),
+                   liveTables(), leaderboard() via /api
   ui/              styles.css, dom helpers, HUD (level, coins, rubies), profile, progression
 server/index.ts    Static files + /api/info + /api/rooms + WebSocket rooms (see "Online tables"), same Host as the browser
 scripts/           sim.ts (rules tests), serverSmoke.ts (online smoke test), e2e/ (Playwright browser tests),
@@ -253,34 +252,41 @@ between them; the match fades in at the table.
 
 ## Online tables
 
-How it plays: Play menu → **Create Table** → pick a mode (Original, Teams, Winter Feast) and seats, then **Who sits
-with you**: *Tavern regulars* (bots, as before), *Open table* (listed for everyone) or *Private table* (code only).
-That opens the table's **waiting room** (code + Copy, seats, empty chairs, team chips in Teams). Others join from
-**Join a Table** (open tables, with a count badge on the button, or a code). The host clicks **Start the night**;
-regulars (named bots with random looks) take the empty chairs. In a match, a dropped connection shows a
-"reconnecting" chip and the seat is held (90 s in a match, 20 s in the waiting room; the turn timer keeps running,
-so an absent player auto-draws). Reloading the page takes the seat back: the server sends the match so far and the
-match screen replays it instantly (`tweens.instant`, `audio.suppressed`). After the results, **Back to the table**
-returns everyone to the waiting room for another round; if the host starts it while you are still on the results,
-you are sat down automatically. Leaving an online match gives up the seat (counts as slain). The waiting room's
-**Copy invite link** gives `https://<host>/?join=CODE`, which opens the game straight into that table. The host can
-ask a player to leave (✕) before the start. Two players with the same name at one table become "Name" and "Name II".
+How it plays: the board's papers. **Duel** and **Teams** join a matchmaking queue (a dot per chair fills as players
+arrive; the match deals itself when it is full). **Create Table** picks a mode and seats and whether the table is
+open (listed) or private (code only), and opens the table's **waiting room** (code + Copy, seats, team chips in
+Teams). Others come in from **Join Table** (open tables, or a code) or the waiting room's **Copy invite link**
+(`https://<host>/?join=CODE`). The host clicks **Begin** once two players sit (both sides in Teams). The host can ask
+a player to leave (✕) before the start. Two players with the same name become "Name" and "Name II".
+
+In a match, a player who drops out (closed tab, lost connection) has **30 s** to come back: everyone else sees
+"Name lost their connection · 27s to return" counting down, then "Name is back", or the player is knocked out (the
+engine forfeits their seat, which counts as slain). Reloading or reopening the page within that time takes the seat
+back: the seat token is kept in localStorage with a timestamp (refreshed every 5 s while connected), the server sends
+the match so far and the match screen replays it instantly (`tweens.instant`, `audio.suppressed`). In the waiting
+room a seat is held for 20 s. After the results, **Back to the table** returns everyone to the waiting room for
+another round; if the host starts it while you are still on the results, you are sat down automatically. Leaving an
+online match gives up the seat. When you are slain you watch the rest from the living players' chairs.
+
+**Watch Table** lists open matches in play (`/api/live`); a watcher gets the match from the start (no hands), then
+every event, and switches between the players' chairs.
 
 Server (`server/index.ts`): rooms keyed by a 5-letter code; `create` / `join` / `rejoin {token, since, round}` /
-`team` / `start` (host only) / `kick` (host only, waiting) / `again` / `leave` / `emote` / `action`; replies `welcome {you, token}`, `lobby {LobbyInfo}`,
-`event`, `history {evs, from}` (events missed since `since`, or the whole match when `from` is 0), `result`,
-`presence`, `error {fatal?}`. Names are cleaned (`cleanName`), looks are reduced to short ids, messages are
+`team` / `start` (host only) / `kick` (host only, waiting) / `again` / `leave` / `action` / `queue {mode}` /
+`unqueue` / `watch {room}`; replies `welcome {you, token}`, `lobby {LobbyInfo}`, `event`, `history {evs, from}` (events
+missed since `since`, or the whole match when `from` is 0), `result`, `presence {graceMs}`, `queued {waiting, need}`,
+`error {fatal?}`. HTTP: `/api/info`, `/api/rooms` (open tables waiting), `/api/live` (matches to watch),
+`/api/leaderboard`. Names are cleaned (`cleanName`), looks are reduced to short ids, messages are
 rate-limited, at most 300 rooms, finished tables close after 5 min. Rewards are still granted client-side from the
 local profile (see Next steps).
 
 ## Next steps (suggested order)
 
-1. Owner: create the Render service from `render.yaml`; check it loads on the managed Chromebook; then review on the
-   real device (quality tiers, timings, camera framing).
-2. Online polish once real players try it: a host "kick", spectating an online table, and a server-side
-   profile/economy if coins must be trusted (today they live in localStorage).
-3. More cosmetics and seasonal wares; per-player sleeves at the table (today every back shows your own sleeve).
-4. The Leaderboard is the local ranked ladder (named rivals); a real one needs server-side accounts.
+1. Owner: deploy the latest `main` on Render; check it on the managed Chromebook (quality tiers, timings, camera).
+2. A server-side profile/economy if coins and the leaderboard must be trusted (today coins live in localStorage and
+   the leaderboard is by name, in memory).
+3. Bots back as an option (the AI is still in `src/shared/bot.ts`; `createLocalMatch` still works).
+4. More cosmetics and seasonal wares; per-player sleeves at the table (today every back shows your own sleeve).
 
 ## Performance
 

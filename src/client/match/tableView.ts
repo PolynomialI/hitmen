@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { addChairSnow } from '../world/winter';
 import type { Text } from 'troika-three-text';
 import type { PlayerId, SeatInfo } from '../../shared/types';
 import type { App } from '../app';
@@ -78,6 +79,8 @@ export interface SeatView {
   glowK: number;
   alive: boolean;
   mate: boolean;
+  /** A spectator is watching from this chair: its own head badges would sit right in front of the camera. */
+  watched?: boolean;
 }
 
 /** Everything physical on and around the card table during a match. */
@@ -316,6 +319,7 @@ export class TableView {
       const out = new THREE.Vector3(Math.cos(angle), 0, Math.sin(angle));
       const pos = this.center.clone().setY(0).addScaledVector(out, SEAT_R);
       const chair = buildSeat(info.look?.seat ?? 'oak', this.tv.mats);
+      if (this.tv.isWinter) addChairSnow(chair);
       mergeLocal(chair); // a chair is 6-12 parts: one draw call per material instead
       chair.position.copy(pos).addScaledVector(out, 0.02);
       chair.lookAt(this.center.clone().setY(0));
@@ -328,7 +332,7 @@ export class TableView {
         ch.lookAt(this.center.x, ch.position.y, this.center.z);
         this.group.add(ch);
       }
-      const f = new Figure({ cloak: info.cloak, eyes: info.team != null ? TEAM_COLORS[info.team] : '#ffb347', seated: true, accessory: accessoryFor(info.name), trim: info.team != null ? TEAM_COLORS[info.team] : undefined });
+      const f = new Figure({ cloak: info.cloak, eyes: info.team != null ? TEAM_COLORS[info.team] : '#ffb347', seated: true, accessory: accessoryFor(info.name), trim: info.team != null ? TEAM_COLORS[info.team] : undefined, winter: this.tv.isWinter });
       f.root.position.copy(pos).add(new THREE.Vector3(0, 0.47, 0));
       f.root.lookAt(this.center.clone().setY(0.47));
       f.holding = true;
@@ -605,7 +609,9 @@ export class TableView {
   update(t: number, dt: number): void {
     // Card counts follow every deal, draw, play and theft.
     for (const sv of this.seats.values()) {
-      sv.count.visible = sv.alive;
+      sv.count.visible = sv.alive && !sv.watched;
+      sv.badge.visible = sv.alive && !sv.watched;
+      sv.name.visible = sv.alive && !sv.watched;
       if (!sv.alive || sv.hand.length === sv.countN) continue;
       sv.countN = sv.hand.length;
       const mat = sv.count.material as THREE.SpriteMaterial;

@@ -1,9 +1,12 @@
 // The browser side of an online table: one WebSocket to the server that served this page (same origin only),
-// with automatic reconnects and resume-after-reload (the seat token lives in sessionStorage).
-import type { ClientMsg, LobbyInfo, Look, OnlineMode, RoomSummary, ServerMsg } from '../../shared/online';
+// with automatic reconnects and resume after a reload or a closed tab (the seat token lives in localStorage for as
+// long as the server keeps the seat: 30 seconds in a match).
+import type { ClientMsg, LeaderRow, LiveTable, LobbyInfo, Look, OnlineMode, QueueMode, RoomSummary, ServerMsg } from '../../shared/online';
 import type { Action, GameEvent, PlayResult } from '../../shared/types';
 
 const STORE = 'hooded-hand-online';
+/** A stored seat is worth trying this long after the page last saw it (the server holds it 30 s in a match). */
+const RESUME_MS = 35_000;
 
 export type ConnState = 'connecting' | 'open' | 'reconnecting' | 'closed';
 
@@ -14,7 +17,10 @@ export interface SessionHandlers {
   /** The session is over for good (left, table closed, or the connection could not be restored). */
   closed?: (message: string | null) => void;
   state?: (s: ConnState) => void;
-  presence?: (id: string, connected: boolean) => void;
+  /** A player dropped out (`graceMs` to come back) or came back. */
+  presence?: (id: string, connected: boolean, graceMs?: number) => void;
+  /** Matchmaking: players waiting so far and how many the match needs. */
+  queued?: (waiting: number, need: number) => void;
 }
 
 function wsUrl(): string {
@@ -47,6 +53,16 @@ export function serverAvailable(): Promise<boolean> {
 
 export async function listRooms(): Promise<RoomSummary[]> {
   return (await getJson<RoomSummary[]>('api/rooms')) ?? [];
+}
+
+/** Matches being played that anyone may watch. */
+export async function liveTables(): Promise<LiveTable[]> {
+  return (await getJson<LiveTable[]>('api/live')) ?? [];
+}
+
+/** Server-wide standings. */
+export async function leaderboard(): Promise<LeaderRow[]> {
+  return (await getJson<LeaderRow[]>('api/leaderboard')) ?? [];
 }
 
 export class OnlineSession {
@@ -90,16 +106,39 @@ export class OnlineSession {
     return new OnlineSession({ t: 'join', room, name, look });
   }
 
-  /** After a page reload: take the seat back if this tab was at a table. */
+  /** Matchmaking: wait for players for a Duel or a Teams match; the server seats everyone and deals. */
+  static queue(mode: QueueMode, name: string, look?: Look): OnlineSession {
+    return new OnlineSession({ t: 'queue', mode, name, look });
+  }
+
+  /** Watch a match being played. */
+  static watch(room: string): OnlineSession {
+    return new OnlineSession({ t: 'watch', room });
+  }
+
+  /** After a reload (or the tab was closed and opened again within the grace time): take the seat back. */
   static resume(): OnlineSession | null {
     try {
-      const s = JSON.parse(sessionStorage.getItem(STORE) ?? 'null');
-      if (s && typeof s.room === 'string' && typeof s.token === 'string') return new OnlineSession({ t: 'rejoin', room: s.room, token: s.token, since: 0, round: -1 });
+      const s = JSON.parse(localStorage.getItem(STORE) ?? 'null');
+      if (s && typeof s.room === 'string' && typeof s.token === 'string' && s.token && Date.now() - (s.at ?? 0) < RESUME_MS)
+        return new OnlineSession({ t: 'rejoin', room: s.room, token: s.token, since: 0, round: -1 });
+      localStorage.removeItem(STORE);
     } catch {
       /* storage unavailable */
     }
     return null;
   }
+
+  /** Keep the stored seat fresh while the page is open (it is only worth trying for a short while after closing). */
+  private remember(): void {
+    if (!this.token) return;
+    try {
+      localStorage.setItem(STORE, JSON.stringify({ room: this.room, token: this.token, at: Date.now() }));
+    } catch {
+      /* storage unavailable: no resume after reload */
+    }
+  }
+  private keepAlive = window.setInterval(() => this.state !== 'closed' && this.remember(), 5000);
 
   on(h: SessionHandlers): () => void {
     this.handlers.add(h);
@@ -140,7 +179,8 @@ export class OnlineSession {
   }
 
   private reconnect(): void {
-    if (!this.token) return this.close('Could not reach the tavern. Is the game server running?');
+    // Watching has no seat to keep: just watch again. Anything else without a seat could not reach the server.
+    if (!this.token && this.hello.t !== 'watch') return this.close('Could not reach the tavern. Is the game server running?');
     if (this.retries >= 14) return this.close('Lost the connection to the table.');
     this.setState('reconnecting');
     const wait = Math.min(5000, 300 * 2 ** this.retries++);
@@ -154,11 +194,7 @@ export class OnlineSession {
         this.token = m.token;
         this.room = m.room;
         this.retries = 0;
-        try {
-          sessionStorage.setItem(STORE, JSON.stringify({ room: m.room, token: m.token }));
-        } catch {
-          /* storage unavailable: no resume after reload */
-        }
+        this.remember();
         this.setState('open');
         return;
       case 'lobby':
@@ -178,8 +214,10 @@ export class OnlineSession {
         this.pending.delete(m.id);
         return;
       case 'presence':
-        this.emit('presence', m.id, m.connected);
+        this.emit('presence', m.id, m.connected, m.graceMs);
         return;
+      case 'queued':
+        this.emit('queued', m.waiting, m.need);
         return;
       case 'error':
         if (m.fatal) this.close(m.message);
@@ -264,8 +302,9 @@ export class OnlineSession {
   private close(message: string | null): void {
     if (this.state === 'closed') return;
     this.setState('closed');
+    clearInterval(this.keepAlive);
     try {
-      sessionStorage.removeItem(STORE);
+      localStorage.removeItem(STORE);
     } catch {
       /* ignore */
     }

@@ -69,7 +69,7 @@ export const WEEKLY: ChallengeDef[] = [
   { id: 'w_cards80', text: 'Play 80 cards', goal: 80, reward: { coins: 2000 }, count: (m) => m.played },
   { id: 'w_outlast15', text: 'Outlast 15 rivals', goal: 15, reward: { coins: 2600, rubies: 2 }, count: (m) => m.outlasted },
   { id: 'w_teams', text: 'Win a Teams match', goal: 1, reward: { coins: 1800, rubies: 2 }, count: (m) => (m.won && m.mode === 'teams' ? 1 : 0) },
-  { id: 'w_ranked', text: 'Win 2 Ranked duels', goal: 2, reward: { coins: 2400, rubies: 3 }, count: (m) => (m.won && m.mode === 'ranked' ? 1 : 0) },
+  { id: 'w_ranked', text: 'Win 2 Duels', goal: 2, reward: { coins: 2400, rubies: 3 }, count: (m) => (m.won && m.mode === 'ranked' ? 1 : 0) },
   { id: 'w_winter', text: 'Play 3 Winter Feast matches', goal: 3, reward: { coins: 1600, tokens: 1 }, count: (m) => (m.mode === 'winter' ? 1 : 0) },
 ];
 

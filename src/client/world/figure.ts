@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { snowMaterial, driftGeometry } from './winter';
 import { mergeLocal } from './batch';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { Noise2 } from '../gfx/noise';
@@ -176,6 +177,8 @@ export interface FigureOpts {
   /** Hem and hood-edge colour. Defaults to a warm gold-brown. */
   trim?: string;
   accessory?: Accessory;
+  /** Winter Feast: a pale, frosted cloak with white fur trim and collar, and snow on the hood and shoulders. */
+  winter?: boolean;
 }
 
 /** Right-arm angles (the left arm mirrors y and z): cards held up at the chest, and a reach onto the table. */
@@ -253,6 +256,7 @@ export class Figure {
   constructor(o: FigureOpts) {
     const s = o.scale ?? 1;
     const cloak = new THREE.Color(o.cloak);
+    if (o.winter) cloak.lerp(new THREE.Color('#dfe7f1'), 0.55);
     const cm = clothMaps();
     this.cloakMat = new THREE.MeshStandardMaterial({
       // The wool map averages ~0.8: lift the base colour so cloaks keep their brightness.
@@ -266,7 +270,9 @@ export class Figure {
     });
     const inner = new THREE.MeshStandardMaterial({ color: cloak.clone().multiplyScalar(0.32), map: cm.map, normalMap: cm.normalMap, normalScale: new THREE.Vector2(0.4, 0.4), roughness: 1, side: THREE.DoubleSide });
     const trimC = new THREE.Color(o.trim ?? '#b88a3a');
-    const trim = new THREE.MeshStandardMaterial({ color: trimC, roughness: 0.45, metalness: 0.55 });
+    const trim = o.winter
+      ? new THREE.MeshStandardMaterial({ color: '#f1f4f9', roughness: 1, normalMap: cm.normalMap, normalScale: new THREE.Vector2(1.2, 1.2) })
+      : new THREE.MeshStandardMaterial({ color: trimC, roughness: 0.45, metalness: 0.55 });
     const leather = new THREE.MeshStandardMaterial({ color: '#3a2416', roughness: 0.55, normalMap: leatherNormal(), normalScale: new THREE.Vector2(0.6, 0.6) });
     const glove = new THREE.MeshStandardMaterial({ color: '#2a1c14', roughness: 0.48, normalMap: leatherNormal(), normalScale: new THREE.Vector2(0.7, 0.7) });
     const gold = new THREE.MeshStandardMaterial({ color: '#e0b04a', metalness: 1, roughness: 0.28, emissive: '#3a2200', emissiveIntensity: 0.4 });
@@ -500,6 +506,25 @@ export class Figure {
 
     // ---------------------------------------------------------------- accessory
     this.addAccessory(o.accessory ?? 'none', { neckY, beltY, gold, leather, trim, seated });
+    if (o.winter) {
+      // A fur collar, and snow settled on the hood and the shoulders.
+      const collar = new THREE.Mesh(new THREE.TorusGeometry(0.19, 0.055, 8, 28), trim);
+      collar.rotation.x = Math.PI / 2;
+      collar.scale.set(1, 0.84, 1);
+      collar.position.y = neckY - 0.03;
+      this.body.add(collar);
+      const snow = snowMaterial();
+      const cap = new THREE.Mesh(driftGeometry(0.1, 0.035, 0.11, 2), snow);
+      cap.position.set(0, 0.42, -0.08);
+      cap.rotation.x = -0.35;
+      this.head.add(cap);
+      for (const side of [-1, 1]) {
+        const sh = new THREE.Mesh(driftGeometry(0.11, 0.03, 0.09, side + 3), snow);
+        sh.position.set(side * 0.23, neckY - 0.035, -0.02);
+        sh.rotation.z = -side * 0.55;
+        this.body.add(sh);
+      }
+    }
 
     // One draw call per material for all static parts, accessories included (blinking eyes, swaying tails, the head
     // and the arms move on their own and stay separate).
