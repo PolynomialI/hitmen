@@ -147,9 +147,17 @@ Catalogue: `src/shared/cards.ts` (`CARD_DEFS`, deck mixes in `DECKS`, pool size 
 | Mistletoe | mistletoe | winter | turn | Swap your whole hand with the mark |
 | Yule Log | yule | winter | quick | Shuffle, then everyone sees the new top card |
 
-Rules: each player starts with 1 Angel + action cards; the deck holds the rest of the pool, (players − 1) Hands and a
-spare Angel. Play any number of cards, then draw to end your turn. After every played card there is a 2.4 s reaction
+Rules: each player starts with 1 Angel + action cards; the deck holds the rest of the pool, (players − 1) Hands and
+spare Angels: about 15 cards per player once the hands are dealt (`DECK_PER_PLAYER`: 30 in a duel, 45 at three,
+60 at four). Play any number of cards, then draw to end your turn. After every played card there is a 1.8 s reaction
 window (any player may react; "hold" extends it once per player). Death's odds = Hands in deck / cards in deck.
+
+Pace (`src/shared/timing.ts`): passing the turn is near instant (a plain draw 90 ms + the turn 40 ms, so two players
+clicking the deck as fast as they can get through well over four draws a second online); drawing the Hooded Hand keeps
+a short pull (`DRAW_HAND`). Every other event is about a quarter shorter than it was, and the match screen plays its
+animations a third faster to match (`MATCH_SPEED`). Timers: turn 30 s, reaction 1.8 s, Scrying Orb 7 s, rescue 6.5 s,
+hide 10 s, give 7 s. The host refuses actions until the last event's time has passed; the screen tracks that time
+(`hostFreeAt`) and sends a quick click the moment the table is free instead of having it refused.
 
 ## Modes (Play menu at the notice board)
 

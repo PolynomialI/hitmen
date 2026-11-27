@@ -344,10 +344,12 @@ export const DECKS: Record<DeckKind, Partial<Record<CardType, number>>> = {
   winter: { ...BASE, brawl: 0, mistletoe: 3, yule: 3 },
 };
 
-/** Action cards in play for a table of n players: about 10 + 8n cards, spread by the deck's weights. */
-export function poolFor(kind: DeckKind, n: number): CardType[] {
+/** Cards left in the deck per player once the hands are dealt: 45 at a table of three, 30 in a duel. */
+export const DECK_PER_PLAYER = 15;
+
+/** `target` action cards (by default about 10 + 8n for n players), spread by the deck's weights. */
+export function poolFor(kind: DeckKind, n: number, target = 10 + 8 * n): CardType[] {
   const w = DECKS[kind];
-  const target = 10 + 8 * n;
   const types = Object.entries(w).filter(([, c]) => (c ?? 0) > 0) as Array<[CardType, number]>;
   const total = types.reduce((s, [, c]) => s + c, 0);
   const out: CardType[] = [];

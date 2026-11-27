@@ -107,8 +107,13 @@ class Tweens {
     return this.to(sec, () => {}, { ease: ease.linear });
   }
 
+  /** Stop tagged tweens where they are; whoever awaits them carries on. */
   cancel(tag: string): void {
-    for (const j of this.jobs) if (j.tag === tag) j.cancelled = true;
+    for (const j of this.jobs)
+      if (j.tag === tag && !j.cancelled) {
+        j.cancelled = true;
+        j.done();
+      }
   }
 }
 

@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import type { Card } from '../../shared/cards';
 import type { CardTexSet } from '../cards/cardTextures';
 import { damp } from '../core/tween';
-import { CARD_H, CARD_W, CardMesh } from './cardMesh';
+import { CARD_H, CARD_W, CardMesh, setHandGlow } from './cardMesh';
 
 /**
  * The player's hand: real 3D cards parented to the camera, fanned along the bottom of the view.
@@ -24,6 +24,9 @@ export class HandView {
   /** Lowered while the player aims or watches a cinematic. */
   lowered = 0;
   private loweredK = 0;
+  /** 1 on your turn (the cards light up brighter and whiter), 0 otherwise. */
+  turnLit = 0;
+  private turnLitK = -1;
 
   constructor(private cam: THREE.PerspectiveCamera, private tex: CardTexSet) {
     this.group.position.set(0, 0, 0);
@@ -44,10 +47,13 @@ export class HandView {
   /** Where a card should sit in camera space. */
   private slot(i: number, n: number, hover: number): { p: THREE.Vector3; r: THREE.Euler; s: number } {
     const { halfW, halfH } = this.frame();
-    const s = this.cardScale();
+    const full = this.cardScale();
+    // Past 10 cards the whole hand gets smaller instead of squeezing the cards together; the card under the pointer
+    // comes up to full size to be read.
+    const s = full * (n > 10 ? Math.max(0.55, 10 / n) : 1);
     const cw = CARD_W * s;
     const ch = CARD_H * s;
-    const maxSpan = Math.min(halfW * 1.25, cw * 0.72 * Math.max(1, n - 1));
+    const maxSpan = Math.min(halfW * (n > 10 ? 1.5 : 1.25), cw * 0.72 * Math.max(1, n - 1));
     const step = n > 1 ? maxSpan / (n - 1) : 0;
     const d = i - (n - 1) / 2;
     let x = d * step;
@@ -59,10 +65,12 @@ export class HandView {
     }
     const arc = Math.abs(d) * Math.abs(d) * ch * 0.012;
     const lowered = this.loweredK * ch * 0.7;
-    const y = -halfH + ch * 0.36 - arc + hover * ch * 0.32 - lowered;
+    // A hovered card rises to where a full-size card would (so a card from a large, shrunken hand is not cut off).
+    const chFull = CARD_H * full;
+    const y = -halfH + ch * 0.36 - arc + hover * (chFull * 0.68 - ch * 0.36) - lowered;
     const z = -this.dist + i * 0.0024 + hover * 0.04;
     const r = new THREE.Euler(-0.08 * (1 - hover), 0, -d * 0.045 * (1 - hover));
-    return { p: new THREE.Vector3(x, y, z), r, s: s * (1 + hover * 0.14) };
+    return { p: new THREE.Vector3(x, y, z), r, s: s + (full * 1.14 - s) * hover };
   }
 
   /** Camera-space transform for a card at slot i (used for flights into the hand). */
@@ -157,6 +165,12 @@ export class HandView {
   update(dt: number): void {
     this.t += dt;
     this.loweredK = damp(this.loweredK, this.lowered, 6, dt);
+    const lit = this.turnLitK < 0 ? this.turnLit : damp(this.turnLitK, this.turnLit, 10, dt);
+    if (Math.abs(lit - this.turnLitK) > 0.002) {
+      this.turnLitK = lit;
+      setHandGlow(lit);
+      for (const c of this.cards) c.refreshGlow();
+    }
     const n = this.cards.length;
     for (let i = 0; i < n; i++) {
       const c = this.cards[i];

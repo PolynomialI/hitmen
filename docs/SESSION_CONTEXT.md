@@ -109,6 +109,13 @@ Second chat (continuing from this file):
     > Change them up slightly obviously ... Especially the icon you currently have for the number of turns you have
     > to play. Make sure this icon also appears for other players
     > You know what, remove the full border aroudn eveyr card and every texture that this applies to, like skins.
+19. Seat lens very slightly wider; hand cards brighter and whiter on your turn, a tiny bit darker otherwise; the turn
+    system severely faster ("If both players in a 1v1 were to spam click they should be able to get through atleast 4
+    cards a second", also Misdirection and anything that switches turns); the Scrying Orb, reaction ("nope") timers
+    and everything else a little faster; a soft lock near the end of a game ("wait a moment", could not draw or play);
+    past 10 cards the hand's cards get smaller instead of squished; a bigger deck ("in a 3 player game there should be
+    around 45 cards, and accordingly"); the mace only when someone has 2 or more turns; no description over the
+    Scrying Orb's three cards.
 
 ## How the requests were interpreted
 
@@ -195,6 +202,12 @@ Second chat:
 33. Phase D: Winter Feast under snow (world/winter.ts) with frosted players; detailed three-quarter seat icons with
     thin outlines; thinner charm outlines; no border ring on gilded/prismatic skins; menu labels and board papers stay
     until the camera has left.
+34. Message 19: the soft lock was a Pickpocket: after the robbed player handed a card over, the engine went back to the
+    turn without an event and the screen stayed in its 'give' phase (every draw and play refused until the turn timer
+    ran out); the steal now ends the give. Turn switches near instant (draw 90 ms + turn 40 ms; ~6.7 draws a second on a
+    local server), the clock's travel interruptible and its chime throttled, everything else ~25% shorter with
+    animations a third faster, faster timers; 15 cards per player in the deck; maces only for 2+ turns; hand glow
+    by turn; a shrinking hand past 10 cards; FOV +2°; no Scrying Orb caption.
 
 ## How work was verified
 

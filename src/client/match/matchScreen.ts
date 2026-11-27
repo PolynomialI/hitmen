@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { CARD_DEFS, type Card, type CardType } from '../../shared/cards';
-import type { GameEvent, GameMode, PendingInfo, PlayerId, PlayerStats, SeatInfo, SyncInfo } from '../../shared/types';
+import type { Action, GameEvent, GameMode, PendingInfo, PlayerId, PlayerStats, PlayResult, SeatInfo, SyncInfo } from '../../shared/types';
 import type { App, Screen } from '../app';
 import { audio } from '../audio/audio';
 import type { Pickable } from '../core/picker';
@@ -37,6 +37,8 @@ export interface MatchOptions {
 type AimKind = { kind: 'play'; card: Card; effect: CardType } | { kind: 'misdirect'; card: Card };
 
 const HOSTILE: CardType[] = ['bounty', 'warband', 'pickpocket', 'mistletoe'];
+/** Animation speed in a match: the host's event times (DUR) are about three quarters of what the animations were made for. */
+const MATCH_SPEED = 1.33;
 
 export class MatchScreen implements Screen {
   readonly app: App;
@@ -87,6 +89,8 @@ export class MatchScreen implements Screen {
   myScried = 0;
   myMarked = 0;
   private iAmDead = false;
+  /** When the host will take actions again (its event times, on this clock). */
+  private hostFreeAt = 0;
   // UI
   readonly ui: HTMLElement;
   private hintEl: HTMLElement;
@@ -119,10 +123,10 @@ export class MatchScreen implements Screen {
     // (the pointer) to see the players beside you at the larger tables.
     this.tableStation =
       k === 1
-        ? { pos: V(3.02, 1.36, 0.6), target: V(5.8, 0.46, 0.6), look: [0.45, 0.14, 0.06], fov: 48 }
+        ? { pos: V(3.02, 1.36, 0.6), target: V(5.8, 0.46, 0.6), look: [0.45, 0.14, 0.06], fov: 50 }
         : k === 2
-          ? { pos: V(3.0, 1.4, 0.6), target: V(5.8, 0.46, 0.6), look: [0.55, 0.14, 0.06], fov: 49 }
-          : { pos: V(2.96, 1.45, 0.6), target: V(5.7, 0.46, 0.6), look: [0.62, 0.14, 0.06], fov: 50 };
+          ? { pos: V(3.0, 1.4, 0.6), target: V(5.8, 0.46, 0.6), look: [0.55, 0.14, 0.06], fov: 51 }
+          : { pos: V(2.96, 1.45, 0.6), target: V(5.7, 0.46, 0.6), look: [0.62, 0.14, 0.06], fov: 52 };
     this.aimStation =
       k === 1
         ? { pos: V(3.4, 2.05, 0.6), target: V(5.25, 0.82, 0.6), look: [0.06, 0.04], fov: 52 }
@@ -199,6 +203,8 @@ export class MatchScreen implements Screen {
       }
       if (ev.e === 'start') this.started = true;
       if (replay) this.replayLeft++;
+      // The host's own timeline: it takes no action until this event's time has passed.
+      else this.hostFreeAt = Math.max(this.hostFreeAt, performance.now()) + ev.dur;
       this.queue.push(ev);
       void this.pump();
       return true;
@@ -277,7 +283,7 @@ export class MatchScreen implements Screen {
       if (instant) this.replayLeft--;
       tweens.instant = instant;
       audio.suppressed = instant;
-      tweens.scale = this.queue.length > 8 ? 2.6 : this.queue.length > 3 ? 1.6 : 1;
+      tweens.scale = MATCH_SPEED * (this.queue.length > 8 ? 2.6 : this.queue.length > 3 ? 1.6 : 1);
       try {
         await this.handle(ev);
       } catch (e) {
@@ -558,7 +564,9 @@ export class MatchScreen implements Screen {
   private owed = new Map<PlayerId, number>();
   private refreshTurns(): void {
     for (const s of this.seats) {
-      const n = s.id === this.current ? this.turnsLeft : (this.owed.get(s.id) ?? 1);
+      // The mace only shows when someone has two turns or more to take.
+      const owed = s.id === this.current ? this.turnsLeft : (this.owed.get(s.id) ?? 1);
+      const n = owed >= 2 ? owed : 0;
       if (this.isMe(s.id)) this.setBadge(this.iAmDead ? 0 : n);
       else this.table.setBadge(s.id, this.table.seat(s.id)?.alive ? n : 0);
     }
@@ -649,8 +657,23 @@ export class MatchScreen implements Screen {
     if (!this.canDraw()) return;
     this.table.deckGlowTarget = 0;
     audio.play('click', { vol: 0.5 });
-    const r = await this.t.send({ t: 'draw' });
+    const r = await this.sendSoon({ t: 'draw' });
     if (!r.ok) this.refreshAffordances();
+  }
+
+  /**
+   * Send an action; if the table is still busy finishing the last event (animations here end a hair before the host's
+   * timing), try again a moment later instead of dropping a quick click.
+   */
+  private async sendSoon(a: Action): Promise<PlayResult> {
+    // Animations here run a little ahead of the host: wait the last few milliseconds rather than be refused.
+    const wait = Math.min(1500, this.hostFreeAt - performance.now());
+    if (wait > 0) await new Promise((res) => setTimeout(res, wait));
+    for (let i = 0; ; i++) {
+      const r = await this.t.send(a);
+      if (r.ok || r.err !== 'busy' || i >= 5 || this.disposed) return r;
+      await new Promise((res) => setTimeout(res, 50));
+    }
   }
 
   private async onCardClick(card: Card): Promise<void> {
@@ -716,7 +739,7 @@ export class MatchScreen implements Screen {
       return;
     }
     audio.play('click', { vol: 0.5 });
-    const r = await this.t.send({ t: 'play', cardId: card.id });
+    const r = await this.sendSoon({ t: 'play', cardId: card.id });
     if (!r.ok) this.nudge(card, r.err === 'nothing to copy' ? 'Nothing worth copying yet.' : 'Not now.');
   }
 
@@ -778,7 +801,7 @@ export class MatchScreen implements Screen {
     this.exitAim();
     this.hint(null);
     audio.play('click');
-    const r = a.kind === 'misdirect' ? await this.t.send({ t: 'react', cardId: a.card.id, targetId: id }) : await this.t.send({ t: 'play', cardId: a.card.id, targetId: id });
+    const r = a.kind === 'misdirect' ? await this.t.send({ t: 'react', cardId: a.card.id, targetId: id }) : await this.sendSoon({ t: 'play', cardId: a.card.id, targetId: id });
     if (!r.ok) this.hint('Too late.', 1500);
   }
 
@@ -794,7 +817,7 @@ export class MatchScreen implements Screen {
       case 'intro':
         return this.onIntro();
       case 'turn':
-        return this.onTurn(ev.player, ev.turnsLeft, ev.ms);
+        return this.onTurn(ev.player, ev.turnsLeft, ev.ms, dur);
       case 'play':
         return this.onPlay(ev.player, ev.card, ev.effect, ev.target);
       case 'window':
@@ -806,7 +829,7 @@ export class MatchScreen implements Screen {
       case 'privateer':
         return this.onPrivateer(ev.player, ev.card);
       case 'resolve':
-        return this.onResolve(ev.player, ev.card, ev.effect, ev.cancelled);
+        return this.onResolve(ev.player, ev.card, ev.effect, ev.cancelled, dur);
       case 'burn':
         return this.onBurn(ev.card);
       case 'copy':
@@ -828,7 +851,7 @@ export class MatchScreen implements Screen {
       case 'owed':
         return this.onOwed(ev.player, ev.by, ev.turnsLeft);
       case 'reverse':
-        return this.onReverse(ev.dir);
+        return this.onReverse(ev.dir, dur);
       case 'lock':
         return this.onLock(ev.player, ev.type, ev.turns);
       case 'unlock':
@@ -842,7 +865,7 @@ export class MatchScreen implements Screen {
       case 'swap':
         return this.onSwap(ev.a, ev.b, ev.handA, ev.handB);
       case 'draw':
-        return this.onDraw(ev.player, ev.card, ev.bottom);
+        return this.onDraw(ev.player, ev.card, ev.bottom, dur);
       case 'doom':
         return this.onDoom(ev.player, ev.card, ev.ms, ev.hasAngel);
       case 'rescue':
@@ -909,12 +932,12 @@ export class MatchScreen implements Screen {
     this.phase = 'intro';
     audio.play('stinger', { vol: 0.45 });
     this.banner(this.opts.mode === 'winter' ? 'A Winter Feast. Mind the Hand.' : this.opts.mode === 'teams' ? 'Protect your own. Doom the rest.' : "Don't draw the Hooded Hand");
-    await tweens.to(1.2, (k) => (this.app.rig.fovKick = -Math.sin(k * Math.PI) * 2.5));
+    await tweens.to(1.0, (k) => (this.app.rig.fovKick = -Math.sin(k * Math.PI) * 2.5));
     if (this.tut) this.hint('Every card you hold is real. Hover over one to read it.');
-    await tweens.wait(1.6);
+    await tweens.wait(1.1);
   }
 
-  private async onTurn(player: PlayerId, turnsLeft: number, ms: number | null): Promise<void> {
+  private async onTurn(player: PlayerId, turnsLeft: number, ms: number | null, dur: number): Promise<void> {
     const mine = this.isMe(player);
     const changed = this.current !== player;
     this.current = player;
@@ -923,13 +946,13 @@ export class MatchScreen implements Screen {
     this.pending = null;
     this.give = null;
     this.turnLen = ms ?? 0;
-    this.turnEnd = ms ? performance.now() + ms + 900 : 0;
+    this.turnEnd = ms ? performance.now() + ms + dur * 1000 : 0;
     this.table.setSign(mine);
     this.table.setTurn(player, turnsLeft);
     this.owed.delete(player);
     this.refreshTurns();
     this.tutorial('turn');
-    await tweens.wait(0.85);
+    await tweens.wait(dur);
   }
 
   private async onPlay(player: PlayerId, card: Card, effect: CardType, target?: PlayerId): Promise<void> {
@@ -1098,13 +1121,13 @@ export class MatchScreen implements Screen {
     const cm = this.takeFrom(player, card);
     cm.setVariant('table');
     audio.play('whoosh');
-    await this.fly(cm.root, () => ({ p: slot.p, q: slot.q, s: slot.s }), 0.4, { arc: 0.2, spin: 2.4 });
+    await this.fly(cm.root, () => ({ p: slot.p, q: slot.q, s: slot.s }), 0.22, { arc: 0.16, spin: 2.4 });
     this.table.pushPile(cm);
     // A streak of violet light from the pile to the new mark.
     const from = slot.p.clone().add(V(0, 0.05, 0));
     const to = this.seatHead(target);
     const orb = this.fx.flash(from, new THREE.Color(2.4, 0.8, 2.6), 0.25);
-    await tweens.to(0.45, (k) => {
+    await tweens.to(0.26, (k) => {
       orb.position.lerpVectors(from, to, k);
       orb.position.y += Math.sin(k * Math.PI) * 0.3;
       (orb.material as THREE.SpriteMaterial).opacity = 1;
@@ -1126,7 +1149,7 @@ export class MatchScreen implements Screen {
     this.claims.push({ player, mesh: cm });
   }
 
-  private async onResolve(player: PlayerId, card: Card, effect: CardType, cancelled: boolean): Promise<void> {
+  private async onResolve(player: PlayerId, card: Card, effect: CardType, cancelled: boolean, dur: number): Promise<void> {
     this.table.setRing(0, 0);
     this.windowEnd = 0;
     this.phase = 'turn';
@@ -1137,7 +1160,7 @@ export class MatchScreen implements Screen {
     }
     this.tutorial('resolve', { player, card, cancelled });
     this.pending = null;
-    await tweens.wait(0.3);
+    await tweens.wait(dur);
   }
 
   private async onBurn(card: Card): Promise<void> {
@@ -1229,7 +1252,7 @@ export class MatchScreen implements Screen {
         this.staticPicks.push(this.nav.picker.add({ object: cm.face, priority: -2, onHover: (on) => (on ? this.showPreview(card) : this.hidePreview()) }));
       });
       const mine = this.isMe(player);
-      this.hint(this.tut ? 'Only you can see the future. The Hooded Hand lurks just beneath the top card.' : mine ? 'Only you can see the future. The top of the deck is on the left.' : `${this.nameOf(player)}'s vision, shared with you. Top is on the left.`);
+      if (this.tut) this.hint('Only you can see the future. The Hooded Hand lurks just beneath the top card.');
       if (mine) {
         this.action('Done', () => {
           this.action(null);
@@ -1346,6 +1369,9 @@ export class MatchScreen implements Screen {
   }
 
   private async onSteal(from: PlayerId, to: PlayerId, card?: Card): Promise<void> {
+    // The card changing hands ends a Pickpocket's give: the turn carries on (the engine sends no new turn event, so
+    // without this the screen stayed in 'give' and refused every play and draw until the turn timer ran out).
+    if (this.phase === 'give') this.phase = 'turn';
     this.give = null;
     this.giveEnd = 0;
     this.hint(null);
@@ -1376,7 +1402,7 @@ export class MatchScreen implements Screen {
     const from = (this.table.pileTop()?.root.position.clone() ?? this.table.pilePos.clone()).add(V(0, 0.05, 0));
     const at = this.isMe(player) ? this.camX(0, -0.06, 0.45).p : this.seatHead(player).add(V(0, -0.1, 0));
     audio.play('whoosh', { vol: 0.8 });
-    await streak(this.fx, this.app.tavern.glowTex, this.fx.group, from, at, new THREE.Color('#ff4a1a'), 0.4, 0.4);
+    await streak(this.fx, this.app.tavern.glowTex, this.fx.group, from, at, new THREE.Color('#ff4a1a'), 0.4, 0.26);
     // …and strikes: a red flash, a shower of embers, and a ring of fire on the table in front of them.
     audio.play('bounty');
     this.app.rig.shake(this.isMe(player) ? 0.05 : 0.035);
@@ -1401,16 +1427,16 @@ export class MatchScreen implements Screen {
     this.owed.set(player, turns);
     this.refreshTurns();
     this.tutorial('owed', { player });
-    await tweens.wait(0.55);
+    await tweens.wait(0.18);
     sv?.figure.setReach(0, 'L');
     void by;
   }
 
-  private async onReverse(dir: 1 | -1): Promise<void> {
+  private async onReverse(dir: 1 | -1, dur: number): Promise<void> {
     this.table.reverse(dir);
     audio.play('whoosh', { vol: 1.2 });
-    audio.play('chime', { at: 0.3, vol: 0.5 });
-    await tweens.wait(1.1);
+    audio.play('chime', { at: 0.2, vol: 0.5 });
+    await tweens.wait(dur);
   }
 
   private async onLock(player: PlayerId, type: CardType, turns: number): Promise<void> {
@@ -1500,27 +1526,25 @@ export class MatchScreen implements Screen {
     await tweens.wait(0.3);
   }
 
-  private async onDraw(player: PlayerId, card: Card | undefined, bottom: boolean): Promise<void> {
+  private async onDraw(player: PlayerId, card: Card | undefined, bottom: boolean, dur: number): Promise<void> {
     const from = bottom ? { p: this.table.deckPos.clone().add(V(0, 0.002, 0)), q: this.table.deckQuat(), s: DECK_S } : this.deckX();
     const isHand = card?.type === 'hand';
+    // A plain draw is near instant (the turn passes straight on); drawing the Hooded Hand keeps a short, tense pull.
+    const quick = Math.max(0.06, dur * 0.9);
     if (this.isMe(player)) {
-      // The pull: the top card peels off, comes up to you face down, hangs for a heartbeat… and turns over.
       const cm = this.newCard(card ?? null, from, 'hand');
       audio.play('draw');
-      await this.peel(cm, this.app.gfx.camera.position, 0.22);
-      await flyCurve(cm.root, () => this.camX(0, 0.03, 0.52, 1.08, true), 0.42, { lift: 0.12, ease: ease.outCubic });
-      this.hand.lowered = 0.25;
-      await this.tremble(cm.root, isHand ? 0.3 : 0.2);
       if (isHand) {
+        await this.peel(cm, this.app.gfx.camera.position, 0.12);
+        await flyCurve(cm.root, () => this.camX(0, 0.03, 0.52, 1.08, true), 0.28, { lift: 0.1, ease: ease.outCubic });
+        this.hand.lowered = 0.25;
+        await this.tremble(cm.root, 0.22);
         this.hand.lowered = 0;
         this.doomMesh = cm;
         return;
       }
-      audio.play('flip');
-      await this.fly(cm.root, () => this.camX(0, 0.02, 0.5, 1.1), 0.26, { ease: ease.outBack });
-      this.fx.burst({ at: cm.root.position.clone(), count: 10, color: '#fff0c0', intensity: 2.2, speed: 0.12, up: 0.2, life: 0.45, size: 0.012, gravity: 0, spread: V(0.08, 0.1, 0.01) });
-      this.hand.lowered = 0;
-      await tweens.wait(0.16);
+      // Straight from the deck into your hand, turning over on the way.
+      await this.fly(cm.root, () => this.camX(0, 0.02, 0.5, 1.1), quick, { ease: ease.outCubic });
       this.addToHand(cm);
       this.tutorial('drew');
     } else {
@@ -1529,14 +1553,14 @@ export class MatchScreen implements Screen {
       audio.play('draw', { vol: 0.7 });
       sv.figure.setReach(0.85, 'L');
       sv.figure.lean = 0.8;
-      setTimeout(() => (sv.figure.lean = 0), 700);
-      await this.peel(cm, sv.pos, 0.22);
+      setTimeout(() => (sv.figure.lean = 0), 400);
       if (isHand) {
+        await this.peel(cm, sv.pos, 0.12);
         const p = this.table.pilePos.clone().add(V(0.02, 0.2, 0));
         const dummy = new THREE.Object3D();
         dummy.position.copy(p);
         dummy.lookAt(sv.figure.root.position.clone().add(V(0, 0.5, 0)));
-        await this.fly(cm.root, () => ({ p, q: dummy.quaternion.clone(), s: 1.25 }), 0.65, { arc: 0.1 });
+        await this.fly(cm.root, () => ({ p, q: dummy.quaternion.clone(), s: 1.25 }), 0.42, { arc: 0.1 });
         cm.setCard(card!);
         this.doomMesh = cm;
         sv.figure.setReach(0, 'L');
@@ -1544,8 +1568,8 @@ export class MatchScreen implements Screen {
       }
       if (card && sv.mate) cm.setCard(card);
       // Into the row at a spot of their choosing; the others shuffle aside to make room.
+      await this.giveToSeat(player, cm, quick);
       sv.figure.setReach(0, 'L');
-      await this.giveToSeat(player, cm, 0.58);
     }
   }
 
@@ -1903,7 +1927,7 @@ export class MatchScreen implements Screen {
       pos: c.clone().addScaledVector(sv.out, 1.28).setY(1.38),
       target: c.clone().addScaledVector(sv.out, -1.5).setY(0.46),
       look: [0.55, 0.14, 0.06],
-      fov: 49,
+      fov: 51,
     };
     void this.app.rig.glide(station, 0.9, 0.15);
     audio.play('whoosh', { vol: 0.5 });
@@ -2042,6 +2066,7 @@ export class MatchScreen implements Screen {
 
   update(t: number, dt: number): void {
     this.table.update(t, dt);
+    this.hand.turnLit = this.isMe(this.current) && !this.iAmDead && this.phase !== 'over' ? 1 : 0;
     this.hand.update(dt);
     // Cards the watched player picks up get the film too.
     if (this.spectating) for (const c of this.table.seat(this.spectating)?.hand ?? []) this.film(c, true);

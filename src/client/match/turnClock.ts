@@ -28,6 +28,9 @@ export class TurnClock {
   private medalTexts: Array<ReturnType<typeof makeText>> = [];
   private angle = Math.PI;
   private moving = false;
+  /** Each journey's number: a newer turn takes over a journey still on its way. */
+  private journey = 0;
+  private lastChime = -1e9;
   private ring = 0;
   private shake = 0;
   private lastTick = -1;
@@ -166,12 +169,17 @@ export class TurnClock {
     let delta = (((target - this.angle) % TWO) + TWO) % TWO; // 0..2π clockwise
     if (dir < 0 && delta > 0) delta -= TWO;
     this.setTurns(turnsLeft);
+    const id = ++this.journey;
+    tweens.cancel('clock');
     if (Math.abs(delta) < 0.01) {
+      this.moving = false;
+      this.body.rotation.z = 0;
       this.ringBells(quiet);
       return;
     }
     const a0 = this.angle;
-    const dur = 0.55 + (Math.abs(delta) / Math.PI) * 0.45;
+    // Quick: turns can pass several times a second when players draw fast.
+    const dur = 0.24 + (Math.abs(delta) / Math.PI) * 0.18;
     this.moving = true;
     if (!quiet) audio.play('swish', { vol: 0.35 });
     await tweens.to(
@@ -183,8 +191,9 @@ export class TurnClock {
         // Lean into the travel, settle on arrival.
         this.body.rotation.z = -Math.sign(delta) * Math.sin(raw * Math.PI) * 0.18;
       },
-      { ease: ease.inOutCubic }
+      { ease: ease.inOutCubic, tag: 'clock' }
     );
+    if (id !== this.journey) return; // a newer turn took over on the way
     this.angle = ((target % TWO) + TWO) % TWO;
     this.place(this.angle);
     this.body.rotation.z = 0;
@@ -214,7 +223,12 @@ export class TurnClock {
 
   private ringBells(quiet = false): void {
     this.ring = 1;
-    if (!quiet) audio.play('chime', { vol: 0.5 });
+    // At most one chime every 0.6 s, however fast the turns go round.
+    const now = performance.now();
+    if (!quiet && now - this.lastChime > 600) {
+      this.lastChime = now;
+      audio.play('chime', { vol: 0.5 });
+    }
   }
 
   update(t: number, dt: number): void {

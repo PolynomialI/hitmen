@@ -111,6 +111,21 @@ function edgeMaterial(v: CardVariant): THREE.MeshStandardMaterial {
   return m;
 }
 
+/**
+ * The self-light of the cards in your hand: brighter and whiter on your turn, a little dimmer when it is not
+ * (`setHandGlow`, eased by the hand view).
+ */
+const HAND_LIT = new THREE.Color(0.68, 0.67, 0.65);
+const HAND_DIM = new THREE.Color(0.34, 0.31, 0.28);
+const handGlow = new THREE.Color(0.42, 0.38, 0.34);
+const handFaces: THREE.MeshStandardMaterial[] = [];
+
+/** 0: not your turn, 1: your turn. */
+export function setHandGlow(k: number): void {
+  handGlow.lerpColors(HAND_DIM, HAND_LIT, k);
+  for (const m of handFaces) m.emissive.copy(handGlow);
+}
+
 function faceMat(tex: CardTexSet, type: CardType, v: CardVariant): THREE.MeshStandardMaterial {
   const key = type + v;
   let m = faceMats.get(key);
@@ -118,7 +133,8 @@ function faceMat(tex: CardTexSet, type: CardType, v: CardVariant): THREE.MeshSta
     m = new THREE.MeshStandardMaterial({ map: v === 'pile' ? null : tex.faces[type], color: v === 'pile' ? '#000000' : '#ffffff', roughness: v === 'pile' ? 1 : 0.62, metalness: 0, side: THREE.FrontSide });
     if (v === 'hand') {
       m.emissiveMap = tex.faces[type];
-      m.emissive.setRGB(0.42, 0.38, 0.34);
+      m.emissive.copy(handGlow);
+      handFaces.push(m);
     }
     if (v === 'pile') {
       m.emissiveMap = tex.faces[type];
@@ -189,6 +205,8 @@ export class CardMesh {
   card: Card | null;
   private tex: CardTexSet;
   private ownMat: THREE.MeshStandardMaterial | null = null;
+  /** The last tint (reapplied when your hand's glow changes). */
+  private tinted: [number, number, number, number] = [1, 1, 1, 0];
   /** Free-form per-card animation state. */
   hover = 0;
   hoverTarget = 0;
@@ -242,8 +260,14 @@ export class CardMesh {
       this.ownMat.emissive.setRGB(PILE_GLOW * r + emissive, PILE_GLOW * g + emissive * 0.7, PILE_GLOW * b + emissive * 0.3);
       return;
     }
+    this.tinted = [r, g, b, emissive];
     this.ownMat.color.setRGB(r, g, b);
-    if (this.ownMat.emissiveMap) this.ownMat.emissive.setRGB(0.42 * r + emissive, 0.38 * g + emissive * 0.7, 0.34 * b + emissive * 0.3);
+    if (this.ownMat.emissiveMap) this.ownMat.emissive.setRGB(handGlow.r * r + emissive, handGlow.g * g + emissive * 0.7, handGlow.b * b + emissive * 0.3);
+  }
+
+  /** A tinted card in your hand follows the hand's glow too. */
+  refreshGlow(): void {
+    if (this.ownMat && this.variant === 'hand') this.tint(...this.tinted);
   }
 
   dispose(): void {

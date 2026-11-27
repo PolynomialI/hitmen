@@ -1,6 +1,6 @@
-import { type Card, type CardType, def, poolFor } from './cards';
+import { type Card, type CardType, DECK_PER_PLAYER, def, poolFor } from './cards';
 import { Rng } from './rng';
-import { DUR } from './timing';
+import { DRAW_HAND, DUR } from './timing';
 import type {
   Action,
   EventBody,
@@ -195,11 +195,14 @@ export class Engine {
       for (const p of this.players) for (const t of st.hands[p.id] ?? []) deals.push({ p, c: this.card(t) });
       this.deck = st.deck.map((t) => this.card(t));
     } else {
-      const pool = this.rng.shuffle(poolFor(this.cfg.deck, n).map((t) => this.card(t)));
+      const spare = n <= 3 ? 1 : n <= 5 ? 2 : 3;
+      // Enough action cards that, after the deal, about DECK_PER_PLAYER cards per player are left in the deck
+      // (Hooded Hands and the spare Angels included).
+      const size = DECK_PER_PLAYER * n + this.cfg.handSize * n - (n - 1) - spare;
+      const pool = this.rng.shuffle(poolFor(this.cfg.deck, n, size).map((t) => this.card(t)));
       for (const p of this.players) deals.push({ p, c: this.card('angel') });
       for (let i = 0; i < this.cfg.handSize; i++) for (const p of this.players) deals.push({ p, c: pool.pop()! });
       for (let i = 0; i < n - 1; i++) pool.push(this.card('hand'));
-      const spare = n <= 3 ? 1 : n <= 5 ? 2 : 3;
       for (let i = 0; i < spare; i++) pool.push(this.card('angel'));
       this.rng.shuffle(pool);
       this.deck = pool;
@@ -210,7 +213,7 @@ export class Engine {
     for (const d of interleave(this.players, deals)) {
       this.deck.shift();
       d.p.hand.push(d.c);
-      this.emit({ e: 'deal', to: d.p.id, secret: this.sec([[d.p.id, { card: d.c }]]) }, n <= 2 ? DUR.deal : n <= 4 ? 330 : 250);
+      this.emit({ e: 'deal', to: d.p.id, secret: this.sec([[d.p.id, { card: d.c }]]) }, n <= 2 ? DUR.deal : n <= 4 ? 220 : 170);
     }
     this.deck = stash;
     this.emit({ e: 'intro' });
@@ -585,7 +588,7 @@ export class Engine {
     const card = bottom ? this.deck.pop()! : this.deck.shift()!;
     p.stats.drawn++;
     if (card.type === 'hand') {
-      this.emit({ e: 'draw', player: p.id, card, bottom });
+      this.emit({ e: 'draw', player: p.id, card, bottom }, DRAW_HAND);
       const hasAngel = this.rescueCards(p).length > 0;
       this.doom = { player: p.id, card };
       this.phase = 'rescue';
