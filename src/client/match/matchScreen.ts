@@ -527,6 +527,16 @@ export class MatchScreen implements Screen {
     this.actionEl.append(b);
   }
 
+  /** Turns each player will take: the current player's turns left; anyone else 1, or more with a Bounty on them. */
+  private owed = new Map<PlayerId, number>();
+  private refreshTurns(): void {
+    for (const s of this.seats) {
+      const n = s.id === this.current ? this.turnsLeft : (this.owed.get(s.id) ?? 1);
+      if (this.isMe(s.id)) this.setBadge(this.iAmDead ? 0 : n);
+      else this.table.setBadge(s.id, this.table.seat(s.id)?.alive ? n : 0);
+    }
+  }
+
   /** Your turns still to take, on the mace beside your hand (0: none). */
   private setBadge(turns: number): void {
     this.myTurns = turns;
@@ -825,6 +835,7 @@ export class MatchScreen implements Screen {
     this.seats = seats;
     this.table.setSeats(seats, this.me);
     this.table.setMyCharm(seats.find((x) => x.id === this.me)?.look?.charm);
+    this.refreshTurns();
     const app = this.app;
     // Figures, chairs, cards and the clock bring new shaders: compile them now, in the background where the browser
     // can, instead of one by one in the middle of the camera's glide to the table.
@@ -887,9 +898,8 @@ export class MatchScreen implements Screen {
     this.turnEnd = ms ? performance.now() + ms + 900 : 0;
     this.table.setSign(mine);
     this.table.setTurn(player, turnsLeft);
-    this.setBadge(mine ? turnsLeft : 0);
-    this.table.clearBadges();
-    if (!mine) this.table.setBadge(player, turnsLeft);
+    this.owed.delete(player);
+    this.refreshTurns();
     this.tutorial('turn');
     await tweens.wait(0.85);
   }
@@ -1360,11 +1370,8 @@ export class MatchScreen implements Screen {
     sv?.figure.flinch();
     this.allLook(this.isMe(player) ? this.app.gfx.camera.position.clone() : this.seatHead(player), player);
     setTimeout(() => this.allLook(null), 1600);
-    if (this.isMe(player)) {
-      this.setBadge(turns);
-    } else {
-      this.table.setBadge(player, turns);
-    }
+    this.owed.set(player, turns);
+    this.refreshTurns();
     this.tutorial('owed', { player });
     await tweens.wait(0.55);
     sv?.figure.setReach(0, 'L');

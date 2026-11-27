@@ -344,12 +344,12 @@ export class TableView {
       const top = new THREE.Box3().setFromObject(f.root).max.y;
       name.position.copy(f.root.position).setY(Math.max(top + 0.07, f.root.position.y + 1.2));
       this.group.add(name);
-      const badge = new THREE.Sprite(new THREE.SpriteMaterial({ transparent: true, depthWrite: false }));
+      const badge = new THREE.Sprite(new THREE.SpriteMaterial({ transparent: true, depthWrite: false, depthTest: false }));
       badge.scale.setScalar(0.0001);
       // The turns mace hangs at neck height to the right of the head (as you see it; you look along +x).
       badge.position.set(f.root.position.x, Math.max(top - 0.5, f.root.position.y + 0.62), f.root.position.z + 0.44);
       // How many cards they hold: a little card on the other side of the head.
-      const count = new THREE.Sprite(new THREE.SpriteMaterial({ transparent: true, depthWrite: false }));
+      const count = new THREE.Sprite(new THREE.SpriteMaterial({ transparent: true, depthWrite: false, depthTest: false }));
       count.position.set(f.root.position.x, badge.position.y, f.root.position.z - 0.42);
       count.scale.set(0.13, 0.173, 1);
       count.renderOrder = 26;
@@ -670,60 +670,60 @@ export function maceTexture(n: number): THREE.CanvasTexture {
 }
 
 export function drawMace(ctx: CanvasRenderingContext2D, w: number, h: number, n: number): void {
+  // After the spiked-ball card: a bold white ball and white spikes, thick red-orange outlines, hollow drops.
   const cx = w / 2;
   const cy = h / 2;
-  const R = w * 0.29;
-  const red = '#d9481a';
-  const lw = w * 0.035;
+  const R = w * 0.3;
+  const red = '#e2541c';
+  const lw = w * 0.05;
   ctx.lineJoin = 'round';
-  // Spikes: white points outlined in red, all round the ball.
-  for (let i = 0; i < 11; i++) {
-    const a = (i / 11) * Math.PI * 2 - 0.4;
-    const half = 0.24;
-    const base = R * 0.88;
-    const tip = R * (i % 2 ? 1.52 : 1.62);
+  ctx.lineCap = 'round';
+  const spikes: Array<[number, number]> = [[-1.55, 1.62], [-0.95, 1.5], [-0.3, 1.62], [0.35, 1.5], [0.95, 1.62], [1.6, 1.5], [2.2, 1.62], [2.8, 1.5], [3.45, 1.6], [4.1, 1.5], [4.7, 1.55]];
+  for (const [a, len] of spikes) {
+    const half = 0.27;
+    const base = R * 0.86;
     ctx.beginPath();
     ctx.moveTo(cx + Math.cos(a - half) * base, cy + Math.sin(a - half) * base);
-    ctx.lineTo(cx + Math.cos(a) * tip, cy + Math.sin(a) * tip);
+    ctx.lineTo(cx + Math.cos(a) * R * len, cy + Math.sin(a) * R * len);
     ctx.lineTo(cx + Math.cos(a + half) * base, cy + Math.sin(a + half) * base);
     ctx.closePath();
-    ctx.fillStyle = '#fbf9f4';
-    ctx.fill();
     ctx.lineWidth = lw;
     ctx.strokeStyle = red;
     ctx.stroke();
+    ctx.fillStyle = '#ffffff';
+    ctx.fill();
   }
-  // The ball.
   ctx.beginPath();
   ctx.arc(cx, cy, R, 0, Math.PI * 2);
-  ctx.fillStyle = '#fbf9f4';
+  ctx.fillStyle = '#ffffff';
   ctx.fill();
-  ctx.lineWidth = lw * 1.25;
+  ctx.lineWidth = lw * 1.1;
   ctx.strokeStyle = red;
   ctx.stroke();
-  // Hollow drops around the edge (they frame the number).
   const drop = (x: number, y: number, s: number, rot: number) => {
     ctx.save();
     ctx.translate(x, y);
     ctx.rotate(rot);
     ctx.beginPath();
     ctx.moveTo(0, -s);
-    ctx.bezierCurveTo(s * 0.7, -s * 0.2, s * 0.75, s * 0.75, 0, s * 0.8);
-    ctx.bezierCurveTo(-s * 0.75, s * 0.75, -s * 0.7, -s * 0.2, 0, -s);
-    ctx.lineWidth = lw * 0.8;
+    ctx.bezierCurveTo(s * 0.8, -s * 0.15, s * 0.85, s * 0.8, 0, s * 0.85);
+    ctx.bezierCurveTo(-s * 0.85, s * 0.8, -s * 0.8, -s * 0.15, 0, -s);
+    ctx.lineWidth = lw * 0.85;
     ctx.strokeStyle = red;
     ctx.stroke();
     ctx.restore();
   };
-  drop(cx - R * 0.66, cy - R * 0.36, R * 0.2, -0.6);
-  drop(cx + R * 0.64, cy + R * 0.42, R * 0.18, 2.4);
-  drop(cx + R * 0.58, cy - R * 0.5, R * 0.14, 0.7);
-  // The number.
-  ctx.font = `800 ${Math.round(R * 1.3)}px "Grenze Gotisch"`;
+  drop(cx - R * 0.6, cy - R * 0.42, R * 0.24, -0.7);
+  drop(cx + R * 0.62, cy + R * 0.46, R * 0.2, 2.5);
+  // The count, bold and dark over the ball.
+  ctx.font = `800 ${Math.round(R * 1.4)}px "Grenze Gotisch"`;
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
-  ctx.fillStyle = '#7a1a08';
-  ctx.fillText(String(n), cx, cy + R * 0.08);
+  ctx.lineWidth = lw * 0.9;
+  ctx.strokeStyle = '#ffffff';
+  ctx.strokeText(String(n), cx + R * 0.02, cy + R * 0.1);
+  ctx.fillStyle = '#7a1606';
+  ctx.fillText(String(n), cx + R * 0.02, cy + R * 0.1);
 }
 
 /** A small card with a number on it: how many cards a player holds. */

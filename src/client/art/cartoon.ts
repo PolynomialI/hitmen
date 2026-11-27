@@ -57,24 +57,28 @@ function arcArrow(cx: number, cy: number, r: number, a0: number, a1: number, wid
 // ------------------------------------------------------------------------------------------- icons
 
 function hand(_p: Pal): string {
-  // The Hooded Hand: a grey hood, a black bandana over the lower face, white slanted eyes and pointed collars, all in
-  // thick black outlines.
-  const K = '#0d0d0f';
+  // The Hooded Hand: a wide-brimmed hat with a dented crown, white slanted eyes in the shadow, a black bandana and
+  // pointed collars, thick black outlines.
+  const K = '#0c0c0e';
   const ol = `stroke="${K}" stroke-width="13" stroke-linejoin="round"`;
-  const collar = 'M 86,548 C 112,470 168,436 222,430 L 250,474 L 278,430 C 332,436 388,470 414,548 C 362,520 310,520 250,578 C 190,520 138,520 86,548 Z';
-  const hood = 'M 250,134 C 178,150 126,222 122,304 C 119,368 148,416 194,442 L 306,442 C 352,416 381,368 378,304 C 374,222 322,150 250,134 Z';
-  const fold = 'M 250,134 C 264,180 268,222 264,262';
-  const bandana = 'M 168,340 C 202,358 298,358 332,340 L 314,390 C 296,432 276,456 250,492 C 224,456 204,432 186,390 Z';
-  return `
-    <path d="${collar}" fill="#26262a" ${ol}/>
-    <path d="${hood}" fill="#5c5c62" ${ol}/>
-    <path d="M 264,156 C 326,190 364,250 364,306 C 364,362 342,404 304,430 L 272,430 C 306,392 318,334 312,282 C 306,234 290,192 264,156 Z" fill="#45454b"/>
-    <path d="${fold}" fill="none" stroke="#7a7a82" stroke-width="7" stroke-linecap="round"/>
-    <ellipse cx="250" cy="318" rx="80" ry="70" fill="#121214" stroke="${K}" stroke-width="8"/>
-    <path d="M 192,300 L 242,318 L 235,336 L 196,322 Z" fill="#f6f4ee" stroke="${K}" stroke-width="4" stroke-linejoin="round"/>
-    <path d="M 308,300 L 258,318 L 265,336 L 304,322 Z" fill="#f6f4ee" stroke="${K}" stroke-width="4" stroke-linejoin="round"/>
-    <path d="${bandana}" fill="#1c1c20" ${ol}/>
-    <path d="M 206,378 C 232,394 268,394 294,378" fill="none" stroke="#3a3a40" stroke-width="6" stroke-linecap="round"/>`;
+  const collarL = 'M 204,352 C 164,368 124,404 98,458 C 142,438 188,428 224,420 Z';
+  const face = 'M 178,272 C 178,326 208,364 250,368 C 292,364 322,326 322,272 Z';
+  const bandana = 'M 172,318 C 208,332 292,332 328,318 L 312,364 C 294,410 274,436 250,470 C 226,436 206,410 188,364 Z';
+  const crown = 'M 162,226 C 162,168 196,138 226,150 L 250,170 L 274,150 C 304,138 338,168 338,226 Z';
+  const brim = 'M 70,276 C 112,232 186,218 250,218 C 314,218 388,232 430,276 C 402,300 334,284 250,284 C 166,284 98,300 70,276 Z';
+  return `<g transform="translate(250,350) scale(1.08) translate(-250,-322)">
+    <path d="${collarL}" fill="#1a1a1e" ${ol}/>
+    <g transform="translate(500,0) scale(-1,1)"><path d="${collarL}" fill="#1a1a1e" ${ol}/></g>
+    <path d="${face}" fill="#3c3c42" ${ol}/>
+    <path d="M 200,294 L 240,306 L 237,322 L 202,312 Z" fill="#ffffff" stroke="${K}" stroke-width="5" stroke-linejoin="round"/>
+    <path d="M 300,294 L 260,306 L 263,322 L 298,312 Z" fill="#ffffff" stroke="${K}" stroke-width="5" stroke-linejoin="round"/>
+    <path d="${bandana}" fill="#151517" ${ol}/>
+    <path d="M 206,352 C 234,366 266,366 294,352" fill="none" stroke="#35353b" stroke-width="6" stroke-linecap="round"/>
+    <path d="${crown}" fill="#5a5a60" ${ol}/>
+    <path d="M 186,214 C 188,180 206,162 222,164" fill="none" stroke="#7c7c84" stroke-width="9" stroke-linecap="round"/>
+    <path d="${brim}" fill="#66666d" ${ol}/>
+    <path d="M 120,258 C 160,238 210,232 250,232 C 290,232 340,238 380,258" fill="none" stroke="#83838b" stroke-width="8" stroke-linecap="round"/>
+  </g>`;
 }
 
 function angel(p: Pal): string {
@@ -82,7 +86,7 @@ function angel(p: Pal): string {
   const O = mix(p.c, '#000000', 0.42);
   const ol = `stroke="${O}" stroke-width="10" stroke-linejoin="round"`;
   const wing = 'M 196,330 C 168,300 128,286 96,292 C 108,304 110,318 102,330 C 122,330 130,342 122,356 C 142,356 152,368 146,384 C 170,382 190,370 204,352 Z';
-  const body = 'M 250,206 C 194,206 162,252 162,310 C 162,352 168,392 164,438 C 162,470 158,494 150,514 C 176,526 196,506 214,522 C 232,538 250,520 250,520 C 250,520 268,538 286,522 C 304,506 324,526 350,514 C 342,494 338,470 336,438 C 332,392 338,352 338,310 C 338,252 306,206 250,206 Z';
+  const body = 'M 250,206 C 194,206 160,252 160,312 C 160,372 176,422 202,462 C 218,486 234,506 250,526 C 266,506 282,486 298,462 C 324,422 340,372 340,312 C 340,252 306,206 250,206 Z';
   return `
     <g transform="translate(200,340) scale(1.3) translate(-200,-340)"><path d="${wing}" fill="${W}" ${ol}/></g>
     <g transform="translate(500,0) scale(-1,1) translate(200,340) scale(1.3) translate(-200,-340)"><path d="${wing}" fill="${W}" ${ol}/></g>
