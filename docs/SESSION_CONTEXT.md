@@ -241,6 +241,11 @@ Second chat:
     > angels should always be the first cards
     Names above the heads again (kept on screen for the players beside you at larger tables); Angels always first
     in your hand ("deck" read as your hand).
+38. Deck and played card moved left so the played card is centred, played card a little larger. Then the hand sorted
+    into groups: "Angels, Skips, Reverses, Scying Orb, Attacks, Attack alls, Misdirection, Dragon Breath, Pickpocket,
+    Mirorr, Chains, Shuffles, Fake Shuffles, Pull from Bottom" and "Nopes should go in after dragon breath" ("Attack
+    alls" = Warband, the closest card). They also spotted a completely white card: the Staged Brawl had no face texture
+    (missing from CARD_ORDER); fixed, with a check in the sims.
 
 ## How work was verified
 

@@ -4,7 +4,7 @@ import { Host } from '../src/shared/host';
 import { createLocalMatch, HUMAN_ID } from '../src/shared/match';
 import { DEFAULT_TIMERS } from '../src/shared/timing';
 import type { GameEvent, GameMode, SeatInfo } from '../src/shared/types';
-import type { DeckKind } from '../src/shared/cards';
+import { CARD_DEFS, CARD_ORDER, HAND_ORDER, type CardType, type DeckKind } from '../src/shared/cards';
 
 function assert(c: unknown, msg: string): asserts c {
   if (!c) throw new Error('ASSERT: ' + msg);
@@ -197,5 +197,10 @@ for (const mode of ['original', 'scrimmage', 'teams', 'winter', 'ranked'] as Gam
   assert(E.view('B', now).sync.lock?.type === 'brawl', 'B sees Tavern Brawls chained');
   assert(E.isLocked('feint') && E.isLocked('brawl'), 'both kinds are chained');
   console.log('rules: Staged Brawl', seen.B.join(' '), '(seen by the others)');
+}
+// ---- Every card has a face (CARD_ORDER builds the textures and the Codex) and a place in a sorted hand.
+for (const t of Object.keys(CARD_DEFS) as CardType[]) {
+  assert(CARD_ORDER.includes(t), `${t} is missing from CARD_ORDER (it would have no face texture)`);
+  assert(HAND_ORDER.includes(t), `${t} is missing from HAND_ORDER`);
 }
 console.log('ALL OK');

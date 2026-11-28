@@ -1,5 +1,11 @@
 import * as THREE from 'three';
-import { faceOf, type Card } from '../../shared/cards';
+import { faceOf, HAND_ORDER, type Card } from '../../shared/cards';
+
+/** A card's place in the hand's order (HAND_ORDER); unknown cards go last. */
+function rank(c: CardMesh): number {
+  const i = c.card ? HAND_ORDER.indexOf(c.card.type) : -1;
+  return i < 0 ? HAND_ORDER.length : i;
+}
 import type { CardTexSet } from '../cards/cardTextures';
 import { damp } from '../core/tween';
 import { CARD_H, CARD_W, CardMesh, setHandGlow } from './cardMesh';
@@ -67,7 +73,9 @@ export class HandView {
     const lowered = this.loweredK * ch * 0.7;
     // A hovered card rises to where a full-size card would (so a card from a large, shrunken hand is not cut off).
     const chFull = CARD_H * full;
-    const y = -halfH + ch * 0.36 - arc + hover * (chFull * 0.68 - ch * 0.36) - lowered;
+    // A shrunken (large) hand keeps its top edge where a normal hand's is, so its smaller cards show more of themselves.
+    const rest = -halfH + chFull * 0.86 - ch * 0.5;
+    const y = rest - arc + hover * (-halfH + chFull * 0.68 - rest) - lowered;
     const z = -this.dist + i * 0.0024 + hover * 0.04;
     const r = new THREE.Euler(-0.08 * (1 - hover), 0, -d * 0.045 * (1 - hover));
     return { p: new THREE.Vector3(x, y, z), r, s: s + (full * 1.14 - s) * hover };
@@ -93,12 +101,8 @@ export class HandView {
     this.cards.push(cm);
     cm.animating = false;
     this.applyLock(cm);
-    // Angels always lead the hand: a new one slides to the front (the others keep their order).
-    if (cm.card?.type === 'angel') {
-      const angels = this.cards.filter((c) => c.card?.type === 'angel');
-      const rest = this.cards.filter((c) => c.card?.type !== 'angel');
-      this.cards.splice(0, this.cards.length, ...angels, ...rest);
-    }
+    // Like cards sit together in a fixed order (Angels first): a new card slides into its group.
+    this.cards.sort((a, b) => rank(a) - rank(b));
   }
 
   /** Take a card out of the hand into world space (for flights). */

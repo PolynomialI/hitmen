@@ -162,7 +162,10 @@ Table sizes (2 to 6, Teams 2v2 or 3v3): the seat view is framed per number of ri
 matchScreen.ts): low and close at two or three players, further back and higher with a wider lens at four to six so the
 players right beside you are in frame; when knockouts thin the table it eases back in (`refit`). Names float above
 each player's head (gold on their turn); at the larger tables the names of the players right beside you come down just
-enough to stay on screen (`NAME_TOP` in tableView.ts). Angels always lead your hand: a new one slides to the front.
+enough to stay on screen (`NAME_TOP` in tableView.ts). Your hand is always sorted into groups in the owner's order
+(`HAND_ORDER` in cards.ts): Angels, Skips, Reverses, Scrying Orbs, Attacks, Warbands, Misdirections, Dragon's Breaths,
+Nopes, Pickpockets, Mirrors, Chains, Shuffles, Fake Shuffles, Pulls from the bottom, then mode-only cards. A new card
+must also be added to `CARD_ORDER` (its face texture and Codex entry); the sims fail if either list misses a card.
 
 Knockouts: a gunshot throws the player out of the chair to the floor in a fraction of a second (flash, blood spray, the
 chair rocks), a beat on the floor, then the body, chair and cards shrink away and the living close up round the table,

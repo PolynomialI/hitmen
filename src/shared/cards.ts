@@ -335,6 +335,7 @@ export const CARD_ORDER: CardType[] = [
   'backdoor',
   'pickpocket',
   'brawl',
+  'feint',
   'glass',
   'shackles',
   'aegis',
@@ -388,6 +389,16 @@ export function poolFor(kind: DeckKind, n: number, target = 10 + 8 * n): CardTyp
   for (let i = 0; out.length < target && i < rest.length * 3; i++) out.push(rest[i % rest.length].t);
   return out;
 }
+
+/**
+ * How your hand is sorted, left to right (the owner's order): Angels, Skips, Reverses, Scrying Orbs, Attacks, Attack
+ * alls (Warband), Misdirections, Dragon's Breaths, Nopes, Pickpockets, Mirrors, Chains, Shuffles, Fake Shuffles, Pulls
+ * from the bottom; then the cards of particular modes.
+ */
+export const HAND_ORDER: CardType[] = [
+  'angel', 'slip', 'turnabout', 'scry', 'bounty', 'warband', 'misdirect', 'breath', 'parry', 'pickpocket', 'glass',
+  'shackles', 'brawl', 'feint', 'backdoor', 'aegis', 'privateer', 'sands', 'mistletoe', 'yule', 'hand',
+];
 
 /**
  * What a card passes for to everyone but its player (and teammates): a Staged Brawl is played, chained, burned and
