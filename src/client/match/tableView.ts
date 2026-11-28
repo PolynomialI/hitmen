@@ -51,7 +51,7 @@ const HELD_ROW = 0.66;
 const NAME_FLOOR = HELD_Y + (CARD_H * HELD_S) / 2 + 0.07;
 /** The deck and the pile are drawn larger than a held card (easy to read from your seat); the deck is turned slightly right. */
 export const DECK_S = 1.5;
-export const PILE_S = 1.75;
+export const PILE_S = 1.95;
 const DECK_YAW = -0.32;
 const MY_CLOCK_ANGLE = Math.PI - 0.95;
 const Q_DECK_YAW = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), DECK_YAW);
@@ -142,8 +142,9 @@ export class TableView {
     this.center = T.clone();
     const top = this.tv.tableTop + 0.0015;
     // Deck and pile near the middle: the turn clock travels round them.
-    this.deckPos = new THREE.Vector3(T.x + 0.02, top, T.z - 0.26);
-    this.pilePos = new THREE.Vector3(T.x + 0.16, top, T.z + 0.2);
+    // The played card sits on the table's centre line (straight ahead of you); the deck to its left.
+    this.deckPos = new THREE.Vector3(T.x + 0.02, top, T.z - 0.46);
+    this.pilePos = new THREE.Vector3(T.x + 0.16, top, T.z);
 
     // Deck: a rounded slab whose sides show one dark layer per card (the cards' edges).
     const edge = paint(8, 16, (ctx, w, h) => {
