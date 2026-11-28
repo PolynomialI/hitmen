@@ -69,7 +69,10 @@ export class HandView {
       if (i < hi) x -= cw * 0.18;
       if (i > hi) x += cw * 0.18;
     }
-    const arc = Math.abs(d) * Math.abs(d) * ch * 0.012;
+    // The fan's bend: a hand of up to six or so cards keeps a gentle curve; a bigger hand spreads the same total bend
+    // over all its cards, so it lies almost straight instead of curling down at the ends.
+    const u = d / Math.max(2.5, (n - 1) / 2);
+    const arc = u * u * ch * 0.075;
     const lowered = this.loweredK * ch * 0.7;
     // A hovered card rises to where a full-size card would (so a card from a large, shrunken hand is not cut off).
     const chFull = CARD_H * full;
@@ -77,7 +80,7 @@ export class HandView {
     const rest = -halfH + chFull * 0.86 - ch * 0.5;
     const y = rest - arc + hover * (-halfH + chFull * 0.68 - rest) - lowered;
     const z = -this.dist + i * 0.0024 + hover * 0.04;
-    const r = new THREE.Euler(-0.08 * (1 - hover), 0, -d * 0.045 * (1 - hover));
+    const r = new THREE.Euler(-0.08 * (1 - hover), 0, -u * 0.11 * (1 - hover));
     return { p: new THREE.Vector3(x, y, z), r, s: s + (full * 1.14 - s) * hover };
   }
 

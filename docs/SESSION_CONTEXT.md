@@ -246,6 +246,9 @@ Second chat:
     Mirorr, Chains, Shuffles, Fake Shuffles, Pull from Bottom" and "Nopes should go in after dragon breath" ("Attack
     alls" = Warband, the closest card). They also spotted a completely white card: the Staged Brawl had no face texture
     (missing from CARD_ORDER); fixed, with a check in the sims.
+39. > make it so when you have as many cards as you do in thsi screenshot it doesnt curve so much like this. I want the
+    > card layout more straight
+    A big hand spreads the same small total bend over all its cards (nearly straight); six or so keep their curve.
 
 ## How work was verified
 
