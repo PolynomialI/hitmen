@@ -25,6 +25,9 @@ const PILE_MAX = 16;
 /** Visual deck height: full thickness for the first 30 cards, then compressed. */
 const deckHeight = (n: number) => Math.max(0.0005, Math.min(n, 30) * CARD_T + Math.max(0, n - 30) * 0.0007);
 const SEAT_R = 1.34;
+/** Highest a name tag may sit on screen (normalised device y), and the lowest it may come down to (world y). */
+const NAME_TOP = 0.86;
+const _nv = new THREE.Vector3();
 const TEAM_COLORS = ['#e0503a', '#3a8ae0'];
 
 /** Angles (radians, 0 = across the table from the player) for k rivals. */
@@ -45,6 +48,7 @@ const HELD_S = 1.15;
 const HELD_Y = 1.05;
 const HELD_FWD = 0.38;
 const HELD_ROW = 0.66;
+const NAME_FLOOR = HELD_Y + (CARD_H * HELD_S) / 2 + 0.07;
 /** The deck and the pile are drawn larger than a held card (easy to read from your seat); the deck is turned slightly right. */
 export const DECK_S = 1.5;
 export const PILE_S = 1.75;
@@ -86,6 +90,8 @@ export interface SeatView {
   charm?: THREE.Object3D;
   /** Heights of the name tag and of the mace / card count beside the head. */
   nameY: number;
+  /** Where the name floats: above the head, just in front of it (kept on screen in \`update\`). */
+  nameAt: THREE.Vector3;
   badgeY: number;
 }
 
@@ -382,7 +388,8 @@ export class TableView {
         hand: [],
         name,
         // The turns mace hangs at neck height to the right of the head (as you see it; you look along +x).
-        nameY: this.tv.tableTop + 0.075,
+        nameY: top + 0.09,
+        nameAt: new THREE.Vector3(),
         badgeY: Math.max(top - 0.5, 0.47 + 0.62),
         badge,
         badgeTex: null,
@@ -423,9 +430,9 @@ export class TableView {
     const f = sv.figure.root;
     f.position.copy(pos).add(new THREE.Vector3(0, 0.47, 0));
     f.lookAt(this.center.clone().setY(0.47));
-    // On the felt in front of them, just under the cards they hold, like a place card: in view at every table
-    // size (players right beside you included) and never over the boards on the stage.
-    sv.name.position.set(this.center.x + out.x * 0.82, sv.nameY, this.center.z + out.z * 0.82);
+    // Above the head, a little in front of it (toward the table), so the hood never hides it.
+    sv.nameAt.set(f.position.x - out.x * 0.3, sv.nameY, f.position.z - out.z * 0.3);
+    sv.name.position.copy(sv.nameAt);
     sv.badge.position.set(f.position.x, sv.badgeY, f.position.z + 0.44);
     sv.count.position.set(f.position.x, sv.badgeY, f.position.z - 0.42);
     sv.ward.position.copy(pos).add(new THREE.Vector3(0, 0.5, 0));
@@ -735,6 +742,14 @@ export class TableView {
     for (const sv of this.seats.values()) {
       if (sv.figure.root.visible) sv.figure.update(t, dt);
       sv.name.quaternion.copy(cam.quaternion);
+      // The players right beside you have their heads at the top edge of the view at larger tables: their names
+      // come down just enough to stay on screen (never below the cards they hold).
+      _nv.copy(sv.nameAt).project(cam);
+      if (_nv.y > NAME_TOP) {
+        _nv.y = NAME_TOP;
+        _nv.unproject(cam);
+        sv.name.position.set(_nv.x, Math.max(_nv.y, NAME_FLOOR), _nv.z);
+      } else sv.name.position.copy(sv.nameAt);
       sv.markerK = damp(sv.markerK, sv.markerOn ? 1 : 0, 8, dt);
       const mm = sv.marker.material as THREE.MeshBasicMaterial;
       mm.opacity = sv.markerK;

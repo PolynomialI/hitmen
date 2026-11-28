@@ -93,6 +93,12 @@ export class HandView {
     this.cards.push(cm);
     cm.animating = false;
     this.applyLock(cm);
+    // Angels always lead the hand: a new one slides to the front (the others keep their order).
+    if (cm.card?.type === 'angel') {
+      const angels = this.cards.filter((c) => c.card?.type === 'angel');
+      const rest = this.cards.filter((c) => c.card?.type !== 'angel');
+      this.cards.splice(0, this.cards.length, ...angels, ...rest);
+    }
   }
 
   /** Take a card out of the hand into world space (for flights). */

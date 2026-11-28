@@ -237,6 +237,10 @@ Second chat:
     table thins), names on the felt in front of each player; six-player Original and 3v3 Teams played through online
     with real sockets. Compressed static files (brotli/gzip, 1.2 MB -> 330 KB script). A silent "● Your turn" / "Match
     found" in the tab title while the tab is in the background. Face planes of face-down rival cards skipped.
+37. > put nametags above again. Also when you get an angel, it should rearrange itself into the front of the deck,
+    > angels should always be the first cards
+    Names above the heads again (kept on screen for the players beside you at larger tables); Angels always first
+    in your hand ("deck" read as your hand).
 
 ## How work was verified
 

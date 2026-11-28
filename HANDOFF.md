@@ -160,8 +160,9 @@ time, a target for cards that mark a player; Misdirection shows both.
 
 Table sizes (2 to 6, Teams 2v2 or 3v3): the seat view is framed per number of rivals (`seatStation` in
 matchScreen.ts): low and close at two or three players, further back and higher with a wider lens at four to six so the
-players right beside you are in frame; when knockouts thin the table it eases back in (`refit`). Names lie on the felt
-in front of each player, under the cards they hold (gold on their turn), so every name is in view at every size.
+players right beside you are in frame; when knockouts thin the table it eases back in (`refit`). Names float above
+each player's head (gold on their turn); at the larger tables the names of the players right beside you come down just
+enough to stay on screen (`NAME_TOP` in tableView.ts). Angels always lead your hand: a new one slides to the front.
 
 Knockouts: a gunshot throws the player out of the chair to the floor in a fraction of a second (flash, blood spray, the
 chair rocks), a beat on the floor, then the body, chair and cards shrink away and the living close up round the table,
