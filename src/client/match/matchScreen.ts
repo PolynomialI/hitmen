@@ -14,6 +14,7 @@ import { profile } from '../ui/profile';
 import { lookFromProfile } from '../cosmetics/apply';
 import { makeText, type Station } from '../world/tavern';
 import { paint } from '../gfx/textures';
+import { attention, clearAttention } from '../ui/attention';
 import { FONT3D } from '../world/fonts3d';
 import { CardMesh } from './cardMesh';
 import { Fx } from './fx';
@@ -38,6 +39,26 @@ export interface MatchOptions {
 type AimKind = { kind: 'play'; card: Card; effect: CardType } | { kind: 'misdirect'; card: Card };
 
 const HOSTILE: CardType[] = ['bounty', 'warband', 'pickpocket', 'mistletoe'];
+
+/**
+ * Your seat's view for k rivals. Low and close at small tables (the table and the room feel big); at four to six
+ * players the equally spaced seats reach round beside you, so the eyes sit further back and higher with a wider lens
+ * until your neighbours are in frame too (no head turning needed).
+ */
+function seatStation(k: number): Station {
+  if (k <= 1) return { pos: V(3.02, 1.36, 0.6), target: V(5.8, 0.46, 0.6), look: [0.45, 0.14, 0.06], fov: 50 };
+  if (k === 2) return { pos: V(3.0, 1.4, 0.6), target: V(5.8, 0.46, 0.6), look: [0.55, 0.14, 0.06], fov: 51 };
+  if (k === 3) return { pos: V(2.7, 1.52, 0.6), target: V(5.65, 0.46, 0.6), look: [0.5, 0.14, 0.06], fov: 52 };
+  if (k === 4) return { pos: V(2.45, 1.64, 0.6), target: V(5.5, 0.48, 0.6), look: [0.4, 0.14, 0.06], fov: 54 };
+  return { pos: V(2.22, 1.76, 0.6), target: V(5.4, 0.5, 0.6), look: [0.34, 0.14, 0.06], fov: 56 };
+}
+
+/** Looking down on the table to pick a mark. */
+function aimStation(k: number): Station {
+  if (k <= 1) return { pos: V(3.4, 2.05, 0.6), target: V(5.25, 0.82, 0.6), look: [0.06, 0.04], fov: 52 };
+  if (k === 2) return { pos: V(3.05, 2.65, 0.6), target: V(4.75, 0.5, 0.6), look: [0.06, 0.04], fov: 60 };
+  return { pos: V(2.75, 3.0, 0.6), target: V(4.55, 0.45, 0.6), look: [0.06, 0.04], fov: 62 };
+}
 /** Animation speed in a match: the host's event times (DUR) are about three quarters of what the animations were made for. */
 const MATCH_SPEED = 1.33;
 
@@ -84,6 +105,18 @@ export class MatchScreen implements Screen {
   private sceneBefore: Set<THREE.Object3D>;
   private tableStation: Station;
   private aimStation: Station;
+  /** Rivals the seat view is framed for. */
+  private rivalsShown: number;
+
+  /** The table closed up (or you now watch from someone's chair): frame the view for the players still round it. */
+  private refit(): void {
+    const k = [...this.table.seats.values()].filter((v) => !v.gone && !v.watched).length;
+    if (k === this.rivalsShown || k < 1) return;
+    this.rivalsShown = k;
+    this.tableStation = seatStation(k);
+    this.aimStation = aimStation(k);
+    if (!this.aiming) void this.app.rig.glide(this.tableStation, 1.1, 0.1);
+  }
   readonly opts: MatchOptions;
   /** Rivals slain while the player was still alive. */
   outlasted = 0;
@@ -120,21 +153,9 @@ export class MatchScreen implements Screen {
     const app = this.app;
     const tv = app.tavern;
     const k = this.opts.spectate ? Math.max(2, Math.min(5, this.opts.rivals ?? 4)) : mode === 'tutorial' || mode === 'ranked' ? 1 : mode === 'teams' ? ((this.opts.rivals ?? 3) >= 5 ? 5 : 3) : Math.max(1, Math.min(5, this.opts.rivals ?? 1));
-    // Seated: eyes low and right at the table's edge, a narrow lens (the table and the room feel big). Turn your head
-    // (the pointer) to see the players beside you at the larger tables.
-    this.tableStation =
-      k === 1
-        ? { pos: V(3.02, 1.36, 0.6), target: V(5.8, 0.46, 0.6), look: [0.45, 0.14, 0.06], fov: 50 }
-        : k === 2
-          ? { pos: V(3.0, 1.4, 0.6), target: V(5.8, 0.46, 0.6), look: [0.55, 0.14, 0.06], fov: 51 }
-          : { pos: V(2.96, 1.45, 0.6), target: V(5.7, 0.46, 0.6), look: [0.62, 0.14, 0.06], fov: 52 };
-    this.aimStation =
-      k === 1
-        ? { pos: V(3.4, 2.05, 0.6), target: V(5.25, 0.82, 0.6), look: [0.06, 0.04], fov: 52 }
-        : k === 2
-          ? { pos: V(3.05, 2.65, 0.6), target: V(4.75, 0.5, 0.6), look: [0.06, 0.04], fov: 60 }
-          : // Equally spaced seats reach round beside you: look down on the whole table.
-            { pos: V(2.75, 3.0, 0.6), target: V(4.55, 0.45, 0.6), look: [0.06, 0.04], fov: 62 };
+    this.tableStation = seatStation(k);
+    this.aimStation = aimStation(k);
+    this.rivalsShown = k;
     // Opening shot: high above the table, then settle into the seat.
     app.rig.snap({ pos: V(3.4, 3.2, 2.6), target: V(4.6, 0.8, 0.4), look: [0.05, 0.03], fov: 55 });
     app.rig.lookScale = 1;
@@ -405,6 +426,7 @@ export class MatchScreen implements Screen {
     else if (sv.hand.length) cm = sv.hand.splice(Math.floor(Math.random() * sv.hand.length), 1)[0];
     if (!cm) cm = this.newCard(null, this.table.handSlot(id, 0, 1));
     if (card) cm.setCard(card);
+    cm.face.visible = true; // hidden while it was held face down (see TableView.update)
     void this.table.layoutSeat(id, 0.25);
     return cm;
   }
@@ -951,6 +973,8 @@ export class MatchScreen implements Screen {
     this.turnEnd = ms ? performance.now() + ms + dur * 1000 : 0;
     this.table.setSign(mine);
     this.table.setTurn(player, turnsLeft);
+    if (mine && !tweens.instant) attention('Your turn');
+    else clearAttention('Your turn');
     this.owed.delete(player);
     this.refreshTurns();
     this.tutorial('turn');
@@ -1502,6 +1526,7 @@ export class MatchScreen implements Screen {
       });
       const sv = this.table.seat(other)!;
       const theirs = sv.hand.splice(0);
+      theirs.forEach((c) => (c.face.visible = true));
       const n1 = mine.length;
       const jobs: Promise<void>[] = [];
       mine.forEach((c, i) => jobs.push(this.fly(c.root, () => this.table.handSlot(other, i, n1), 0.8, { arc: 0.3 }).then(() => c.setCard(null))));
@@ -1516,6 +1541,7 @@ export class MatchScreen implements Screen {
       const sb = this.table.seat(b)!;
       const ha = sa.hand.splice(0);
       const hb = sb.hand.splice(0);
+      [...ha, ...hb].forEach((c) => (c.face.visible = true));
       const jobs: Promise<void>[] = [];
       ha.forEach((c, i) => jobs.push(this.fly(c.root, () => this.table.handSlot(b, i, ha.length), 0.8, { arc: 0.3 })));
       hb.forEach((c, i) => jobs.push(this.fly(c.root, () => this.table.handSlot(a, i, hb.length), 0.8, { arc: 0.3 })));
@@ -1845,6 +1871,7 @@ export class MatchScreen implements Screen {
       const dropped = sv.hand.splice(0);
       dropped.forEach((c, i) => {
         c.setCard(null);
+        c.face.visible = true;
         const p = sv.pos.clone().addScaledVector(sv.out, 0.1).addScaledVector(side, 0.3 + Math.random() * 0.4).add(V(0, 0.004 + i * 0.0015, 0));
         const q = Q_FLAT_DOWN.clone().multiply(new THREE.Quaternion().setFromAxisAngle(V(0, 0, 1), Math.random() * 6));
         void this.fly(c.root, () => ({ p, q, s: 1 }), 0.3 + Math.random() * 0.2, { arc: 0.16 });
@@ -1885,6 +1912,7 @@ export class MatchScreen implements Screen {
         this.spectating = null;
         this.spectateNext(1);
       } else await this.table.arrange(this.table.viewer);
+      this.refit();
     }
     // The doom red drains away.
     tv.flames.uniforms.uTint.value.setRGB(1, 1, 1);
@@ -1954,8 +1982,9 @@ export class MatchScreen implements Screen {
     // The table turns so they sit where the camera is: every view looks across the table at the stage.
     this.app.rig.offset.set(0, 0, 0);
     this.app.rig.targetOffset.set(0, 0, 0);
-    void this.app.rig.glide(this.tableStation, 0.6, 0.1);
     void this.table.arrange(id, 0.8);
+    this.refit();
+    void this.app.rig.glide(this.tableStation, 0.6, 0.1);
     audio.play('whoosh', { vol: 0.5 });
   }
 
@@ -2147,6 +2176,7 @@ export class MatchScreen implements Screen {
 
   dispose(): void {
     this.disposed = true;
+    clearAttention('Your turn');
     this.t.dispose();
     this.offSession?.();
     for (const id of [...this.away.keys()]) this.clearAway(id);

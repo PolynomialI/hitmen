@@ -126,6 +126,9 @@ Second chat (continuing from this file):
     > exactly opposite from each other instead of being on thirds around the table.
     Also: everyone should see the same background (the stage, curtains, the three boards); remove unnecessary text from
     all menus (something near the top of the table creation menu).
+22. > I give you creative liberties to improve the game right now. Don't do any crazy huge additions, add support for 6
+    > players and the rest you can take your own creative liberties to improve whatever else you want (like
+    > optimization, features, etc)
 
 ## How the requests were interpreted
 
@@ -230,6 +233,10 @@ Second chat:
     the table so every view faces the stage (it already did for players: each sits in the camera's chair). Removed: the
     Create Table mode descriptions, the board papers' subtitles, the queue window's line, the results' flavour lines,
     the Join list's instruction, the shop item window's blurb and rarity line.
+36. Message 22: six-player tables framed so every rival is in view (seat view per table size, easing back in as the
+    table thins), names on the felt in front of each player; six-player Original and 3v3 Teams played through online
+    with real sockets. Compressed static files (brotli/gzip, 1.2 MB -> 330 KB script). A silent "● Your turn" / "Match
+    found" in the tab title while the tab is in the background. Face planes of face-down rival cards skipped.
 
 ## How work was verified
 

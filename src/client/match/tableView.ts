@@ -382,7 +382,7 @@ export class TableView {
         hand: [],
         name,
         // The turns mace hangs at neck height to the right of the head (as you see it; you look along +x).
-        nameY: Math.max(top + 0.07, 0.47 + 1.2),
+        nameY: this.tv.tableTop + 0.075,
         badgeY: Math.max(top - 0.5, 0.47 + 0.62),
         badge,
         badgeTex: null,
@@ -423,7 +423,9 @@ export class TableView {
     const f = sv.figure.root;
     f.position.copy(pos).add(new THREE.Vector3(0, 0.47, 0));
     f.lookAt(this.center.clone().setY(0.47));
-    sv.name.position.set(f.position.x, sv.nameY, f.position.z);
+    // On the felt in front of them, just under the cards they hold, like a place card: in view at every table
+    // size (players right beside you included) and never over the boards on the stage.
+    sv.name.position.set(this.center.x + out.x * 0.82, sv.nameY, this.center.z + out.z * 0.82);
     sv.badge.position.set(f.position.x, sv.badgeY, f.position.z + 0.44);
     sv.count.position.set(f.position.x, sv.badgeY, f.position.z - 0.42);
     sv.ward.position.copy(pos).add(new THREE.Vector3(0, 0.5, 0));
@@ -712,6 +714,9 @@ export class TableView {
     // Card counts follow every deal, draw, play and theft.
     for (const sv of this.seats.values()) {
       sv.count.visible = sv.alive && !sv.watched;
+      // A card held face down shows you only its back: skip drawing its face plane (a draw call per card, ~30 at a
+      // full table). Teammates' cards face you; the watched player's are under the film.
+      for (const c of sv.hand) c.face.visible = sv.mate || sv.watched === true || !!c.card;
       sv.badge.visible = sv.alive && !sv.watched;
       sv.name.visible = sv.alive && !sv.watched;
       // The chair you watch from is under the camera.

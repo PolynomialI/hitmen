@@ -4,9 +4,11 @@
 // Deploy on Render with render.yaml (one web service). Locally: `npm run build && npm start`.
 
 import { randomBytes } from 'node:crypto';
-import { createReadStream, existsSync, statSync } from 'node:fs';
+import { createReadStream, existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
 import { extname, join, normalize, resolve } from 'node:path';
+import { promisify } from 'node:util';
+import { brotliCompress, constants as zlibConstants, gzip } from 'node:zlib';
 import { WebSocketServer, type WebSocket } from 'ws';
 import type { Host } from '../src/shared/host';
 import { createTableMatch } from '../src/shared/match';
@@ -44,6 +46,49 @@ const MIME: Record<string, string> = {
   '.ico': 'image/x-icon',
 };
 
+/**
+ * Text files go out compressed (brotli, else gzip): the game script shrinks about 3x, which matters on school networks.
+ * Each file is compressed once and kept in memory (dist/ is a few MB at most); a rebuilt file is picked up by its mtime.
+ */
+const COMPRESSIBLE = new Set(['.html', '.js', '.css', '.json', '.svg']);
+interface Packed {
+  mtime: number;
+  raw: Buffer;
+  br: Buffer;
+  gz: Buffer;
+}
+const packed = new Map<string, Promise<Packed>>();
+const brotliAsync = promisify(brotliCompress);
+const gzipAsync = promisify(gzip);
+
+/** The file compressed both ways. Compression runs on Node's worker threads, so games carry on meanwhile. */
+function pack(p: string): Promise<Packed> {
+  const mtime = statSync(p).mtimeMs;
+  const known = packed.get(p);
+  if (known) return known.then((e) => (e.mtime === mtime ? e : (packed.delete(p), pack(p))));
+  const job = (async () => {
+    const raw = readFileSync(p);
+    const [br, gz] = await Promise.all([
+      brotliAsync(raw, { params: { [zlibConstants.BROTLI_PARAM_QUALITY]: 10, [zlibConstants.BROTLI_PARAM_SIZE_HINT]: raw.length } }),
+      gzipAsync(raw, { level: 9 }),
+    ]);
+    return { mtime, raw, br, gz };
+  })();
+  packed.set(p, job);
+  job.catch(() => packed.delete(p));
+  return job;
+}
+
+/** Compress the whole client once at start-up, so no visitor waits on it. */
+function warmUp(dir = DIST): void {
+  if (!existsSync(dir)) return;
+  for (const name of readdirSync(dir)) {
+    const p = join(dir, name);
+    if (statSync(p).isDirectory()) warmUp(p);
+    else if (COMPRESSIBLE.has(extname(p))) void pack(p).catch(() => {});
+  }
+}
+
 function json(res: ServerResponse, body: unknown): void {
   res.writeHead(200, { 'content-type': 'application/json', 'cache-control': 'no-store' });
   res.end(JSON.stringify(body));
@@ -73,10 +118,30 @@ function serve(req: IncomingMessage, res: ServerResponse): void {
     return;
   }
   const ext = extname(p);
-  res.writeHead(200, {
+  const headers: Record<string, string> = {
     'content-type': MIME[ext] ?? 'application/octet-stream',
     'cache-control': ext === '.html' ? 'no-cache' : 'public, max-age=31536000, immutable',
-  });
+  };
+  if (COMPRESSIBLE.has(ext)) {
+    const accept = String(req.headers['accept-encoding'] ?? '');
+    const enc = /\bbr\b/.test(accept) ? 'br' : /\bgzip\b/.test(accept) ? 'gzip' : null;
+    pack(p).then(
+      (e) => {
+        const body = enc === 'br' ? e.br : enc === 'gzip' ? e.gz : e.raw;
+        if (enc) headers['content-encoding'] = enc;
+        headers.vary = 'Accept-Encoding';
+        headers['content-length'] = String(body.length);
+        res.writeHead(200, headers);
+        res.end(req.method === 'HEAD' ? undefined : body);
+      },
+      () => {
+        res.writeHead(200, headers);
+        createReadStream(p).pipe(res);
+      }
+    );
+    return;
+  }
+  res.writeHead(200, headers);
   createReadStream(p).pipe(res);
 }
 
@@ -556,7 +621,10 @@ wss.on('connection', (ws) => {
   });
 });
 
-http.listen(PORT, () => console.log(`The Hooded Hand server listening on :${PORT} (static from ${DIST})`));
+http.listen(PORT, () => {
+  console.log(`The Hooded Hand server listening on :${PORT} (static from ${DIST})`);
+  warmUp();
+});
 
 // A redeploy stops this process (SIGTERM) while a new one takes new players. Matches already being played may finish
 // (up to SHUTDOWN_GRACE_MS); waiting and finished tables are told to come back shortly.

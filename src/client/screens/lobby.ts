@@ -4,6 +4,7 @@ import { audio } from '../audio/audio';
 import { lookFromProfile } from '../cosmetics/apply';
 import { listRooms, liveTables, OnlineSession } from '../net/online';
 import { h } from '../ui/dom';
+import { attention } from '../ui/attention';
 import { toast } from '../ui/hud';
 import { profile } from '../ui/profile';
 import type { Nav } from './menus';
@@ -255,6 +256,7 @@ export function queueModal(nav: Nav, mode: QueueMode, onClose: () => void): Moda
       dispose();
       onClose();
       audio.play('paper');
+      attention('Match found');
       nav.startMatch({ mode: engineMode(l.mode), rivals: l.seats.length - 1, online: session });
     },
     error: (m) => toast(nav.layer, m),
